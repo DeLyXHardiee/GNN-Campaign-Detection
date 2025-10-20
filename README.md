@@ -95,7 +95,3 @@ class CustomClustering(ClusteringStrategy):
         # Implementation
         pass
 ```
-
-## License
-
-MIT License
