@@ -14,7 +14,7 @@ Welcome! This guide will help you get up and running with the GNN Campaign Detec
 
 ```powershell
 # Navigate to project directory
-cd c:\Users\mar20\Desktop\Thesis\GNN-Campaign-Detection
+cd .../GNN-Campaign-Detection
 
 # (Optional) Create virtual environment
 python -m venv venv
@@ -361,13 +361,13 @@ pipeline.add_observer(MyCustomObserver())
 **Solution:**
 ```powershell
 # Make sure you're in the project directory
-cd c:\Users\mar20\Desktop\Thesis\GNN-Campaign-Detection
+cd ...\GNN-Campaign-Detection
 
 # Reinstall dependencies
 pip install -r requirements.txt
 
 # Add project to Python path (temporary)
-$env:PYTHONPATH = "c:\Users\mar20\Desktop\Thesis\GNN-Campaign-Detection"
+$env:PYTHONPATH = "...\GNN-Campaign-Detection"
 ```
 
 ### Issue: FileNotFoundError for data
