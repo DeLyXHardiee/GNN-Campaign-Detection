@@ -1,19 +1,23 @@
 from TRECtoMISP import csv_to_misp
 
-def run_trec_misp_converter():
-    # Run MISP converter --> output MISP JSON file
-    csv_to_misp("data/TREC-07.csv", "data/misp/trec07_misp.json")
+def run_trec_misp_converter(csv_path="data/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
+    # Retrieve csv file --> Run MISP converter --> output MISP JSON file
+    csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation():
-    # Run graph creation --> output PyTorch Geometric graph
+def run_graph_creation(misp_json_path="data/misp/trec07_misp.json"):
+    # MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
     pass
 
 def run_GNN():
-    # Run GNN model on the graph --> output embeddings
+    # PyTorch Geometric graph --> Run GNN model on the graph --> output embeddings
     pass
 
 def run_clustering():
-    # Run clustering on embeddings --> store clusters
+    # GNN Embeddings --> Run clustering on embeddings --> output clusters
+    pass
+
+def run_metrics_evaluation():
+    # Clusters --> Evaluate clustering results using metrics -- > store metrics
     pass
 
 if __name__ == "__main__":
@@ -21,3 +25,4 @@ if __name__ == "__main__":
     # run_graph_creation()
     # run_GNN()
     # run_clustering()
+    # run_metrics_evaluation()
