@@ -1,8 +1,8 @@
-from TRECtoMISP import TRECtoMISPConverter
+from TRECtoMISP import csv_to_misp
 
 def run_trec_misp_converter():
     # Run MISP converter --> output MISP JSON file
-    TRECtoMISPConverter.csv_to_misp("data/TREC-07.csv", "results/misp/trec07_misp.json")
+    csv_to_misp("data/TREC-07.csv", "data/misp/trec07_misp.json")
 
 def run_graph_creation():
     # Run graph creation --> output PyTorch Geometric graph
