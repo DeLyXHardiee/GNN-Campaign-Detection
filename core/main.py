@@ -1,6 +1,10 @@
 from misp.trec_to_misp import csv_to_misp
 from graph.graph_builder import build_graph
 
+def run_preprocessing():
+    # Placeholder for any preprocessing steps if needed
+    pass
+
 def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="../data/misp/trec07_misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
@@ -31,6 +35,7 @@ def run_metrics_evaluation():
     pass
 
 def run_pipeline():
+    run_preprocessing()
     run_trec_misp_converter()
     run_graph_creation()
     run_GNN()
@@ -39,7 +44,8 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    #run_trec_misp_converter()
+    # run_preprocessing()
+    # run_trec_misp_converter()
     run_graph_creation()
     # run_GNN()
     # run_clustering()

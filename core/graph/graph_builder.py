@@ -3,12 +3,18 @@ Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 
 Capabilities:
 - Accepts input either as an in-memory list of MISP events or from a JSON file path.
-- Builds a HeteroData graph with node types: 'email', 'address', 'url'.
-- Adds edges:
-  - ('address', 'sends', 'email') for sender relationships
-  - ('address', 'receives', 'email') for receiver relationships
-  - ('email', 'contains', 'url') for URL references
-- Creates simple numeric features for nodes (lengths and counts) to keep tensors valid.
+- Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
+- Node types: 'email', 'sender', 'receiver', 'week', 'subject', 'url'.
+- Edges (all from email to components):
+  - ('email', 'has_sender', 'sender')
+  - ('email', 'has_receiver', 'receiver')
+  - ('email', 'in_week', 'week') - emails are grouped by ISO week
+  - ('email', 'has_subject', 'subject')
+  - ('email', 'has_url', 'url')
+- Component nodes are deduplicated: multiple emails sharing the same sender, week, subject, etc. 
+  will have edges to the same component node.
+- Email features include body length. Week nodes group emails by ISO calendar week.
+- Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
 
 If torch or torch_geometric are not installed, import errors will clearly explain how to install them.
@@ -80,6 +86,39 @@ def _to_str(val: Any) -> str:
         return ""
 
 
+def _extract_week_key(date_str: str) -> Optional[str]:
+    """
+    Extract a week identifier from a date string.
+    
+    Returns: "YYYY-Www" format (e.g., "2007-W15") for ISO week, or None if parsing fails.
+    """
+    if not date_str or not date_str.strip():
+        return None
+    
+    try:
+        from datetime import datetime
+        # Common email date formats - try parsing various patterns
+        for fmt in [
+            "%a, %d %b %Y %H:%M:%S %z",  # Standard RFC 2822: Sun, 08 Apr 2007 21:00:48 +0300
+            "%a, %d %b %Y %H:%M:%S %Z",
+            "%d %b %Y %H:%M:%S %z",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+        ]:
+            try:
+                dt = datetime.strptime(date_str.strip(), fmt)
+                # Get ISO calendar: (year, week_number, weekday)
+                iso_cal = dt.isocalendar()
+                return f"{iso_cal[0]}-W{iso_cal[1]:02d}"
+            except ValueError:
+                continue
+        
+        # If all formats fail, return None
+        return None
+    except Exception:
+        return None
+
+
 def _parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     """
     Normalize MISP events to a simpler structure per email event.
@@ -145,94 +184,168 @@ def build_hetero_graph_from_misp(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
+    
+    New schema: Email nodes are central hubs connected to component nodes:
+    - Node types: email, sender, receiver, week, subject, url
+    - Edge types: 
+      - (email, has_sender, sender)
+      - (email, has_receiver, receiver)
+      - (email, in_week, week)
+      - (email, has_subject, subject)
+      - (email, has_url, url)
+    
+    Components are deduplicated: multiple emails sharing the same sender/receiver/week/etc. 
+    will have edges to the same component node.
+    
+    Email features include body length as a numeric feature.
 
     Returns (graph, metadata) where metadata contains mappings for node indices.
     """
     emails = _parse_misp_events(misp_events)
 
-    # Unique entities and indices
-    address_to_idx: Dict[str, int] = {}
+    # Unique entities and indices for each component type
+    sender_to_idx: Dict[str, int] = {}
+    receiver_to_idx: Dict[str, int] = {}
+    week_to_idx: Dict[str, int] = {}
+    subject_to_idx: Dict[str, int] = {}
     url_to_idx: Dict[str, int] = {}
 
-    # Pre-scan to register unique addresses and urls
+    # Pre-scan to register unique components
     for em in emails:
-        if em.get("sender"):
-            address_to_idx.setdefault(em["sender"], len(address_to_idx))
+        sender = em.get("sender")
+        if sender:
+            sender_to_idx.setdefault(sender, len(sender_to_idx))
+        
         for r in em.get("receivers", []) or []:
-            address_to_idx.setdefault(r, len(address_to_idx))
+            if r:
+                receiver_to_idx.setdefault(r, len(receiver_to_idx))
+        
+        # Extract week from date
+        date_val = em.get("date", "")
+        week_key = _extract_week_key(date_val)
+        if week_key:
+            week_to_idx.setdefault(week_key, len(week_to_idx))
+        
+        subj = em.get("subject", "")
+        if subj:
+            subject_to_idx.setdefault(subj, len(subject_to_idx))
+        
         for u in em.get("urls", []) or []:
-            url_to_idx.setdefault(u, len(url_to_idx))
+            if u:
+                url_to_idx.setdefault(u, len(url_to_idx))
 
-    # Node features
+    # Node features (simple length-based for now)
     email_x: List[List[float]] = []
-    address_x: List[List[float]] = [[float(len(str(addr)))] for addr in sorted(address_to_idx, key=lambda x: address_to_idx[x])]
+    sender_x: List[List[float]] = [[float(len(str(s)))] for s in sorted(sender_to_idx, key=lambda x: sender_to_idx[x])]
+    receiver_x: List[List[float]] = [[float(len(str(r)))] for r in sorted(receiver_to_idx, key=lambda x: receiver_to_idx[x])]
+    week_x: List[List[float]] = [[float(idx)] for idx in range(len(week_to_idx))]  # Week index as feature
+    subject_x: List[List[float]] = [[float(len(str(s)))] for s in sorted(subject_to_idx, key=lambda x: subject_to_idx[x])]
     url_x: List[List[float]] = [[float(len(str(u)))] for u in sorted(url_to_idx, key=lambda x: url_to_idx[x])]
 
-    # Edges
-    sends_src: List[int] = []  # address -> email
-    sends_dst: List[int] = []
-    receives_src: List[int] = []  # address -> email (receivers)
-    receives_dst: List[int] = []
-    contains_src: List[int] = []  # email -> url
-    contains_dst: List[int] = []
+    # Edge lists (email -> component)
+    has_sender_src: List[int] = []
+    has_sender_dst: List[int] = []
+    has_receiver_src: List[int] = []
+    has_receiver_dst: List[int] = []
+    in_week_src: List[int] = []
+    in_week_dst: List[int] = []
+    has_subject_src: List[int] = []
+    has_subject_dst: List[int] = []
+    has_url_src: List[int] = []
+    has_url_dst: List[int] = []
 
-    # Meta maps
-    email_meta: List[Dict[str, Any]] = []
-    address_meta: List[str] = [None] * len(address_to_idx)
-    for addr, idx in address_to_idx.items():
-        address_meta[idx] = addr
+    # Meta maps for reverse lookup
+    sender_meta: List[str] = [None] * len(sender_to_idx)
+    for s, idx in sender_to_idx.items():
+        sender_meta[idx] = s
+    receiver_meta: List[str] = [None] * len(receiver_to_idx)
+    for r, idx in receiver_to_idx.items():
+        receiver_meta[idx] = r
+    week_meta: List[str] = [None] * len(week_to_idx)
+    for w, idx in week_to_idx.items():
+        week_meta[idx] = w
+    subject_meta: List[str] = [None] * len(subject_to_idx)
+    for s, idx in subject_to_idx.items():
+        subject_meta[idx] = s
     url_meta: List[str] = [None] * len(url_to_idx)
     for u, idx in url_to_idx.items():
         url_meta[idx] = u
 
+    # Email metadata
+    email_meta: List[Dict[str, Any]] = []
+
+    # Build edges: iterate emails and create edges to their components
     for email_idx, em in enumerate(emails):
-        subj_len = float(len(em.get("subject", "")))
+        # Email node feature: [body_length]
         body_len = float(len(em.get("body", "")))
-        num_urls = float(len(em.get("urls", []) or []))
-        num_receivers = float(len(em.get("receivers", []) or []))
-        email_x.append([subj_len, body_len, num_urls, num_receivers])
+        email_x.append([body_len])
 
-        # sender edge
-        if em.get("sender"):
-            a_idx = address_to_idx[em["sender"]]
-            sends_src.append(a_idx)
-            sends_dst.append(email_idx)
+        email_meta.append({
+            "info": em.get("email_info", ""),
+            "index": email_idx,
+            "date": em.get("date", ""),
+        })
 
-        # receiver edges
+        # has_sender edge
+        if em.get("sender") and em["sender"] in sender_to_idx:
+            has_sender_src.append(email_idx)
+            has_sender_dst.append(sender_to_idx[em["sender"]])
+
+        # has_receiver edges
         for r in em.get("receivers", []) or []:
-            a_idx = address_to_idx[r]
-            receives_src.append(a_idx)
-            receives_dst.append(email_idx)
+            if r and r in receiver_to_idx:
+                has_receiver_src.append(email_idx)
+                has_receiver_dst.append(receiver_to_idx[r])
 
-        # url edges
+        # in_week edge
+        date_val = em.get("date", "")
+        week_key = _extract_week_key(date_val)
+        if week_key and week_key in week_to_idx:
+            in_week_src.append(email_idx)
+            in_week_dst.append(week_to_idx[week_key])
+
+        # has_subject edge
+        subj = em.get("subject", "")
+        if subj and subj in subject_to_idx:
+            has_subject_src.append(email_idx)
+            has_subject_dst.append(subject_to_idx[subj])
+
+        # has_url edges
         for u in em.get("urls", []) or []:
-            if u in url_to_idx:
-                contains_src.append(email_idx)
-                contains_dst.append(url_to_idx[u])
-
-        email_meta.append(
-            {
-                "info": em.get("email_info", ""),
-                "sender": em.get("sender"),
-                "receivers": em.get("receivers", []),
-                "date": em.get("date", ""),
-            }
-        )
+            if u and u in url_to_idx:
+                has_url_src.append(email_idx)
+                has_url_dst.append(url_to_idx[u])
 
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
     data = HData()
 
-    # Set node features
+    # Set node features for email
     if email_x:
         data["email"].x = torch_lib.tensor(email_x, dtype=torch_lib.float)
     else:
         data["email"].num_nodes = 0
 
-    if address_x:
-        data["address"].x = torch_lib.tensor(address_x, dtype=torch_lib.float)
+    # Set node features for each component type
+    if sender_x:
+        data["sender"].x = torch_lib.tensor(sender_x, dtype=torch_lib.float)
     else:
-        data["address"].num_nodes = 0
+        data["sender"].num_nodes = 0
+
+    if receiver_x:
+        data["receiver"].x = torch_lib.tensor(receiver_x, dtype=torch_lib.float)
+    else:
+        data["receiver"].num_nodes = 0
+
+    if week_x:
+        data["week"].x = torch_lib.tensor(week_x, dtype=torch_lib.float)
+    else:
+        data["week"].num_nodes = 0
+
+    if subject_x:
+        data["subject"].x = torch_lib.tensor(subject_x, dtype=torch_lib.float)
+    else:
+        data["subject"].num_nodes = 0
 
     if url_x:
         data["url"].x = torch_lib.tensor(url_x, dtype=torch_lib.float)
@@ -240,34 +353,50 @@ def build_hetero_graph_from_misp(
         data["url"].num_nodes = 0
 
     # Set edges
-    if sends_src:
-        data["address", "sends", "email"].edge_index = torch_lib.tensor(
-            [sends_src, sends_dst], dtype=torch_lib.long
+    if has_sender_src:
+        data["email", "has_sender", "sender"].edge_index = torch_lib.tensor(
+            [has_sender_src, has_sender_dst], dtype=torch_lib.long
         )
-    if receives_src:
-        data["address", "receives", "email"].edge_index = torch_lib.tensor(
-            [receives_src, receives_dst], dtype=torch_lib.long
+    if has_receiver_src:
+        data["email", "has_receiver", "receiver"].edge_index = torch_lib.tensor(
+            [has_receiver_src, has_receiver_dst], dtype=torch_lib.long
         )
-    if contains_src:
-        data["email", "contains", "url"].edge_index = torch_lib.tensor(
-            [contains_src, contains_dst], dtype=torch_lib.long
+    if in_week_src:
+        data["email", "in_week", "week"].edge_index = torch_lib.tensor(
+            [in_week_src, in_week_dst], dtype=torch_lib.long
+        )
+    if has_subject_src:
+        data["email", "has_subject", "subject"].edge_index = torch_lib.tensor(
+            [has_subject_src, has_subject_dst], dtype=torch_lib.long
+        )
+    if has_url_src:
+        data["email", "has_url", "url"].edge_index = torch_lib.tensor(
+            [has_url_src, has_url_dst], dtype=torch_lib.long
         )
 
     metadata = {
         "node_maps": {
             "email": {"index_to_meta": email_meta},
-            "address": {"index_to_string": address_meta},
+            "sender": {"index_to_string": sender_meta},
+            "receiver": {"index_to_string": receiver_meta},
+            "week": {"index_to_string": week_meta},
+            "subject": {"index_to_string": subject_meta},
             "url": {"index_to_string": url_meta},
         },
         "feature_shapes": {
             "email": list(data["email"].x.shape) if "x" in data["email"] else [0, 0],
-            "address": list(data["address"].x.shape) if "x" in data["address"] else [0, 0],
+            "sender": list(data["sender"].x.shape) if "x" in data["sender"] else [0, 0],
+            "receiver": list(data["receiver"].x.shape) if "x" in data["receiver"] else [0, 0],
+            "week": list(data["week"].x.shape) if "x" in data["week"] else [0, 0],
+            "subject": list(data["subject"].x.shape) if "x" in data["subject"] else [0, 0],
             "url": list(data["url"].x.shape) if "x" in data["url"] else [0, 0],
         },
         "edge_counts": {
-            "address->email:sends": len(sends_src),
-            "address->email:receives": len(receives_src),
-            "email->url:contains": len(contains_src),
+            "email->sender:has_sender": len(has_sender_src),
+            "email->receiver:has_receiver": len(has_receiver_src),
+            "email->week:in_week": len(in_week_src),
+            "email->subject:has_subject": len(has_subject_src),
+            "email->url:has_url": len(has_url_src),
         },
     }
 

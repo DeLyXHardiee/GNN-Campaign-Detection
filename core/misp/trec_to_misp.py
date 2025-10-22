@@ -1,5 +1,6 @@
 import pandas as pd
 import json
+import os
 
 def csv_to_misp(csv_path, misp_json_path):
     # Read CSV
@@ -55,6 +56,10 @@ def csv_to_misp(csv_path, misp_json_path):
         print(json.dumps(event, indent=2))
         print("-" * 40)
     
-    # Save as MISP JSON
-    with open(misp_json_path, "w") as f:
-        json.dump(misp_events, f, indent=2)
+    # Ensure output directory exists, then save as MISP JSON
+    out_dir = os.path.dirname(misp_json_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+
+    with open(misp_json_path, "w", encoding="utf-8") as f:
+        json.dump(misp_events, f, indent=2, ensure_ascii=False)
