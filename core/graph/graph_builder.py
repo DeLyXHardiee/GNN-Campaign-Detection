@@ -4,15 +4,18 @@ Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 Capabilities:
 - Accepts input either as an in-memory list of MISP events or from a JSON file path.
 - Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
-- Node types: 'email', 'sender', 'receiver', 'week', 'subject', 'url'.
+- Node types: 'email', 'sender', 'receiver', 'week', 'subject', 'url', 'domain', 'stem'.
 - Edges (all from email to components):
   - ('email', 'has_sender', 'sender')
   - ('email', 'has_receiver', 'receiver')
   - ('email', 'in_week', 'week') - emails are grouped by ISO week
   - ('email', 'has_subject', 'subject')
   - ('email', 'has_url', 'url')
+  - ('url', 'has_domain', 'domain')
+  - ('url', 'has_stem', 'stem')
 - Component nodes are deduplicated: multiple emails sharing the same sender, week, subject, etc. 
   will have edges to the same component node.
+- URLs are parsed into domain and stem components for better deduplication.
 - Email features include body length. Week nodes group emails by ISO calendar week.
 - Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
@@ -23,7 +26,18 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
+
+# Add utils to path for URL extractor
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from utils.url_extractor import parse_url_components
+except ImportError:
+    # Fallback if import fails
+    def parse_url_components(url: str) -> Dict[str, Any]:
+        return {"full_url": url, "domain": "", "stem": "", "scheme": ""}
 
 if TYPE_CHECKING:  # For type checkers only; avoids runtime import requirement
     import torch  # type: ignore
@@ -186,16 +200,18 @@ def build_hetero_graph_from_misp(
     Build a HeteroData graph from a list of MISP events.
     
     New schema: Email nodes are central hubs connected to component nodes:
-    - Node types: email, sender, receiver, week, subject, url
+    - Node types: email, sender, receiver, week, subject, url, domain, stem
     - Edge types: 
       - (email, has_sender, sender)
       - (email, has_receiver, receiver)
       - (email, in_week, week)
       - (email, has_subject, subject)
       - (email, has_url, url)
+      - (url, has_domain, domain)
+      - (url, has_stem, stem)
     
     Components are deduplicated: multiple emails sharing the same sender/receiver/week/etc. 
-    will have edges to the same component node.
+    will have edges to the same component node. URLs are decomposed into domain and stem.
     
     Email features include body length as a numeric feature.
 
@@ -209,6 +225,11 @@ def build_hetero_graph_from_misp(
     week_to_idx: Dict[str, int] = {}
     subject_to_idx: Dict[str, int] = {}
     url_to_idx: Dict[str, int] = {}
+    domain_to_idx: Dict[str, int] = {}
+    stem_to_idx: Dict[str, int] = {}
+    
+    # Track URL -> (domain, stem) mapping for edge creation
+    url_components: Dict[str, Tuple[str, str]] = {}
 
     # Pre-scan to register unique components
     for em in emails:
@@ -230,9 +251,23 @@ def build_hetero_graph_from_misp(
         if subj:
             subject_to_idx.setdefault(subj, len(subject_to_idx))
         
+        # Parse URLs into components
         for u in em.get("urls", []) or []:
             if u:
                 url_to_idx.setdefault(u, len(url_to_idx))
+                
+                # Parse URL components
+                parsed = parse_url_components(u)
+                domain = parsed.get("domain", "")
+                stem = parsed.get("stem", "")
+                
+                if domain:
+                    domain_to_idx.setdefault(domain, len(domain_to_idx))
+                if stem:
+                    stem_to_idx.setdefault(stem, len(stem_to_idx))
+                
+                # Store mapping
+                url_components[u] = (domain, stem)
 
     # Node features (simple length-based for now)
     email_x: List[List[float]] = []
@@ -241,6 +276,8 @@ def build_hetero_graph_from_misp(
     week_x: List[List[float]] = [[float(idx)] for idx in range(len(week_to_idx))]  # Week index as feature
     subject_x: List[List[float]] = [[float(len(str(s)))] for s in sorted(subject_to_idx, key=lambda x: subject_to_idx[x])]
     url_x: List[List[float]] = [[float(len(str(u)))] for u in sorted(url_to_idx, key=lambda x: url_to_idx[x])]
+    domain_x: List[List[float]] = [[float(len(str(d)))] for d in sorted(domain_to_idx, key=lambda x: domain_to_idx[x])]
+    stem_x: List[List[float]] = [[float(len(str(s)))] for s in sorted(stem_to_idx, key=lambda x: stem_to_idx[x])]
 
     # Edge lists (email -> component)
     has_sender_src: List[int] = []
@@ -253,6 +290,12 @@ def build_hetero_graph_from_misp(
     has_subject_dst: List[int] = []
     has_url_src: List[int] = []
     has_url_dst: List[int] = []
+    
+    # URL -> domain/stem edges
+    url_to_domain_src: List[int] = []
+    url_to_domain_dst: List[int] = []
+    url_to_stem_src: List[int] = []
+    url_to_stem_dst: List[int] = []
 
     # Meta maps for reverse lookup
     sender_meta: List[str] = [None] * len(sender_to_idx)
@@ -270,6 +313,12 @@ def build_hetero_graph_from_misp(
     url_meta: List[str] = [None] * len(url_to_idx)
     for u, idx in url_to_idx.items():
         url_meta[idx] = u
+    domain_meta: List[str] = [None] * len(domain_to_idx)
+    for d, idx in domain_to_idx.items():
+        domain_meta[idx] = d
+    stem_meta: List[str] = [None] * len(stem_to_idx)
+    for s, idx in stem_to_idx.items():
+        stem_meta[idx] = s
 
     # Email metadata
     email_meta: List[Dict[str, Any]] = []
@@ -316,6 +365,18 @@ def build_hetero_graph_from_misp(
                 has_url_src.append(email_idx)
                 has_url_dst.append(url_to_idx[u])
 
+    # Create URL -> domain and URL -> stem edges
+    for url, (domain, stem) in url_components.items():
+        url_idx = url_to_idx[url]
+        
+        if domain and domain in domain_to_idx:
+            url_to_domain_src.append(url_idx)
+            url_to_domain_dst.append(domain_to_idx[domain])
+        
+        if stem and stem in stem_to_idx:
+            url_to_stem_src.append(url_idx)
+            url_to_stem_dst.append(stem_to_idx[stem])
+
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
     data = HData()
@@ -352,6 +413,16 @@ def build_hetero_graph_from_misp(
     else:
         data["url"].num_nodes = 0
 
+    if domain_x:
+        data["domain"].x = torch_lib.tensor(domain_x, dtype=torch_lib.float)
+    else:
+        data["domain"].num_nodes = 0
+
+    if stem_x:
+        data["stem"].x = torch_lib.tensor(stem_x, dtype=torch_lib.float)
+    else:
+        data["stem"].num_nodes = 0
+
     # Set edges
     if has_sender_src:
         data["email", "has_sender", "sender"].edge_index = torch_lib.tensor(
@@ -373,6 +444,14 @@ def build_hetero_graph_from_misp(
         data["email", "has_url", "url"].edge_index = torch_lib.tensor(
             [has_url_src, has_url_dst], dtype=torch_lib.long
         )
+    if url_to_domain_src:
+        data["url", "has_domain", "domain"].edge_index = torch_lib.tensor(
+            [url_to_domain_src, url_to_domain_dst], dtype=torch_lib.long
+        )
+    if url_to_stem_src:
+        data["url", "has_stem", "stem"].edge_index = torch_lib.tensor(
+            [url_to_stem_src, url_to_stem_dst], dtype=torch_lib.long
+        )
 
     metadata = {
         "node_maps": {
@@ -382,6 +461,8 @@ def build_hetero_graph_from_misp(
             "week": {"index_to_string": week_meta},
             "subject": {"index_to_string": subject_meta},
             "url": {"index_to_string": url_meta},
+            "domain": {"index_to_string": domain_meta},
+            "stem": {"index_to_string": stem_meta},
         },
         "feature_shapes": {
             "email": list(data["email"].x.shape) if "x" in data["email"] else [0, 0],
@@ -390,6 +471,8 @@ def build_hetero_graph_from_misp(
             "week": list(data["week"].x.shape) if "x" in data["week"] else [0, 0],
             "subject": list(data["subject"].x.shape) if "x" in data["subject"] else [0, 0],
             "url": list(data["url"].x.shape) if "x" in data["url"] else [0, 0],
+            "domain": list(data["domain"].x.shape) if "x" in data["domain"] else [0, 0],
+            "stem": list(data["stem"].x.shape) if "x" in data["stem"] else [0, 0],
         },
         "edge_counts": {
             "email->sender:has_sender": len(has_sender_src),
@@ -397,6 +480,8 @@ def build_hetero_graph_from_misp(
             "email->week:in_week": len(in_week_src),
             "email->subject:has_subject": len(has_subject_src),
             "email->url:has_url": len(has_url_src),
+            "url->domain:has_domain": len(url_to_domain_src),
+            "url->stem:has_stem": len(url_to_stem_src),
         },
     }
 
@@ -466,7 +551,7 @@ def build_graph(
 def load_graph(graph_path: str) -> Any:
     """Load a serialized HeteroData graph (.pt)."""
     torch_lib = _ensure_torch()
-    return torch_lib.load(graph_path)
+    return torch_lib.load(graph_path, weights_only=False)
 
 
 __all__ = [
