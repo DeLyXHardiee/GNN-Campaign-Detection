@@ -45,7 +45,7 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # run_preprocessing()
-    # run_trec_misp_converter()
+    run_trec_misp_converter()
     run_graph_creation()
     # run_GNN()
     # run_clustering()
