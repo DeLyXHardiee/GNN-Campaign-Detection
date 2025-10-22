@@ -1,0 +1,320 @@
+"""
+Graph metrics and statistics checker for heterogeneous email graphs.
+
+Provides utilities to analyze graph structure, node counts, edge counts,
+and identify top entities (URLs, senders, receivers, etc.).
+"""
+from typing import Dict, List, Tuple, Any, Optional
+from collections import Counter
+import json
+
+
+def load_graph_metadata(meta_path: str) -> Dict[str, Any]:
+    """Load graph metadata from JSON file."""
+    with open(meta_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def print_graph_overview(metadata: Dict[str, Any]) -> None:
+    """Print high-level graph statistics."""
+    print("=" * 70)
+    print("GRAPH OVERVIEW")
+    print("=" * 70)
+    
+    feature_shapes = metadata.get("feature_shapes", {})
+    edge_counts = metadata.get("edge_counts", {})
+    
+    print("\nNode Counts:")
+    total_nodes = 0
+    for node_type, shape in feature_shapes.items():
+        count = shape[0] if shape else 0
+        total_nodes += count
+        print(f"  {node_type:12s}: {count:8,d} nodes")
+    print(f"  {'TOTAL':12s}: {total_nodes:8,d} nodes")
+    
+    print("\nEdge Counts:")
+    total_edges = 0
+    for edge_name, count in edge_counts.items():
+        total_edges += count
+        print(f"  {edge_name:35s}: {count:8,d} edges")
+    print(f"  {'TOTAL':35s}: {total_edges:8,d} edges")
+    
+    print()
+
+
+def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
+    """
+    Get the top N most frequently referenced URLs.
+    
+    Returns list of (url, count) tuples sorted by count descending.
+    """
+    node_maps = metadata.get("node_maps", {})
+    email_meta = node_maps.get("email", {}).get("index_to_meta", [])
+    edge_counts_dict = metadata.get("edge_counts", {})
+    
+    # Check if we have URL edges
+    has_url_edges = edge_counts_dict.get("email->url:has_url", 0) > 0
+    
+    if not has_url_edges:
+        return []
+    
+    # We need to count URL references from the graph structure
+    # For simplicity, we'll use the url node mapping and assume frequency correlates with index
+    # In a real implementation, we'd load the actual graph to count edge references
+    
+    url_strings = node_maps.get("url", {}).get("index_to_string", [])
+    
+    # Return URLs with their indices (as a proxy for frequency for now)
+    # A better approach would be to load the actual graph and count edges
+    if url_strings:
+        # For now, return all URLs with placeholder counts
+        # TODO: Load actual graph to get real edge counts per URL
+        return [(url, 1) for url in url_strings[:top_n]]
+    
+    return []
+
+
+def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
+    """
+    Count URL references by loading the actual graph and analyzing edge_index.
+    
+    Args:
+        graph_path: Path to the .pt graph file
+        metadata: Graph metadata dict
+        top_n: Number of top URLs to return
+    
+    Returns:
+        List of (url, count) tuples sorted by count descending
+    """
+    try:
+        import torch
+        
+        # Load the graph with weights_only=False for PyTorch 2.6+ compatibility
+        graph = torch.load(graph_path, weights_only=False)
+        
+        # Get URL node strings
+        url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
+        
+        if not url_strings:
+            return []
+        
+        # Count how many emails reference each URL
+        url_counts = Counter()
+        
+        # Check if the edge type exists
+        if ("email", "has_url", "url") in graph.edge_types:
+            edge_index = graph["email", "has_url", "url"].edge_index
+            
+            # edge_index[1] contains URL node indices
+            url_indices = edge_index[1].tolist()
+            
+            for url_idx in url_indices:
+                if 0 <= url_idx < len(url_strings):
+                    url_counts[url_strings[url_idx]] += 1
+        
+        # Return top N
+        return url_counts.most_common(top_n)
+        
+    except ImportError:
+        print("Warning: torch not available, cannot count URL references from graph")
+        return []
+    except Exception as e:
+        print(f"Warning: Could not load graph: {e}")
+        return []
+
+
+def print_top_urls(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
+    """Print the top N most referenced URLs."""
+    print("=" * 70)
+    print(f"TOP {top_n} MOST REFERENCED URLs")
+    print("=" * 70)
+    
+    if graph_path:
+        top_urls = count_url_references_from_graph(graph_path, metadata, top_n)
+    else:
+        # Fallback: just list URLs from metadata
+        url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
+        top_urls = [(url, 0) for url in url_strings[:top_n]]
+    
+    if not top_urls:
+        print("\nNo URLs found in the graph.")
+        print()
+        return
+    
+    for i, (url, count) in enumerate(top_urls, 1):
+        if count > 0:
+            print(f"{i:2d}. {url:60s} ({count:4d} emails)")
+        else:
+            print(f"{i:2d}. {url}")
+    
+    print()
+
+
+def print_top_domains(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
+    """Print the top N most referenced domains."""
+    print("=" * 70)
+    print(f"TOP {top_n} MOST REFERENCED DOMAINS")
+    print("=" * 70)
+    
+    domain_strings = metadata.get("node_maps", {}).get("domain", {}).get("index_to_string", [])
+    
+    if not domain_strings:
+        print("\nNo domains found in the graph.")
+        print()
+        return
+    
+    if graph_path:
+        try:
+            import torch
+            graph = torch.load(graph_path, weights_only=False)
+            
+            domain_counts = Counter()
+            
+            if ("url", "has_domain", "domain") in graph.edge_types:
+                edge_index = graph["url", "has_domain", "domain"].edge_index
+                domain_indices = edge_index[1].tolist()
+                
+                for domain_idx in domain_indices:
+                    if 0 <= domain_idx < len(domain_strings):
+                        domain_counts[domain_strings[domain_idx]] += 1
+            
+            top_domains = domain_counts.most_common(top_n)
+            
+            for i, (domain, count) in enumerate(top_domains, 1):
+                print(f"{i:2d}. {domain:50s} ({count:4d} URLs)")
+        except Exception as e:
+            print(f"\nCould not load graph for domain counting: {e}")
+            for i, domain in enumerate(domain_strings[:top_n], 1):
+                print(f"{i:2d}. {domain}")
+    else:
+        for i, domain in enumerate(domain_strings[:top_n], 1):
+            print(f"{i:2d}. {domain}")
+    
+    print()
+
+
+def print_top_senders(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
+    """Print the top N most active senders."""
+    print("=" * 70)
+    print(f"TOP {top_n} MOST ACTIVE SENDERS")
+    print("=" * 70)
+    
+    sender_strings = metadata.get("node_maps", {}).get("sender", {}).get("index_to_string", [])
+    
+    if not sender_strings:
+        print("\nNo senders found in the graph.")
+        print()
+        return
+    
+    if graph_path:
+        try:
+            import torch
+            graph = torch.load(graph_path, weights_only=False)
+            
+            sender_counts = Counter()
+            
+            if ("email", "has_sender", "sender") in graph.edge_types:
+                edge_index = graph["email", "has_sender", "sender"].edge_index
+                sender_indices = edge_index[1].tolist()
+                
+                for sender_idx in sender_indices:
+                    if 0 <= sender_idx < len(sender_strings):
+                        sender_counts[sender_strings[sender_idx]] += 1
+            
+            top_senders = sender_counts.most_common(top_n)
+            
+            for i, (sender, count) in enumerate(top_senders, 1):
+                print(f"{i:2d}. {sender:60s} ({count:4d} emails)")
+        except Exception as e:
+            print(f"\nCould not load graph for sender counting: {e}")
+            for i, sender in enumerate(sender_strings[:top_n], 1):
+                print(f"{i:2d}. {sender}")
+    else:
+        for i, sender in enumerate(sender_strings[:top_n], 1):
+            print(f"{i:2d}. {sender}")
+    
+    print()
+
+
+def print_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str] = None) -> None:
+    """Print email distribution across weeks."""
+    print("=" * 70)
+    print("EMAIL DISTRIBUTION BY WEEK")
+    print("=" * 70)
+    
+    week_strings = metadata.get("node_maps", {}).get("week", {}).get("index_to_string", [])
+    
+    if not week_strings:
+        print("\nNo week data found in the graph.")
+        print()
+        return
+    
+    if graph_path:
+        try:
+            import torch
+            graph = torch.load(graph_path, weights_only=False)
+            
+            week_counts = Counter()
+            
+            if ("email", "in_week", "week") in graph.edge_types:
+                edge_index = graph["email", "in_week", "week"].edge_index
+                week_indices = edge_index[1].tolist()
+                
+                for week_idx in week_indices:
+                    if 0 <= week_idx < len(week_strings):
+                        week_counts[week_strings[week_idx]] += 1
+            
+            # Sort by week string (chronological)
+            sorted_weeks = sorted(week_counts.items())
+            
+            print()
+            for week, count in sorted_weeks:
+                bar = "█" * min(50, count // 10)
+                print(f"{week:12s}: {count:5d} emails {bar}")
+        except Exception as e:
+            print(f"\nCould not load graph for week distribution: {e}")
+            print(f"Total weeks: {len(week_strings)}")
+    else:
+        print(f"\nTotal weeks: {len(week_strings)}")
+    
+    print()
+
+
+def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
+    """
+    Complete graph analysis with all metrics.
+    
+    Args:
+        meta_path: Path to metadata JSON file
+        graph_path: Optional path to .pt graph file for detailed analysis
+    """
+    metadata = load_graph_metadata(meta_path)
+    
+    print_graph_overview(metadata)
+    print_top_urls(metadata, graph_path, top_n=5)
+    print_top_domains(metadata, graph_path, top_n=5)
+    print_top_senders(metadata, graph_path, top_n=5)
+    print_week_distribution(metadata, graph_path)
+
+
+if __name__ == "__main__":
+    import sys
+    import os
+    
+    # Default paths
+    default_meta = os.path.join("../results", "trec07_misp_hetero.meta.json")
+    default_graph = os.path.join("../results", "trec07_misp_hetero.pt")
+    
+    if len(sys.argv) > 1:
+        meta_path = sys.argv[1]
+        graph_path = sys.argv[2] if len(sys.argv) > 2 else None
+    else:
+        meta_path = default_meta
+        graph_path = default_graph if os.path.exists(default_graph) else None
+    
+    if not os.path.exists(meta_path):
+        print(f"Error: Metadata file not found: {meta_path}")
+        print(f"\nUsage: python graph_metrics.py [meta_path] [graph_path]")
+        sys.exit(1)
+    
+    analyze_graph(meta_path, graph_path)
