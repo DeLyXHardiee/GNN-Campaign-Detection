@@ -1,12 +1,22 @@
-from TRECtoMISP import csv_to_misp
+from misp.trec_to_misp import csv_to_misp
+from graph.graph_builder import build_graph
 
-def run_trec_misp_converter(csv_path="data/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
+def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="../data/misp/trec07_misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation(misp_json_path="data/misp/trec07_misp.json"):
+def run_graph_creation(misp_json_path="../data/misp/trec07_misp.json"):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
-    pass
+    # Lazy import to avoid requiring torch/pyg unless needed
+
+    graph, graph_path, meta_path = build_graph(
+        misp_json_path=misp_json_path,
+        out_dir="results",
+    )
+    print(f"Graph created: {graph}")
+    print(f"Saved graph to: {graph_path}")
+    print(f"Saved metadata to: {meta_path}")
+    return graph
 
 def run_GNN():
     # input PyTorch Geometric graph --> Run GNN model on the graph --> output embeddings
@@ -29,8 +39,8 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    run_trec_misp_converter()
-    # run_graph_creation()
+    #run_trec_misp_converter()
+    run_graph_creation()
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
