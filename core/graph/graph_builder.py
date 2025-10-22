@@ -4,8 +4,8 @@ Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 Capabilities:
 - Accepts input either as an in-memory list of MISP events or from a JSON file path.
 - Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
-- Node types: 'email', 'sender', 'receiver', 'week', 'subject', 'url', 'domain', 'stem'.
-- Edges (all from email to components):
+- Node types: 'email', 'sender', 'receiver', 'week', 'subject', 'url', 'domain', 'stem', 'email_domain'.
+- Edges:
   - ('email', 'has_sender', 'sender')
   - ('email', 'has_receiver', 'receiver')
   - ('email', 'in_week', 'week') - emails are grouped by ISO week
@@ -13,9 +13,13 @@ Capabilities:
   - ('email', 'has_url', 'url')
   - ('url', 'has_domain', 'domain')
   - ('url', 'has_stem', 'stem')
+  - ('sender', 'from_domain', 'email_domain')
+  - ('receiver', 'from_domain', 'email_domain')
 - Component nodes are deduplicated: multiple emails sharing the same sender, week, subject, etc. 
   will have edges to the same component node.
 - URLs are parsed into domain and stem components for better deduplication.
+- Email addresses are normalized (lowercase, angle brackets removed) and connected to their 
+  domain nodes (email_domain) to increase graph connectivity.
 - Email features include body length. Week nodes group emails by ISO calendar week.
 - Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
@@ -133,6 +137,51 @@ def _extract_week_key(date_str: str) -> Optional[str]:
         return None
 
 
+def _normalize_email_address(email_str: str) -> str:
+    """
+    Normalize an email address for deduplication.
+    
+    - Extracts address from angle brackets if present: "Name <addr@domain.com>" -> "addr@domain.com"
+    - Converts to lowercase
+    - Strips whitespace
+    
+    Returns: normalized email address string
+    """
+    if not email_str:
+        return ""
+    
+    email_str = email_str.strip()
+    
+    # Extract from angle brackets if present
+    if '<' in email_str and '>' in email_str:
+        start = email_str.find('<')
+        end = email_str.find('>', start)
+        if end > start:
+            email_str = email_str[start + 1:end]
+    
+    # Lowercase and strip again
+    return email_str.lower().strip()
+
+
+def _extract_email_domain(email_str: str) -> str:
+    """
+    Extract the domain part from an email address.
+    
+    Args:
+        email_str: normalized email address (e.g., "user@example.com")
+    
+    Returns: domain part (e.g., "example.com") or empty string if no @ found
+    """
+    if not email_str or '@' not in email_str:
+        return ""
+    
+    try:
+        domain = email_str.split('@')[-1].strip().lower()
+        return domain
+    except Exception:
+        return ""
+
+
 def _parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     """
     Normalize MISP events to a simpler structure per email event.
@@ -164,10 +213,15 @@ def _parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             raw_val = (attr or {}).get("value", "")
             val = _to_str(raw_val)
             if a_type == "email-src":
-                sender = val if val.strip() else None
+                # Normalize sender address
+                normalized_sender = _normalize_email_address(val) if val.strip() else None
+                sender = normalized_sender if normalized_sender else None
             elif a_type == "email-dst":
                 if val.strip():
-                    receivers.append(val)
+                    # Normalize receiver address
+                    normalized_receiver = _normalize_email_address(val)
+                    if normalized_receiver:
+                        receivers.append(normalized_receiver)
             elif a_type == "email-subject":
                 subject = val
             elif a_type == "email-body":
@@ -200,7 +254,7 @@ def build_hetero_graph_from_misp(
     Build a HeteroData graph from a list of MISP events.
     
     New schema: Email nodes are central hubs connected to component nodes:
-    - Node types: email, sender, receiver, week, subject, url, domain, stem
+    - Node types: email, sender, receiver, week, subject, url, domain, stem, email_domain
     - Edge types: 
       - (email, has_sender, sender)
       - (email, has_receiver, receiver)
@@ -209,9 +263,13 @@ def build_hetero_graph_from_misp(
       - (email, has_url, url)
       - (url, has_domain, domain)
       - (url, has_stem, stem)
+      - (sender, from_domain, email_domain)
+      - (receiver, from_domain, email_domain)
     
     Components are deduplicated: multiple emails sharing the same sender/receiver/week/etc. 
     will have edges to the same component node. URLs are decomposed into domain and stem.
+    Email addresses are normalized (lowercase, angle brackets removed) and connected to 
+    their domain nodes to increase connectivity.
     
     Email features include body length as a numeric feature.
 
@@ -227,6 +285,7 @@ def build_hetero_graph_from_misp(
     url_to_idx: Dict[str, int] = {}
     domain_to_idx: Dict[str, int] = {}
     stem_to_idx: Dict[str, int] = {}
+    email_domain_to_idx: Dict[str, int] = {} 
     
     # Track URL -> (domain, stem) mapping for edge creation
     url_components: Dict[str, Tuple[str, str]] = {}
@@ -236,10 +295,18 @@ def build_hetero_graph_from_misp(
         sender = em.get("sender")
         if sender:
             sender_to_idx.setdefault(sender, len(sender_to_idx))
+            # Extract sender domain
+            sender_domain = _extract_email_domain(sender)
+            if sender_domain:
+                email_domain_to_idx.setdefault(sender_domain, len(email_domain_to_idx))
         
         for r in em.get("receivers", []) or []:
             if r:
                 receiver_to_idx.setdefault(r, len(receiver_to_idx))
+                # Extract receiver domain
+                receiver_domain = _extract_email_domain(r)
+                if receiver_domain:
+                    email_domain_to_idx.setdefault(receiver_domain, len(email_domain_to_idx))
         
         # Extract week from date
         date_val = em.get("date", "")
@@ -278,6 +345,7 @@ def build_hetero_graph_from_misp(
     url_x: List[List[float]] = [[float(len(str(u)))] for u in sorted(url_to_idx, key=lambda x: url_to_idx[x])]
     domain_x: List[List[float]] = [[float(len(str(d)))] for d in sorted(domain_to_idx, key=lambda x: domain_to_idx[x])]
     stem_x: List[List[float]] = [[float(len(str(s)))] for s in sorted(stem_to_idx, key=lambda x: stem_to_idx[x])]
+    email_domain_x: List[List[float]] = [[float(len(str(d)))] for d in sorted(email_domain_to_idx, key=lambda x: email_domain_to_idx[x])]
 
     # Edge lists (email -> component)
     has_sender_src: List[int] = []
@@ -296,6 +364,12 @@ def build_hetero_graph_from_misp(
     url_to_domain_dst: List[int] = []
     url_to_stem_src: List[int] = []
     url_to_stem_dst: List[int] = []
+    
+    # sender/receiver -> email_domain edges
+    sender_to_email_domain_src: List[int] = []
+    sender_to_email_domain_dst: List[int] = []
+    receiver_to_email_domain_src: List[int] = []
+    receiver_to_email_domain_dst: List[int] = []
 
     # Meta maps for reverse lookup
     sender_meta: List[str] = [None] * len(sender_to_idx)
@@ -319,6 +393,9 @@ def build_hetero_graph_from_misp(
     stem_meta: List[str] = [None] * len(stem_to_idx)
     for s, idx in stem_to_idx.items():
         stem_meta[idx] = s
+    email_domain_meta: List[str] = [None] * len(email_domain_to_idx)
+    for d, idx in email_domain_to_idx.items():
+        email_domain_meta[idx] = d
 
     # Email metadata
     email_meta: List[Dict[str, Any]] = []
@@ -376,6 +453,19 @@ def build_hetero_graph_from_misp(
         if stem and stem in stem_to_idx:
             url_to_stem_src.append(url_idx)
             url_to_stem_dst.append(stem_to_idx[stem])
+    
+    # Create sender/receiver -> email_domain edges
+    for sender, sender_idx in sender_to_idx.items():
+        sender_domain = _extract_email_domain(sender)
+        if sender_domain and sender_domain in email_domain_to_idx:
+            sender_to_email_domain_src.append(sender_idx)
+            sender_to_email_domain_dst.append(email_domain_to_idx[sender_domain])
+    
+    for receiver, receiver_idx in receiver_to_idx.items():
+        receiver_domain = _extract_email_domain(receiver)
+        if receiver_domain and receiver_domain in email_domain_to_idx:
+            receiver_to_email_domain_src.append(receiver_idx)
+            receiver_to_email_domain_dst.append(email_domain_to_idx[receiver_domain])
 
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
@@ -422,6 +512,11 @@ def build_hetero_graph_from_misp(
         data["stem"].x = torch_lib.tensor(stem_x, dtype=torch_lib.float)
     else:
         data["stem"].num_nodes = 0
+    
+    if email_domain_x:
+        data["email_domain"].x = torch_lib.tensor(email_domain_x, dtype=torch_lib.float)
+    else:
+        data["email_domain"].num_nodes = 0
 
     # Set edges
     if has_sender_src:
@@ -452,6 +547,16 @@ def build_hetero_graph_from_misp(
         data["url", "has_stem", "stem"].edge_index = torch_lib.tensor(
             [url_to_stem_src, url_to_stem_dst], dtype=torch_lib.long
         )
+    
+    if sender_to_email_domain_src:
+        data["sender", "from_domain", "email_domain"].edge_index = torch_lib.tensor(
+            [sender_to_email_domain_src, sender_to_email_domain_dst], dtype=torch_lib.long
+        )
+    
+    if receiver_to_email_domain_src:
+        data["receiver", "from_domain", "email_domain"].edge_index = torch_lib.tensor(
+            [receiver_to_email_domain_src, receiver_to_email_domain_dst], dtype=torch_lib.long
+        )
 
     metadata = {
         "node_maps": {
@@ -463,6 +568,7 @@ def build_hetero_graph_from_misp(
             "url": {"index_to_string": url_meta},
             "domain": {"index_to_string": domain_meta},
             "stem": {"index_to_string": stem_meta},
+            "email_domain": {"index_to_string": email_domain_meta},
         },
         "feature_shapes": {
             "email": list(data["email"].x.shape) if "x" in data["email"] else [0, 0],
@@ -473,6 +579,7 @@ def build_hetero_graph_from_misp(
             "url": list(data["url"].x.shape) if "x" in data["url"] else [0, 0],
             "domain": list(data["domain"].x.shape) if "x" in data["domain"] else [0, 0],
             "stem": list(data["stem"].x.shape) if "x" in data["stem"] else [0, 0],
+            "email_domain": list(data["email_domain"].x.shape) if "x" in data["email_domain"] else [0, 0],
         },
         "edge_counts": {
             "email->sender:has_sender": len(has_sender_src),
@@ -482,6 +589,8 @@ def build_hetero_graph_from_misp(
             "email->url:has_url": len(has_url_src),
             "url->domain:has_domain": len(url_to_domain_src),
             "url->stem:has_stem": len(url_to_stem_src),
+            "sender->email_domain:from_domain": len(sender_to_email_domain_src),
+            "receiver->email_domain:from_domain": len(receiver_to_email_domain_src),
         },
     }
 
