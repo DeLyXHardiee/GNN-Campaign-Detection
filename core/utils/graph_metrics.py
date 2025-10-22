@@ -5,7 +5,7 @@ Provides utilities to analyze graph structure, node counts, edge counts,
 and identify top entities (URLs, senders, receivers, etc.).
 """
 from typing import Dict, List, Tuple, Any, Optional
-from collections import Counter
+from collections import Counter, deque
 import json
 
 
@@ -295,6 +295,104 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     print_top_domains(metadata, graph_path, top_n=5)
     print_top_senders(metadata, graph_path, top_n=5)
     print_week_distribution(metadata, graph_path)
+    print_connected_components(metadata, graph_path, top_n=5)
+
+
+def print_connected_components(metadata: Dict[str, Any], graph_path: Optional[str], top_n: int = 5) -> None:
+    """Load the HeteroData graph and compute connected components across all node types.
+
+    The HeteroData stores edge_index per edge type; we build an undirected adjacency across
+    node-type/index pairs and perform BFS to find connected components. We then print the
+    sizes of the top N largest components.
+    """
+    print("=" * 70)
+    print(f"TOP {top_n} LARGEST CONNECTED COMPONENTS")
+    print("=" * 70)
+
+    if not graph_path:
+        print("\nNo graph file provided; cannot compute connected components.\n")
+        return
+
+    try:
+        import torch
+
+        graph = torch.load(graph_path, weights_only=False)
+
+        # Build mapping from (node_type, local_idx) -> global id
+        node_types = list(graph.node_types)
+        node_type_offsets = {}
+        offset = 0
+        for nt in node_types:
+            num = graph[nt].num_nodes if hasattr(graph[nt], "num_nodes") else (graph[nt].x.size(0) if "x" in graph[nt] else 0)
+            node_type_offsets[nt] = offset
+            offset += int(num)
+
+        total_nodes = offset
+
+        # Build adjacency list as list of lists
+        adj = [[] for _ in range(total_nodes)]
+
+        # Iterate over all edge types and add undirected edges
+        for src_type, rel, dst_type in graph.edge_types:
+            ekey = (src_type, rel, dst_type)
+            if ekey not in graph.edge_types:
+                continue
+            edge_index = graph[src_type, rel, dst_type].edge_index
+            if edge_index is None:
+                continue
+            src_indices = edge_index[0].tolist()
+            dst_indices = edge_index[1].tolist()
+            base_src = node_type_offsets[src_type]
+            base_dst = node_type_offsets[dst_type]
+
+            for s_i, d_i in zip(src_indices, dst_indices):
+                s_global = base_src + int(s_i)
+                d_global = base_dst + int(d_i)
+                # undirected
+                adj[s_global].append(d_global)
+                adj[d_global].append(s_global)
+
+        # BFS to compute components
+        visited = [False] * total_nodes
+        comps = []
+        from collections import deque
+
+        for nid in range(total_nodes):
+            if visited[nid]:
+                continue
+            if not adj[nid]:
+                # isolated node
+                visited[nid] = True
+                comps.append(1)
+                continue
+
+            q = deque([nid])
+            visited[nid] = True
+            size = 0
+            while q:
+                v = q.popleft()
+                size += 1
+                for nb in adj[v]:
+                    if not visited[nb]:
+                        visited[nb] = True
+                        q.append(nb)
+
+            comps.append(size)
+
+        comps.sort(reverse=True)
+        top = comps[:top_n]
+
+        if not top:
+            print("\nNo components found in graph.\n")
+            return
+
+        for i, sz in enumerate(top, 1):
+            print(f"{i:2d}. {sz:,d} nodes")
+
+        print()
+
+    except Exception as e:
+        print(f"Could not compute connected components: {e}\n")
 
 
 if __name__ == "__main__":
