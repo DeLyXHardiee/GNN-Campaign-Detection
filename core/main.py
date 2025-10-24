@@ -1,17 +1,21 @@
-from misp.trec_to_misp import csv_to_misp
-from graph.graph_builder import build_graph
+import json
+from core.misp.trec_to_misp import csv_to_misp
+from core.graph.graph_builder_pytorch import build_graph
+from core.graph.graph_builder_memgraph import build_memgraph
 
 def run_preprocessing():
     # Placeholder for any preprocessing steps if needed
     pass
 
-def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="../data/misp/trec07_misp.json"):
+def run_trec_misp_converter(csv_path="data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation(misp_json_path="../data/misp/trec07_misp.json"):
+def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = True,
+                       mg_uri: str = "bolt://localhost:7687",
+                       mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
-    # Lazy import to avoid requiring torch/pyg unless needed
+    # Also optionally mirror it into Memgraph for visualization
 
     graph, graph_path, meta_path = build_graph(
         misp_json_path=misp_json_path,
@@ -20,6 +24,19 @@ def run_graph_creation(misp_json_path="../data/misp/trec07_misp.json"):
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
     print(f"Saved metadata to: {meta_path}")
+
+    if to_memgraph:
+        summary = build_memgraph(
+            misp_json_path=misp_json_path,
+            mg_uri=mg_uri,
+            mg_user=mg_user,
+            mg_password=mg_password,
+            clear=True,
+            create_indexes=True,
+        )
+        print("Memgraph load summary:")
+        print(json.dumps(summary, indent=2))
+
     return graph
 
 def run_GNN():
