@@ -1,7 +1,7 @@
 import json
-from core.misp.trec_to_misp import csv_to_misp
-from core.graph.graph_builder_pytorch import build_graph
-from core.graph.graph_builder_memgraph import build_memgraph
+from misp.trec_to_misp import csv_to_misp
+from graph.graph_builder_pytorch import build_graph
+from graph.graph_builder_memgraph import build_memgraph
 
 def run_preprocessing():
     # Placeholder for any preprocessing steps if needed
