@@ -11,7 +11,7 @@ so changes to how the graph is derived from data live here in one place.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
@@ -21,6 +21,8 @@ from .common import (
     extract_email_domain,
     parse_url_components,
     to_unix_ts,
+    compute_lexical_features,
+    is_freemail_domain,
 )
 
 
@@ -30,6 +32,7 @@ class NodeIR:
     x: List[List[float]]  # simple numeric features to keep tensors valid
     index_to_string: Optional[List[str]] = None  # for non-email nodes
     index_to_meta: Optional[List[Dict[str, Any]]] = None  # for emails
+    attrs: Dict[str, List[Any]] = field(default_factory=dict)  # aligned to node order
 
 
 @dataclass
@@ -63,14 +66,14 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         if sender:
             sender_to_idx.setdefault(sender, len(sender_to_idx))
             sender_domain = extract_email_domain(sender)
-            if sender_domain:
+            if sender_domain and not is_freemail_domain(sender_domain):
                 email_domain_to_idx.setdefault(sender_domain, len(email_domain_to_idx))
 
         for r in em.get("receivers", []) or []:
             if r:
                 receiver_to_idx.setdefault(r, len(receiver_to_idx))
                 receiver_domain = extract_email_domain(r)
-                if receiver_domain:
+                if receiver_domain and not is_freemail_domain(receiver_domain):
                     email_domain_to_idx.setdefault(receiver_domain, len(email_domain_to_idx))
 
         week_key = extract_week_key(em.get("date", ""))
@@ -145,6 +148,14 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     TEXT_EMBED_DIM = 384
     email_x_text: List[List[float]] = []
 
+    # Pre-allocate structures for per-node statistics
+    domain_email_sets: Dict[str, set] = {}
+
+    stem_email_sets: Dict[str, set] = {}
+
+    email_domain_sender_sets: Dict[str, set] = {}
+    email_domain_receiver_sets: Dict[str, set] = {}
+
     for email_idx, em in enumerate(emails):
         # Email feature and meta
         subj = em.get("subject", "")
@@ -167,6 +178,12 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             d = comp.get("domain", "")
             if d:
                 domains.add(d)
+                # Track domain per-email and ts stats
+                domain_email_sets.setdefault(d, set()).add(email_idx)
+                # Track stem stats if present
+                s = comp.get("stem", "")
+                if s:
+                    stem_email_sets.setdefault(s, set()).add(email_idx)
         n_urls_val = int(len(domains))
         email_n_urls.append(n_urls_val)
         len_subject_val = int(len(subj))
@@ -188,11 +205,17 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         if em.get("sender") and em["sender"] in sender_to_idx:
             has_sender_src.append(email_idx)
             has_sender_dst.append(sender_to_idx[em["sender"]])
+            s_dom = extract_email_domain(em["sender"])
+            if s_dom and not is_freemail_domain(s_dom):
+                email_domain_sender_sets.setdefault(s_dom, set()).add(email_idx)
 
         for r in em.get("receivers", []) or []:
             if r and r in receiver_to_idx:
                 has_receiver_src.append(email_idx)
                 has_receiver_dst.append(receiver_to_idx[r])
+            r_dom = extract_email_domain(r)
+            if r_dom and not is_freemail_domain(r_dom):
+                email_domain_receiver_sets.setdefault(r_dom, set()).add(email_idx)
 
         wk = extract_week_key(em.get("date", ""))
         if wk and wk in week_to_idx:
@@ -230,6 +253,20 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             receiver_to_email_domain_src.append(r_idx)
             receiver_to_email_domain_dst.append(email_domain_to_idx[r_dom])
 
+    # Build per-node attributes arrays aligned to meta order
+    # Domain node attrs
+    domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
+    domain_docfreq: List[int] = [len(domain_email_sets.get(d, set())) for d in domain_meta]
+
+    # Stem node attrs
+    stem_x_lex: List[List[float]] = [compute_lexical_features(s) for s in stem_meta]
+    stem_docfreq: List[int] = [len(stem_email_sets.get(s, set())) for s in stem_meta]
+
+    # Email domain attrs (shared node type for sender/receiver domain roles)
+    email_domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in email_domain_meta]
+    email_domain_docfreq_sender: List[int] = [len(email_domain_sender_sets.get(d, set())) for d in email_domain_meta]
+    email_domain_docfreq_receiver: List[int] = [len(email_domain_receiver_sets.get(d, set())) for d in email_domain_meta]
+
     nodes: Dict[str, NodeIR] = {
         "email": NodeIR(index={}, x=email_x, index_to_meta=email_meta),
         "sender": NodeIR(index=sender_to_idx, x=sender_x, index_to_string=sender_meta),
@@ -237,9 +274,22 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         "week": NodeIR(index=week_to_idx, x=week_x, index_to_string=week_meta),
         "subject": NodeIR(index=subject_to_idx, x=subject_x, index_to_string=subject_meta),
         "url": NodeIR(index=url_to_idx, x=url_x, index_to_string=url_meta),
-        "domain": NodeIR(index=domain_to_idx, x=domain_x, index_to_string=domain_meta),
-        "stem": NodeIR(index=stem_to_idx, x=stem_x, index_to_string=stem_meta),
-        "email_domain": NodeIR(index=email_domain_to_idx, x=email_domain_x, index_to_string=email_domain_meta),
+        "domain": NodeIR(index=domain_to_idx, x=domain_x, index_to_string=domain_meta,
+                          attrs={
+                              "x_lex": domain_x_lex,
+                              "docfreq": domain_docfreq,
+                          }),
+        "stem": NodeIR(index=stem_to_idx, x=stem_x, index_to_string=stem_meta,
+                        attrs={
+                            "x_lex": stem_x_lex,
+                            "docfreq": stem_docfreq,
+                        }),
+        "email_domain": NodeIR(index=email_domain_to_idx, x=email_domain_x, index_to_string=email_domain_meta,
+                                 attrs={
+                                     "x_lex": email_domain_x_lex,
+                                     "docfreq_sender": email_domain_docfreq_sender,
+                                     "docfreq_receiver": email_domain_docfreq_receiver,
+                                 }),
     }
 
     edges: Dict[str, Tuple[List[int], List[int]]] = {

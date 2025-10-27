@@ -141,6 +141,10 @@ def build_hetero_graph_from_misp(
     domain_x = ir.nodes["domain"].x
     stem_x = ir.nodes["stem"].x
     email_domain_x = ir.nodes["email_domain"].x
+    # Per-node attrs (new)
+    domain_attrs = ir.nodes["domain"].attrs
+    stem_attrs = ir.nodes["stem"].attrs
+    email_domain_attrs = ir.nodes["email_domain"].attrs
 
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
@@ -206,6 +210,29 @@ def build_hetero_graph_from_misp(
     else:
         data[N["email_domain"].pyg].num_nodes = 0
 
+    # Attach new attributes for domain (url_domain)
+    if domain_attrs:
+        if domain_attrs.get("x_lex"):
+            data[N["domain"].pyg]["x_lex"] = torch_lib.tensor(domain_attrs["x_lex"], dtype=torch_lib.float)
+        if domain_attrs.get("docfreq"):
+            data[N["domain"].pyg]["docfreq"] = torch_lib.tensor(domain_attrs["docfreq"], dtype=torch_lib.int32)
+
+    # Attach new attributes for stem (url_stem)
+    if stem_attrs:
+        if stem_attrs.get("x_lex"):
+            data[N["stem"].pyg]["x_lex"] = torch_lib.tensor(stem_attrs["x_lex"], dtype=torch_lib.float)
+        if stem_attrs.get("docfreq"):
+            data[N["stem"].pyg]["docfreq"] = torch_lib.tensor(stem_attrs["docfreq"], dtype=torch_lib.int32)
+
+    # Attach new attributes for email_domain (sender_domain/receiver_domain roles)
+    if email_domain_attrs:
+        if email_domain_attrs.get("x_lex"):
+            data[N["email_domain"].pyg]["x_lex"] = torch_lib.tensor(email_domain_attrs["x_lex"], dtype=torch_lib.float)
+        if email_domain_attrs.get("docfreq_sender"):
+            data[N["email_domain"].pyg]["docfreq_sender"] = torch_lib.tensor(email_domain_attrs["docfreq_sender"], dtype=torch_lib.int32)
+        if email_domain_attrs.get("docfreq_receiver"):
+            data[N["email_domain"].pyg]["docfreq_receiver"] = torch_lib.tensor(email_domain_attrs["docfreq_receiver"], dtype=torch_lib.int32)
+
     # Set edges from IR
     def set_edges(edge_key: str):
         e = schema.edge(edge_key)
@@ -239,7 +266,7 @@ def build_hetero_graph_from_misp(
     email_domain_meta = ir.nodes["email_domain"].index_to_string or []
     email_meta = ir.nodes["email"].index_to_meta or []
 
-    # Attribute shapes for email (optional diagnostics)
+    # Attribute shapes (optional diagnostics)
     email_attr_shapes: Dict[str, List[int]] = {}
     if "x_text" in data[N["email"].pyg]:
         email_attr_shapes["x_text"] = list(data[N["email"].pyg]["x_text"].shape)
@@ -251,6 +278,23 @@ def build_hetero_graph_from_misp(
         email_attr_shapes["len_subject"] = list(data[N["email"].pyg]["len_subject"].shape)
     if "len_body" in data[N["email"].pyg]:
         email_attr_shapes["len_body"] = list(data[N["email"].pyg]["len_body"].shape)
+
+    extra_attr_shapes: Dict[str, Dict[str, List[int]]] = {}
+    # Domain
+    extra_attr_shapes[N["domain"].pyg] = {}
+    for k in ["x_lex", "docfreq"]:
+        if k in data[N["domain"].pyg]:
+            extra_attr_shapes[N["domain"].pyg][k] = list(data[N["domain"].pyg][k].shape)
+    # Stem
+    extra_attr_shapes[N["stem"].pyg] = {}
+    for k in ["x_lex", "docfreq"]:
+        if k in data[N["stem"].pyg]:
+            extra_attr_shapes[N["stem"].pyg][k] = list(data[N["stem"].pyg][k].shape)
+    # Email domain
+    extra_attr_shapes[N["email_domain"].pyg] = {}
+    for k in ["x_lex", "docfreq_sender", "docfreq_receiver"]:
+        if k in data[N["email_domain"].pyg]:
+            extra_attr_shapes[N["email_domain"].pyg][k] = list(data[N["email_domain"].pyg][k].shape)
 
     metadata = {
         "node_maps": {
@@ -275,7 +319,8 @@ def build_hetero_graph_from_misp(
             N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
             N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
         },
-        "email_attr_shapes": email_attr_shapes,
+    "email_attr_shapes": email_attr_shapes,
+    "extra_attr_shapes": extra_attr_shapes,
         "edge_counts": {
             f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges['has_sender'][0]),
             f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges['has_receiver'][0]),

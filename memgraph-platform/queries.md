@@ -1,4 +1,4 @@
-### Visualize all nodes and edges for emails connected to week 14 in 2007
+### Visualize all nodes and edges for emails connected to week 14 in 2007 (some of the weeks just above contain thousands of emails)
 
     MATCH (w:Week {key: "2007-W14"})<-[r_in:IN_WEEK]-(e:Email)
     OPTIONAL MATCH (e)-[r_sender:HAS_SENDER]->(s:Sender)-[r_sender_dom:FROM_DOMAIN]->(sd:EmailDomain)
@@ -10,7 +10,7 @@
         r_in, r_sender, r_sender_dom, r_recv, r_recv_dom, 
         r_sub, r_url, r_dom, r_stem;
 
-    
+
 ### Count stems connected to more than one email (include count of total stems)
 
     MATCH (s:Stem)<-[:HAS_STEM]-(:Url)<-[:HAS_URL]-(e:Email)

@@ -172,9 +172,38 @@ def build_memgraph(
     url_rows = []
     for url in (ir.nodes["url"].index_to_string or []):
         url_rows.append({N["url"].memgraph_id_key: url, "full_url": url})
-    domain_rows = [{N["domain"].memgraph_id_key: s} for s in (ir.nodes["domain"].index_to_string or [])]
-    stem_rows = [{N["stem"].memgraph_id_key: s} for s in (ir.nodes["stem"].index_to_string or [])]
-    email_domain_rows = [{N["email_domain"].memgraph_id_key: s} for s in (ir.nodes["email_domain"].index_to_string or [])]
+    # Domain rows with attributes
+    domain_rows = []
+    domain_meta = ir.nodes["domain"].index_to_string or []
+    d_attrs = ir.nodes["domain"].attrs
+    for i, s in enumerate(domain_meta):
+        row = {N["domain"].memgraph_id_key: s}
+        if d_attrs.get("docfreq"):
+            row["docfreq"] = int(d_attrs["docfreq"][i])
+        # We won't store x_lex vector in Memgraph by default to keep properties lean
+        domain_rows.append(row)
+
+    # Stem rows with attributes
+    stem_rows = []
+    stem_meta = ir.nodes["stem"].index_to_string or []
+    s_attrs = ir.nodes["stem"].attrs
+    for i, s in enumerate(stem_meta):
+        row = {N["stem"].memgraph_id_key: s}
+        if s_attrs.get("docfreq"):
+            row["docfreq"] = int(s_attrs["docfreq"][i])
+        stem_rows.append(row)
+
+    # EmailDomain rows with attributes
+    email_domain_rows = []
+    ed_meta = ir.nodes["email_domain"].index_to_string or []
+    ed_attrs = ir.nodes["email_domain"].attrs
+    for i, s in enumerate(ed_meta):
+        row = {N["email_domain"].memgraph_id_key: s}
+        if ed_attrs.get("docfreq_sender"):
+            row["docfreq_sender"] = int(ed_attrs["docfreq_sender"][i])
+        if ed_attrs.get("docfreq_receiver"):
+            row["docfreq_receiver"] = int(ed_attrs["docfreq_receiver"][i])
+        email_domain_rows.append(row)
 
     # Prepare edge rows
     has_sender_rows: List[Dict[str, Any]] = []
