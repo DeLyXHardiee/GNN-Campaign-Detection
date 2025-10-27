@@ -46,7 +46,7 @@ from .graph_builder_pytorch import (
     _extract_week_key,
     _extract_email_domain,
 )
-from ..utils.url_extractor import parse_url_components
+from utils.url_extractor import parse_url_components
 
 try:
     from neo4j import GraphDatabase  # type: ignore
