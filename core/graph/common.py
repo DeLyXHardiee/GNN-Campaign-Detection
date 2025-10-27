@@ -5,7 +5,10 @@ Shared across graph builders and the assembler to avoid duplication.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from typing import Set
 from datetime import timezone
+import math
+
 
 
 try:
@@ -100,6 +103,32 @@ def extract_email_domain(email_str: str) -> str:
     except Exception:
         return ""
 
+def extract_all_emails(text: str) -> List[str]:
+    """Extract all email addresses from a free-form string.
+    Returns lowercased addresses without surrounding spaces.
+    """
+    if not text:
+        return []
+    import re
+    # Basic RFC-like regex; pragmatic for our data
+    pattern = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+    matches = pattern.findall(text)
+    out: List[str] = []
+    seen: Set[str] = set()
+    for m in matches:
+        nm = normalize_email_address(m)
+        if nm and nm not in seen:
+            seen.add(nm)
+            out.append(nm)
+    # Fallback: split by common delimiters if regex found nothing
+    if not out:
+        for part in re.split(r"[,;]", text):
+            nm = normalize_email_address(part)
+            if nm and nm not in seen and "@" in nm:
+                seen.add(nm)
+                out.append(nm)
+    return out
+
 
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
@@ -108,8 +137,9 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         info = event.get("info", "")
         attrs = event.get("Attribute", []) or []
 
-        sender = None
+        sender: Optional[str] = None
         receivers: List[str] = []
+        receiver_set: Set[str] = set()
         subject = ""
         body = ""
         urls: List[str] = []
@@ -120,13 +150,16 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             raw_val = (attr or {}).get("value", "")
             val = to_str(raw_val)
             if a_type == "email-src":
-                normalized_sender = normalize_email_address(val) if val.strip() else None
-                sender = normalized_sender if normalized_sender else None
-            elif a_type == "email-dst":
+                # Some datasets may pack sender in angle brackets or include extras; grab the first address
+                addrs = extract_all_emails(val)
+                sender = addrs[0] if addrs else (normalize_email_address(val) if val.strip() else None)
+            elif a_type in ("email-dst", "email-cc", "email-bcc"):
                 if val.strip():
-                    normalized_receiver = normalize_email_address(val)
-                    if normalized_receiver:
-                        receivers.append(normalized_receiver)
+                    addrs = extract_all_emails(val)
+                    for addr in addrs:
+                        if addr not in receiver_set:
+                            receiver_set.add(addr)
+                            receivers.append(addr)
             elif a_type == "email-subject":
                 subject = val
             elif a_type == "email-body":
@@ -159,5 +192,75 @@ __all__ = [
     "to_unix_ts",
     "normalize_email_address",
     "extract_email_domain",
+    "extract_all_emails",
     "parse_misp_events",
+    "compute_lexical_features",
+    "is_freemail_domain",
 ]
+
+
+def compute_lexical_features(s: str) -> List[float]:
+    """Compute a small lexical feature vector for a domain or stem string.
+
+    Features (8 dims):
+    - length
+    - num_digits
+    - num_hyphens
+    - num_alpha
+    - num_non_alnum
+    - digit_ratio (digits/length)
+    - hyphen_ratio (hyphens/length)
+    - shannon_entropy (bits per char)
+    """
+    if not isinstance(s, str):
+        s = str(s) if s is not None else ""
+    s = s.strip().lower()
+    L = float(len(s))
+    if L <= 0:
+        return [0.0] * 8
+    num_digits = sum(ch.isdigit() for ch in s)
+    num_hyphens = s.count('-')
+    num_alpha = sum(ch.isalpha() for ch in s)
+    num_non_alnum = sum(not ch.isalnum() for ch in s)
+    digit_ratio = float(num_digits) / L
+    hyphen_ratio = float(num_hyphens) / L
+    # entropy
+    freq: Dict[str, int] = {}
+    for ch in s:
+        freq[ch] = freq.get(ch, 0) + 1
+    entropy = 0.0
+    for cnt in freq.values():
+        p = cnt / L
+        entropy -= p * math.log2(p)
+    return [
+        L,
+        float(num_digits),
+        float(num_hyphens),
+        float(num_alpha),
+        float(num_non_alnum),
+        float(digit_ratio),
+        float(hyphen_ratio),
+        float(entropy),
+    ]
+
+
+_FREEMAIL = {
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "yahoo.co.uk",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "aol.com",
+    "icloud.com",
+    "proton.me",
+    "protonmail.com",
+    "gmx.com",
+    "yandex.com",
+}
+
+
+def is_freemail_domain(domain: str) -> bool:
+    d = (domain or "").strip().lower()
+    return d in _FREEMAIL

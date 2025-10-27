@@ -32,10 +32,10 @@
         
         - `x_lex`: same style as `url_domain` (length, digits, hyphens, entropy)
             
-        - `is_freemail`: bool (gmail/outlook/yahoo/etc.)
-            
         - `docfreq`: #emails from this domain (int32)
     
+    - is_freemail is used to avoid creating nodes for freemails.
+
 5. **receiver_domain** - eTLD+1 of the receiver address
 	* **Attributes**
 		* same as sender_domain
