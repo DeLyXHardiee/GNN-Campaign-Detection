@@ -1,0 +1,8 @@
+To create a virtual environment that works with Pytorch_Geometric:
+
+Using conda:
+conda create -n gnn-py310 python=3.10
+conda activate gnn-py310
+
+Then install dependencies:
+pip install -r requirements.txt
