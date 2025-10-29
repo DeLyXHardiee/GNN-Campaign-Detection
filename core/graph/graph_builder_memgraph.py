@@ -152,26 +152,69 @@ def build_memgraph(
     email_meta = ir.nodes["email"].index_to_meta or []
     n_emails = len(email_meta)
     get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
+    # Build both raw and normalized arrays
+    ts_raw = get_attr("ts")
+    ts_norm = ir.email_attrs.get("ts_minmax") or [0.0] * n_emails
+    len_body_raw = get_attr("len_body")
+    len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
+
     for eid, em in enumerate(email_meta):
         email_rows.append(
             {
                 "eid": int(eid),
                 "date": em.get("date", ""),
-                # Optional scalar attributes from IR
-                "ts": int(get_attr("ts")[eid]),
+                # raw + normalized
+                "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
+                "ts_minmax": float(ts_norm[eid]) if eid < len(ts_norm) else 0.0,
                 "n_urls": int(get_attr("n_urls")[eid]),
-                "len_subject": int(get_attr("len_subject")[eid]),
-                "len_body": int(get_attr("len_body")[eid]),
+                "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
+                "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
             }
         )
 
-    sender_rows = [{N["sender"].memgraph_id_key: s} for s in (ir.nodes["sender"].index_to_string or [])]
-    receiver_rows = [{N["receiver"].memgraph_id_key: s} for s in (ir.nodes["receiver"].index_to_string or [])]
+    # Sender nodes with docfreq
+    sender_rows = []
+    snd_meta = ir.nodes["sender"].index_to_string or []
+    snd_attrs = ir.nodes["sender"].attrs
+    for i, s in enumerate(snd_meta):
+        row = {N["sender"].memgraph_id_key: s}
+        if snd_attrs.get("docfreq"):
+            row["docfreq"] = int(snd_attrs["docfreq"][i])
+        sender_rows.append(row)
+
+    # Receiver nodes with docfreq
+    receiver_rows = []
+    rcv_meta = ir.nodes["receiver"].index_to_string or []
+    rcv_attrs = ir.nodes["receiver"].attrs
+    for i, s in enumerate(rcv_meta):
+        row = {N["receiver"].memgraph_id_key: s}
+        if rcv_attrs.get("docfreq"):
+            row["docfreq"] = int(rcv_attrs["docfreq"][i])
+        receiver_rows.append(row)
+
     week_rows = [{N["week"].memgraph_id_key: s} for s in (ir.nodes["week"].index_to_string or [])]
-    subject_rows = [{N["subject"].memgraph_id_key: s} for s in (ir.nodes["subject"].index_to_string or [])]
+
+    # Subject nodes with length props
+    subject_rows = []
+    subj_meta = ir.nodes["subject"].index_to_string or []
+    subj_attrs = ir.nodes["subject"].attrs
+    for i, s in enumerate(subj_meta):
+        row = {N["subject"].memgraph_id_key: s}
+        if subj_attrs.get("len_subject"):
+            row["len_subject"] = int(subj_attrs["len_subject"][i])
+        if subj_attrs.get("len_subject_z"):
+            row["len_subject_z"] = float(subj_attrs["len_subject_z"][i])
+        subject_rows.append(row)
+
+    # URL nodes with docfreq (no redundant full_url property)
     url_rows = []
-    for url in (ir.nodes["url"].index_to_string or []):
-        url_rows.append({N["url"].memgraph_id_key: url, "full_url": url})
+    url_meta = ir.nodes["url"].index_to_string or []
+    url_attrs = ir.nodes["url"].attrs
+    for i, url in enumerate(url_meta):
+        row = {N["url"].memgraph_id_key: url}
+        if url_attrs.get("docfreq"):
+            row["docfreq"] = int(url_attrs["docfreq"][i])
+        url_rows.append(row)
     # Domain rows with attributes
     domain_rows = []
     domain_meta = ir.nodes["domain"].index_to_string or []

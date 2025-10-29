@@ -24,6 +24,7 @@ from .common import (
     compute_lexical_features,
     is_freemail_domain,
 )
+from .normalizer import zscore_list, minmax_list
 
 
 @dataclass
@@ -113,8 +114,9 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     receiver_x = [[float(len(s))] for s in receiver_meta]
     week_x = [[float(idx)] for idx in range(len(week_meta))]
     subject_x = [[float(len(s))] for s in subject_meta]
-    url_x = [[float(len(u))] for u in url_meta]
-    domain_x = [[float(len(d))] for d in domain_meta]
+    # URL and Domain x will be set after we compute their normalized features below
+    url_x: List[List[float]] = []
+    domain_x: List[List[float]] = []
     stem_x = [[float(len(s))] for s in stem_meta]
     email_domain_x = [[float(len(d))] for d in email_domain_meta]
 
@@ -155,6 +157,9 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
 
     email_domain_sender_sets: Dict[str, set] = {}
     email_domain_receiver_sets: Dict[str, set] = {}
+    url_email_sets: Dict[str, set] = {}
+    sender_email_sets: Dict[str, set] = {}
+    receiver_email_sets: Dict[str, set] = {}
 
     for email_idx, em in enumerate(emails):
         # Email feature and meta
@@ -193,18 +198,12 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         # Text embedding placeholder (zeros); replace with real model if available
         email_x_text.append([0.0] * TEXT_EMBED_DIM)
 
-        # Construct primary numeric feature vector (x) for PyG graph
-        # Order: [len_subject, len_body, n_urls, ts]
-        email_x.append([
-            float(len_subject_val),
-            float(len_body_val),
-            float(n_urls_val),
-            float(ts_val),
-        ])
+        # email_x will be filled after normalization below
 
         if em.get("sender") and em["sender"] in sender_to_idx:
             has_sender_src.append(email_idx)
             has_sender_dst.append(sender_to_idx[em["sender"]])
+            sender_email_sets.setdefault(em["sender"], set()).add(email_idx)
             s_dom = extract_email_domain(em["sender"])
             if s_dom and not is_freemail_domain(s_dom):
                 email_domain_sender_sets.setdefault(s_dom, set()).add(email_idx)
@@ -213,6 +212,7 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             if r and r in receiver_to_idx:
                 has_receiver_src.append(email_idx)
                 has_receiver_dst.append(receiver_to_idx[r])
+                receiver_email_sets.setdefault(r, set()).add(email_idx)
             r_dom = extract_email_domain(r)
             if r_dom and not is_freemail_domain(r_dom):
                 email_domain_receiver_sets.setdefault(r_dom, set()).add(email_idx)
@@ -231,6 +231,7 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             if u and u in url_to_idx:
                 has_url_src.append(email_idx)
                 has_url_dst.append(url_to_idx[u])
+                url_email_sets.setdefault(u, set()).add(email_idx)
 
     for url, (domain, stem) in url_components.items():
         url_idx = url_to_idx[url]
@@ -253,9 +254,17 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             receiver_to_email_domain_src.append(r_idx)
             receiver_to_email_domain_dst.append(email_domain_to_idx[r_dom])
 
+    # -------------------------
     # Build per-node attributes arrays aligned to meta order
+    # and compute normalized features requested
+    # -------------------------
     # Domain node attrs
     domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
+    # entropy is index 7 in x_lex
+    domain_entropies: List[float] = [v[7] if len(v) > 7 else 0.0 for v in domain_x_lex]
+    domain_entropy_z, domain_entropy_mean, domain_entropy_std = zscore_list(domain_entropies)
+    # Use normalized entropy as the primary domain x feature (shape [N,1])
+    domain_x = [[float(domain_entropy_z[i])] for i in range(len(domain_entropy_z))]
     domain_docfreq: List[int] = [len(domain_email_sets.get(d, set())) for d in domain_meta]
 
     # Stem node attrs
@@ -267,13 +276,59 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     email_domain_docfreq_sender: List[int] = [len(email_domain_sender_sets.get(d, set())) for d in email_domain_meta]
     email_domain_docfreq_receiver: List[int] = [len(email_domain_receiver_sets.get(d, set())) for d in email_domain_meta]
 
+    # URL node path_len z-score as primary x
+    # Build path (stem) lengths aligned to url_meta
+    url_path_lens: List[float] = []
+    for u in url_meta:
+        if u in url_components:
+            _, stem = url_components[u]
+            url_path_lens.append(float(len(stem or "/")))
+        else:
+            comp = parse_url_components(u)
+            url_path_lens.append(float(len(comp.get("stem", "/"))))
+    url_path_len_z, url_path_len_mean, url_path_len_std = zscore_list(url_path_lens)
+    url_x = [[float(url_path_len_z[i])] for i in range(len(url_path_len_z))]
+
+    # Email feature normalization
+    # ts -> min-max [0,1], len_body -> z-score
+    len_body_z, _len_body_mean, _len_body_std = zscore_list([float(v) for v in email_len_body])
+    ts_minmax, _ts_min, _ts_max = minmax_list([float(v) for v in email_ts])
+
+    # Construct email_x vectors (exclude subject-derived feature)
+    # Order: [len_body_raw, n_urls_raw, ts_minmax, len_body_z]
+    for i in range(len(email_len_subject)):
+        email_x.append([
+            float(email_len_body[i]) if i < len(email_len_body) else 0.0,
+            float(email_n_urls[i]) if i < len(email_n_urls) else 0.0,
+            float(ts_minmax[i]) if i < len(ts_minmax) else 0.0,
+            float(len_body_z[i]) if i < len(len_body_z) else 0.0,
+        ])
+
+    # Subject node normalization/attrs
+    subject_lens: List[int] = [int(len(s)) for s in subject_meta]
+    subject_len_z, _s_mean, _s_std = zscore_list([float(v) for v in subject_lens])
+    subject_x = [[float(subject_len_z[i])] for i in range(len(subject_len_z))]
+
     nodes: Dict[str, NodeIR] = {
         "email": NodeIR(index={}, x=email_x, index_to_meta=email_meta),
-        "sender": NodeIR(index=sender_to_idx, x=sender_x, index_to_string=sender_meta),
-        "receiver": NodeIR(index=receiver_to_idx, x=receiver_x, index_to_string=receiver_meta),
+        "sender": NodeIR(index=sender_to_idx, x=sender_x, index_to_string=sender_meta,
+                          attrs={
+                              "docfreq": [len(sender_email_sets.get(s, set())) for s in sender_meta],
+                          }),
+        "receiver": NodeIR(index=receiver_to_idx, x=receiver_x, index_to_string=receiver_meta,
+                            attrs={
+                                "docfreq": [len(receiver_email_sets.get(r, set())) for r in receiver_meta],
+                            }),
         "week": NodeIR(index=week_to_idx, x=week_x, index_to_string=week_meta),
-        "subject": NodeIR(index=subject_to_idx, x=subject_x, index_to_string=subject_meta),
-        "url": NodeIR(index=url_to_idx, x=url_x, index_to_string=url_meta),
+        "subject": NodeIR(index=subject_to_idx, x=subject_x, index_to_string=subject_meta,
+                           attrs={
+                               "len_subject": subject_lens,
+                               "len_subject_z": [float(z) for z in subject_len_z],
+                           }),
+        "url": NodeIR(index=url_to_idx, x=url_x, index_to_string=url_meta,
+                       attrs={
+                           "docfreq": [len(url_email_sets.get(u, set())) for u in url_meta],
+                       }),
         "domain": NodeIR(index=domain_to_idx, x=domain_x, index_to_string=domain_meta,
                           attrs={
                               "x_lex": domain_x_lex,
@@ -307,9 +362,11 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     email_attrs = {
         "ts": email_ts,
         "n_urls": email_n_urls,
-        "len_subject": email_len_subject,
         "len_body": email_len_body,
         "x_text": email_x_text,
+        # normalized variants (email only)
+        "len_body_z": len_body_z,
+        "ts_minmax": ts_minmax,
     }
     return GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
 
