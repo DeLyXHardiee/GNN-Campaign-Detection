@@ -158,14 +158,19 @@ def build_hetero_graph_from_misp(
         if attrs:
             if attrs.get("x_text"):
                 data[N["email"].pyg]["x_text"] = torch_lib.tensor(attrs["x_text"], dtype=torch_lib.float)
+            # Attach both raw and normalized timestamp
             if attrs.get("ts") is not None:
                 data[N["email"].pyg]["ts"] = torch_lib.tensor(attrs["ts"], dtype=torch_lib.int64)
+            if attrs.get("ts_minmax") is not None:
+                data[N["email"].pyg]["ts_minmax"] = torch_lib.tensor(attrs["ts_minmax"], dtype=torch_lib.float)
+            # Other email scalar attributes
             if attrs.get("n_urls") is not None:
                 data[N["email"].pyg]["n_urls"] = torch_lib.tensor(attrs["n_urls"], dtype=torch_lib.int16)
-            if attrs.get("len_subject") is not None:
-                data[N["email"].pyg]["len_subject"] = torch_lib.tensor(attrs["len_subject"], dtype=torch_lib.int32)
+            # Attach both raw and normalized subject/body lengths
             if attrs.get("len_body") is not None:
                 data[N["email"].pyg]["len_body"] = torch_lib.tensor(attrs["len_body"], dtype=torch_lib.int32)
+            if attrs.get("len_body_z") is not None:
+                data[N["email"].pyg]["len_body_z"] = torch_lib.tensor(attrs["len_body_z"], dtype=torch_lib.float)
     else:
         data[N["email"].pyg].num_nodes = 0
 
@@ -217,6 +222,14 @@ def build_hetero_graph_from_misp(
         if domain_attrs.get("docfreq"):
             data[N["domain"].pyg]["docfreq"] = torch_lib.tensor(domain_attrs["docfreq"], dtype=torch_lib.int32)
 
+    # Attach attributes for subject nodes (moved from email): lengths and z-scores
+    subject_attrs = ir.nodes["subject"].attrs
+    if subject_attrs:
+        if subject_attrs.get("len_subject"):
+            data[N["subject"].pyg]["len_subject"] = torch_lib.tensor(subject_attrs["len_subject"], dtype=torch_lib.int32)
+        if subject_attrs.get("len_subject_z"):
+            data[N["subject"].pyg]["len_subject_z"] = torch_lib.tensor(subject_attrs["len_subject_z"], dtype=torch_lib.float)
+
     # Attach new attributes for stem (url_stem)
     if stem_attrs:
         if stem_attrs.get("x_lex"):
@@ -232,6 +245,19 @@ def build_hetero_graph_from_misp(
             data[N["email_domain"].pyg]["docfreq_sender"] = torch_lib.tensor(email_domain_attrs["docfreq_sender"], dtype=torch_lib.int32)
         if email_domain_attrs.get("docfreq_receiver"):
             data[N["email_domain"].pyg]["docfreq_receiver"] = torch_lib.tensor(email_domain_attrs["docfreq_receiver"], dtype=torch_lib.int32)
+
+    # Attach docfreq for URL nodes
+    url_attrs = ir.nodes["url"].attrs
+    if url_attrs and url_attrs.get("docfreq"):
+        data[N["url"].pyg]["docfreq"] = torch_lib.tensor(url_attrs["docfreq"], dtype=torch_lib.int32)
+
+    # Attach docfreq for sender/receiver nodes
+    snd_attrs = ir.nodes["sender"].attrs
+    if snd_attrs and snd_attrs.get("docfreq"):
+        data[N["sender"].pyg]["docfreq"] = torch_lib.tensor(snd_attrs["docfreq"], dtype=torch_lib.int32)
+    rcv_attrs = ir.nodes["receiver"].attrs
+    if rcv_attrs and rcv_attrs.get("docfreq"):
+        data[N["receiver"].pyg]["docfreq"] = torch_lib.tensor(rcv_attrs["docfreq"], dtype=torch_lib.int32)
 
     # Set edges from IR
     def set_edges(edge_key: str):
@@ -272,12 +298,14 @@ def build_hetero_graph_from_misp(
         email_attr_shapes["x_text"] = list(data[N["email"].pyg]["x_text"].shape)
     if "ts" in data[N["email"].pyg]:
         email_attr_shapes["ts"] = list(data[N["email"].pyg]["ts"].shape)
+    if "ts_minmax" in data[N["email"].pyg]:
+        email_attr_shapes["ts_minmax"] = list(data[N["email"].pyg]["ts_minmax"].shape)
     if "n_urls" in data[N["email"].pyg]:
         email_attr_shapes["n_urls"] = list(data[N["email"].pyg]["n_urls"].shape)
-    if "len_subject" in data[N["email"].pyg]:
-        email_attr_shapes["len_subject"] = list(data[N["email"].pyg]["len_subject"].shape)
     if "len_body" in data[N["email"].pyg]:
         email_attr_shapes["len_body"] = list(data[N["email"].pyg]["len_body"].shape)
+    if "len_body_z" in data[N["email"].pyg]:
+        email_attr_shapes["len_body_z"] = list(data[N["email"].pyg]["len_body_z"].shape)
 
     extra_attr_shapes: Dict[str, Dict[str, List[int]]] = {}
     # Domain
@@ -285,6 +313,11 @@ def build_hetero_graph_from_misp(
     for k in ["x_lex", "docfreq"]:
         if k in data[N["domain"].pyg]:
             extra_attr_shapes[N["domain"].pyg][k] = list(data[N["domain"].pyg][k].shape)
+    # URL
+    extra_attr_shapes[N["url"].pyg] = {}
+    for k in ["docfreq"]:
+        if k in data[N["url"].pyg]:
+            extra_attr_shapes[N["url"].pyg][k] = list(data[N["url"].pyg][k].shape)
     # Stem
     extra_attr_shapes[N["stem"].pyg] = {}
     for k in ["x_lex", "docfreq"]:
@@ -295,6 +328,20 @@ def build_hetero_graph_from_misp(
     for k in ["x_lex", "docfreq_sender", "docfreq_receiver"]:
         if k in data[N["email_domain"].pyg]:
             extra_attr_shapes[N["email_domain"].pyg][k] = list(data[N["email_domain"].pyg][k].shape)
+    # Subject
+    extra_attr_shapes[N["subject"].pyg] = {}
+    for k in ["len_subject", "len_subject_z"]:
+        if k in data[N["subject"].pyg]:
+            extra_attr_shapes[N["subject"].pyg][k] = list(data[N["subject"].pyg][k].shape)
+    # Sender/Receiver
+    extra_attr_shapes[N["sender"].pyg] = {}
+    for k in ["docfreq"]:
+        if k in data[N["sender"].pyg]:
+            extra_attr_shapes[N["sender"].pyg][k] = list(data[N["sender"].pyg][k].shape)
+    extra_attr_shapes[N["receiver"].pyg] = {}
+    for k in ["docfreq"]:
+        if k in data[N["receiver"].pyg]:
+            extra_attr_shapes[N["receiver"].pyg][k] = list(data[N["receiver"].pyg][k].shape)
 
     metadata = {
         "node_maps": {
