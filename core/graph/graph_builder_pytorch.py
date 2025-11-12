@@ -94,6 +94,150 @@ This file now focuses on rendering HeteroData from the shared Graph IR.
 """
 
 
+def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any], keys: List[str]) -> List[List[float]]:
+    """Concatenate selected attribute columns (scalars or vectors) to a base feature matrix.
+
+    - base: NxD list of floats
+    - attr_vals: mapping of attribute name -> per-node values (list or list of lists)
+    - keys: attribute names to append in order
+    Returns a new Nx(D+sum(attr_dims)) matrix.
+    """
+    if not base:
+        return []
+    n = len(base)
+    extras_per_row: List[List[List[float]]] = [[] for _ in range(n)]
+    for k in keys:
+        vals = attr_vals.get(k)
+        if vals is None:
+            continue
+        if isinstance(vals, list) and len(vals) > 0 and isinstance(vals[0], (list, tuple)):
+            for i in range(n):
+                v = vals[i] if i < len(vals) else []
+                extras_per_row[i].append([float(x) for x in v])
+        else:
+            for i in range(n):
+                x = float(vals[i]) if i < len(vals) else 0.0
+                extras_per_row[i].append([x])
+    out: List[List[float]] = []
+    for i in range(n):
+        row = list(base[i])
+        for chunk in extras_per_row[i]:
+            row.extend(chunk)
+        out.append(row)
+    return out
+
+
+def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
+    """Populate node feature tensors on a HeteroData object from Graph IR."""
+    HData = _ensure_heterodata()
+    torch_lib = _ensure_torch()
+    N = schema.nodes
+
+    # Email: append only raw ts (others already included in IR email.x)
+    email_x = ir.nodes["email"].x
+    if email_x:
+        merged_email_x = _merge_features_with_attrs(email_x, ir.email_attrs or {}, ["ts"])  # avoid duplicates
+        data[N["email"].pyg].x = torch_lib.tensor(merged_email_x, dtype=torch_lib.float)
+    else:
+        data[N["email"].pyg].num_nodes = 0
+
+    def set_simple(node_key: str, extra_keys: List[str] = None):
+        x = ir.nodes[node_key].x
+        if x:
+            attrs = ir.nodes[node_key].attrs
+            if attrs and extra_keys:
+                x = _merge_features_with_attrs(x, attrs, extra_keys)
+            data[N[node_key].pyg].x = torch_lib.tensor(x, dtype=torch_lib.float)
+        else:
+            data[N[node_key].pyg].num_nodes = 0
+
+    set_simple("sender", ["docfreq"])
+    set_simple("receiver", ["docfreq"])
+    set_simple("week")
+    set_simple("subject", ["len_subject"])  # keep subject length as scalar attr
+    # url has docfreq; domain/stem/email_domain have lexical vectors + docfreqs
+    set_simple("url", ["docfreq"])
+    set_simple("domain", ["x_lex", "docfreq"])
+    set_simple("stem", ["x_lex", "docfreq"])
+    set_simple("email_domain", ["x_lex", "docfreq_sender", "docfreq_receiver"])
+
+
+def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
+    """Populate edge_index for all canonical edges from Graph IR."""
+    torch_lib = _ensure_torch()
+    N = schema.nodes
+
+    def set_edges(edge_key: str):
+        e = schema.edge(edge_key)
+        src, dst = ir.edges[edge_key]
+        if src:
+            data[N[e.src].pyg, e.rel_pyg, N[e.dst].pyg].edge_index = torch_lib.tensor([src, dst], dtype=torch_lib.long)
+
+    for ek in [
+        "has_sender",
+        "has_receiver",
+        "in_week",
+        "has_subject",
+        "has_url",
+        "url_has_domain",
+        "url_has_stem",
+        "sender_from_domain",
+        "receiver_from_domain",
+    ]:
+        set_edges(ek)
+
+
+def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str, Any]:
+    """Construct the metadata dict summarizing node maps, feature shapes, and edge counts."""
+    N = schema.nodes
+    sender_meta = ir.nodes["sender"].index_to_string or []
+    receiver_meta = ir.nodes["receiver"].index_to_string or []
+    week_meta = ir.nodes["week"].index_to_string or []
+    subject_meta = ir.nodes["subject"].index_to_string or []
+    url_meta = ir.nodes["url"].index_to_string or []
+    domain_meta = ir.nodes["domain"].index_to_string or []
+    stem_meta = ir.nodes["stem"].index_to_string or []
+    email_domain_meta = ir.nodes["email_domain"].index_to_string or []
+    email_meta = ir.nodes["email"].index_to_meta or []
+
+    meta = {
+        "node_maps": {
+            N["email"].pyg: {"index_to_meta": email_meta},
+            N["sender"].pyg: {"index_to_string": sender_meta},
+            N["receiver"].pyg: {"index_to_string": receiver_meta},
+            N["week"].pyg: {"index_to_string": week_meta},
+            N["subject"].pyg: {"index_to_string": subject_meta},
+            N["url"].pyg: {"index_to_string": url_meta},
+            N["domain"].pyg: {"index_to_string": domain_meta},
+            N["stem"].pyg: {"index_to_string": stem_meta},
+            N["email_domain"].pyg: {"index_to_string": email_domain_meta},
+        },
+        "feature_shapes": {
+            N["email"].pyg: list(data[N["email"].pyg].x.shape) if "x" in data[N["email"].pyg] else [0, 0],
+            N["sender"].pyg: list(data[N["sender"].pyg].x.shape) if "x" in data[N["sender"].pyg] else [0, 0],
+            N["receiver"].pyg: list(data[N["receiver"].pyg].x.shape) if "x" in data[N["receiver"].pyg] else [0, 0],
+            N["week"].pyg: list(data[N["week"].pyg].x.shape) if "x" in data[N["week"].pyg] else [0, 0],
+            N["subject"].pyg: list(data[N["subject"].pyg].x.shape) if "x" in data[N["subject"].pyg] else [0, 0],
+            N["url"].pyg: list(data[N["url"].pyg].x.shape) if "x" in data[N["url"].pyg] else [0, 0],
+            N["domain"].pyg: list(data[N["domain"].pyg].x.shape) if "x" in data[N["domain"].pyg] else [0, 0],
+            N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
+            N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
+        },
+        "edge_counts": {
+            f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges['has_sender'][0]),
+            f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges['has_receiver'][0]),
+            f"{N['email'].pyg}->{N['week'].pyg}:{schema.edge('in_week').rel_pyg}": len(ir.edges['in_week'][0]),
+            f"{N['email'].pyg}->{N['subject'].pyg}:{schema.edge('has_subject').rel_pyg}": len(ir.edges['has_subject'][0]),
+            f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges['has_url'][0]),
+            f"{N['url'].pyg}->{N['domain'].pyg}:{schema.edge('url_has_domain').rel_pyg}": len(ir.edges['url_has_domain'][0]),
+            f"{N['url'].pyg}->{N['stem'].pyg}:{schema.edge('url_has_stem').rel_pyg}": len(ir.edges['url_has_stem'][0]),
+            f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges['sender_from_domain'][0]),
+            f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges['receiver_from_domain'][0]),
+        },
+    }
+    return meta
+
+
 def build_hetero_graph_from_misp(
     misp_events: List[dict],
     *,
@@ -126,204 +270,15 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     # Resolve node labels per backend
-    N = schema.nodes  # shorthand
-
-    N = schema.nodes  # shorthand
+    N = schema.nodes
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
 
-    # Pull ordered features and meta from IR
-    email_x = ir.nodes["email"].x
-    sender_x = ir.nodes["sender"].x
-    receiver_x = ir.nodes["receiver"].x
-    week_x = ir.nodes["week"].x
-    subject_x = ir.nodes["subject"].x
-    url_x = ir.nodes["url"].x
-    domain_x = ir.nodes["domain"].x
-    stem_x = ir.nodes["stem"].x
-    email_domain_x = ir.nodes["email_domain"].x
-    # Per-node attrs (new)
-    domain_attrs = ir.nodes["domain"].attrs
-    stem_attrs = ir.nodes["stem"].attrs
-    email_domain_attrs = ir.nodes["email_domain"].attrs
-
     HData = _ensure_heterodata()
-    torch_lib = _ensure_torch()
     data = HData()
 
-    # Helper to merge base x with additional attribute columns (scalars or vectors)
-    def _merge_x(base: List[List[float]], attr_vals: Dict[str, Any], keys: List[str]) -> List[List[float]]:
-        if not base:
-            return []
-        n = len(base)
-        # Prepare per-row extras to append
-        extras_per_row: List[List[List[float]]] = [[] for _ in range(n)]
-        for k in keys:
-            vals = attr_vals.get(k)
-            if vals is None:
-                continue
-            # Vector attribute (list of lists)
-            if isinstance(vals, list) and len(vals) > 0 and isinstance(vals[0], (list, tuple)):
-                for i in range(n):
-                    v = vals[i] if i < len(vals) else []
-                    extras_per_row[i].append([float(x) for x in v])
-            else:
-                # Scalar attribute (list of numbers)
-                for i in range(n):
-                    x = float(vals[i]) if i < len(vals) else 0.0
-                    extras_per_row[i].append([x])
-        # Concatenate
-        out: List[List[float]] = []
-        for i in range(n):
-            row = list(base[i])
-            # flatten appended chunks
-            for chunk in extras_per_row[i]:
-                row.extend(chunk)
-            out.append(row)
-        return out
-
-    # Set node features for email and attach attributes by concatenation into x
-    if email_x:
-        # Concatenate only the raw timestamp (ts) to avoid duplicating features already in x
-        attrs = ir.email_attrs or {}
-        merged_email_x = _merge_x(email_x, attrs, ["ts"])  # email.x already includes other scalars and text
-        data[N["email"].pyg].x = torch_lib.tensor(merged_email_x, dtype=torch_lib.float)
-    else:
-        data[N["email"].pyg].num_nodes = 0
-
-    # Set node features for each component type
-    if sender_x:
-        snd_attrs = ir.nodes["sender"].attrs
-        sender_x_merged = _merge_x(sender_x, snd_attrs, ["docfreq"]) if snd_attrs else sender_x
-        data[N["sender"].pyg].x = torch_lib.tensor(sender_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["sender"].pyg].num_nodes = 0
-
-    if receiver_x:
-        rcv_attrs = ir.nodes["receiver"].attrs
-        receiver_x_merged = _merge_x(receiver_x, rcv_attrs, ["docfreq"]) if rcv_attrs else receiver_x
-        data[N["receiver"].pyg].x = torch_lib.tensor(receiver_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["receiver"].pyg].num_nodes = 0
-
-    if week_x:
-        data[N["week"].pyg].x = torch_lib.tensor(week_x, dtype=torch_lib.float)
-    else:
-        data[N["week"].pyg].num_nodes = 0
-
-    if subject_x:
-        # Concatenate subject attributes: len_subject
-        subj_attrs = ir.nodes["subject"].attrs
-        subject_x_merged = _merge_x(subject_x, subj_attrs, ["len_subject"]) if subj_attrs else subject_x
-        data[N["subject"].pyg].x = torch_lib.tensor(subject_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["subject"].pyg].num_nodes = 0
-
-    if url_x:
-        data[N["url"].pyg].x = torch_lib.tensor(url_x, dtype=torch_lib.float)
-    else:
-        data[N["url"].pyg].num_nodes = 0
-
-    if domain_x:
-        # Concatenate domain attributes: x_lex (8-d), docfreq
-        dom_attrs = domain_attrs
-        domain_x_merged = _merge_x(domain_x, dom_attrs, ["x_lex", "docfreq"]) if dom_attrs else domain_x
-        data[N["domain"].pyg].x = torch_lib.tensor(domain_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["domain"].pyg].num_nodes = 0
-
-    if stem_x:
-        # Concatenate stem attributes: x_lex, docfreq
-        st_attrs = stem_attrs
-        stem_x_merged = _merge_x(stem_x, st_attrs, ["x_lex", "docfreq"]) if st_attrs else stem_x
-        data[N["stem"].pyg].x = torch_lib.tensor(stem_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["stem"].pyg].num_nodes = 0
-    
-    if email_domain_x:
-        # Concatenate email_domain attributes: x_lex, docfreq_sender, docfreq_receiver
-        ed_attrs = email_domain_attrs
-        email_domain_x_merged = _merge_x(email_domain_x, ed_attrs, ["x_lex", "docfreq_sender", "docfreq_receiver"]) if ed_attrs else email_domain_x
-        data[N["email_domain"].pyg].x = torch_lib.tensor(email_domain_x_merged, dtype=torch_lib.float)
-    else:
-        data[N["email_domain"].pyg].num_nodes = 0
-
-    # URL: concatenate docfreq into x
-    url_attrs = ir.nodes["url"].attrs
-    if url_x:
-        url_x_merged = _merge_x(url_x, url_attrs, ["docfreq"]) if url_attrs else url_x
-        data[N["url"].pyg].x = torch_lib.tensor(url_x_merged, dtype=torch_lib.float)
-
-    # Set edges from IR
-    def set_edges(edge_key: str):
-        e = schema.edge(edge_key)
-        src, dst = ir.edges[edge_key]
-        if src:
-            data[N[e.src].pyg, e.rel_pyg, N[e.dst].pyg].edge_index = torch_lib.tensor(
-                [src, dst], dtype=torch_lib.long
-            )
-
-    for ek in [
-        "has_sender",
-        "has_receiver",
-        "in_week",
-        "has_subject",
-        "has_url",
-        "url_has_domain",
-        "url_has_stem",
-        "sender_from_domain",
-        "receiver_from_domain",
-    ]:
-        set_edges(ek)
-
-    # Ordered meta arrays from IR
-    sender_meta = ir.nodes["sender"].index_to_string or []
-    receiver_meta = ir.nodes["receiver"].index_to_string or []
-    week_meta = ir.nodes["week"].index_to_string or []
-    subject_meta = ir.nodes["subject"].index_to_string or []
-    url_meta = ir.nodes["url"].index_to_string or []
-    domain_meta = ir.nodes["domain"].index_to_string or []
-    stem_meta = ir.nodes["stem"].index_to_string or []
-    email_domain_meta = ir.nodes["email_domain"].index_to_string or []
-    email_meta = ir.nodes["email"].index_to_meta or []
-
-
-    metadata = {
-        "node_maps": {
-            N["email"].pyg: {"index_to_meta": email_meta},
-            N["sender"].pyg: {"index_to_string": sender_meta},
-            N["receiver"].pyg: {"index_to_string": receiver_meta},
-            N["week"].pyg: {"index_to_string": week_meta},
-            N["subject"].pyg: {"index_to_string": subject_meta},
-            N["url"].pyg: {"index_to_string": url_meta},
-            N["domain"].pyg: {"index_to_string": domain_meta},
-            N["stem"].pyg: {"index_to_string": stem_meta},
-            N["email_domain"].pyg: {"index_to_string": email_domain_meta},
-        },
-        "feature_shapes": {
-            N["email"].pyg: list(data[N["email"].pyg].x.shape) if "x" in data[N["email"].pyg] else [0, 0],
-            N["sender"].pyg: list(data[N["sender"].pyg].x.shape) if "x" in data[N["sender"].pyg] else [0, 0],
-            N["receiver"].pyg: list(data[N["receiver"].pyg].x.shape) if "x" in data[N["receiver"].pyg] else [0, 0],
-            N["week"].pyg: list(data[N["week"].pyg].x.shape) if "x" in data[N["week"].pyg] else [0, 0],
-            N["subject"].pyg: list(data[N["subject"].pyg].x.shape) if "x" in data[N["subject"].pyg] else [0, 0],
-            N["url"].pyg: list(data[N["url"].pyg].x.shape) if "x" in data[N["url"].pyg] else [0, 0],
-            N["domain"].pyg: list(data[N["domain"].pyg].x.shape) if "x" in data[N["domain"].pyg] else [0, 0],
-            N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
-            N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
-        },
-    # email_attr_shapes and extra_attr_shapes removed by request
-        "edge_counts": {
-            f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges['has_sender'][0]),
-            f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges['has_receiver'][0]),
-            f"{N['email'].pyg}->{N['week'].pyg}:{schema.edge('in_week').rel_pyg}": len(ir.edges['in_week'][0]),
-            f"{N['email'].pyg}->{N['subject'].pyg}:{schema.edge('has_subject').rel_pyg}": len(ir.edges['has_subject'][0]),
-            f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges['has_url'][0]),
-            f"{N['url'].pyg}->{N['domain'].pyg}:{schema.edge('url_has_domain').rel_pyg}": len(ir.edges['url_has_domain'][0]),
-            f"{N['url'].pyg}->{N['stem'].pyg}:{schema.edge('url_has_stem').rel_pyg}": len(ir.edges['url_has_stem'][0]),
-            f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges['sender_from_domain'][0]),
-            f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges['receiver_from_domain'][0]),
-        },
-    }
-
+    _set_node_features_from_ir(data, ir, schema)
+    _set_edges_from_ir(data, ir, schema)
+    metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
 
 
