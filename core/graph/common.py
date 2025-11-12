@@ -10,12 +10,15 @@ from datetime import timezone
 import math
 
 
-
-try:
-    from utils.url_extractor import parse_url_components  # type: ignore
-except Exception:  # pragma: no cover
-    def parse_url_components(url: str) -> Dict[str, Any]:  # type: ignore
-        return {"full_url": url, "domain": "", "stem": "", "scheme": ""}
+# Prefer importing the local project utility; try both package-relative and top-level forms
+try:  # First try absolute within project package
+    from core.utils.url_extractor import parse_url_components  # type: ignore
+except Exception:
+    try:  # Fallback: when running with cwd at project root
+        from utils.url_extractor import parse_url_components  # type: ignore
+    except Exception:  # pragma: no cover
+        def parse_url_components(url: str) -> Dict[str, Any]:  # type: ignore
+            return {"full_url": url, "domain": "", "stem": "", "scheme": ""}
 
 
 def to_str(val: Any) -> str:
