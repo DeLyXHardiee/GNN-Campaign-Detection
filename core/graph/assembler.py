@@ -147,7 +147,10 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     email_n_urls: List[int] = []
     email_len_subject: List[int] = []
     email_len_body: List[int] = []
-    TEXT_EMBED_DIM = 384
+    # Text vectorization settings (subject/body TF-IDF reduced dims)
+    TEXT_SUBJ_MAX_FEATS = 128
+    TEXT_BODY_MAX_FEATS = 256
+    # For backward-compat, we'll also expose a combined x_text attribute
     email_x_text: List[List[float]] = []
 
     # Pre-allocate structures for per-node statistics
@@ -195,8 +198,7 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         len_body_val = int(len(body))
         email_len_subject.append(len_subject_val)
         email_len_body.append(len_body_val)
-        # Text embedding placeholder (zeros); replace with real model if available
-        email_x_text.append([0.0] * TEXT_EMBED_DIM)
+        # We'll compute text vectors for subject and body after the initial pass
 
         # email_x will be filled after normalization below
 
@@ -294,20 +296,85 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     len_body_z, _len_body_mean, _len_body_std = zscore_list([float(v) for v in email_len_body])
     ts_minmax, _ts_min, _ts_max = minmax_list([float(v) for v in email_ts])
 
-    # Construct email_x vectors (exclude subject-derived feature)
-    # Order: [len_body_raw, n_urls_raw, ts_minmax, len_body_z]
-    for i in range(len(email_len_subject)):
-        email_x.append([
-            float(email_len_body[i]) if i < len(email_len_body) else 0.0,
-            float(email_n_urls[i]) if i < len(email_n_urls) else 0.0,
-            float(ts_minmax[i]) if i < len(ts_minmax) else 0.0,
-            float(len_body_z[i]) if i < len(len_body_z) else 0.0,
-        ])
 
     # Subject node normalization/attrs
     subject_lens: List[int] = [int(len(s)) for s in subject_meta]
     subject_len_z, _s_mean, _s_std = zscore_list([float(v) for v in subject_lens])
     subject_x = [[float(subject_len_z[i])] for i in range(len(subject_len_z))]
+
+    # --------------------------------------------------
+    # Subject/Body text vectorization per email (TF-IDF)
+    # We vectorize subject and body separately with reduced dimensions, then
+    # concatenate into the email.x feature vector along with numeric scalars.
+    # If scikit-learn is unavailable or corpus is empty, we skip text features.
+    # --------------------------------------------------
+    subj_vecs: List[List[float]] = []
+    body_vecs: List[List[float]] = []
+    subj_dim = 0
+    body_dim = 0
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+
+        subj_corpus: List[str] = [(em.get("subject") or "").strip() for em in emails]
+        body_corpus: List[str] = [(em.get("body") or "").strip() for em in emails]
+
+        if any(bool(t) for t in subj_corpus):
+            subj_vec = TfidfVectorizer(
+                max_features=TEXT_SUBJ_MAX_FEATS,
+                ngram_range=(1, 2),  # short texts benefit from bigrams
+                min_df=1,
+                stop_words="english",
+                strip_accents="unicode",
+                lowercase=True,
+            ).fit_transform(subj_corpus)
+            subj_dim = int(subj_vec.shape[1])
+            if subj_dim > 0:
+                subj_vecs = [row.toarray().astype("float32")[0].tolist() for row in subj_vec]
+
+        if any(bool(t) for t in body_corpus):
+            body_vec = TfidfVectorizer(
+                max_features=TEXT_BODY_MAX_FEATS,
+                ngram_range=(1, 1),  # cap size for longer bodies
+                min_df=1,
+                stop_words="english",
+                strip_accents="unicode",
+                lowercase=True,
+            ).fit_transform(body_corpus)
+            body_dim = int(body_vec.shape[1])
+            if body_dim > 0:
+                body_vecs = [row.toarray().astype("float32")[0].tolist() for row in body_vec]
+    except Exception:
+        # Leave text vectors empty if vectorization fails (pipeline remains robust)
+        subj_vecs, body_vecs = [], []
+        subj_dim = body_dim = 0
+
+    # Build final email.x by concatenating numeric scalars and text vectors
+    # Order: [len_body_raw, n_urls_raw, ts_minmax, len_body_z] + subj_vec + body_vec
+    email_x = []
+    n_emails_final = len(email_len_subject)
+    for i in range(n_emails_final):
+        row: List[float] = [
+            float(email_len_body[i]) if i < len(email_len_body) else 0.0,
+            float(email_n_urls[i]) if i < len(email_n_urls) else 0.0,
+            float(ts_minmax[i]) if i < len(ts_minmax) else 0.0,
+            float(len_body_z[i]) if i < len(len_body_z) else 0.0,
+        ]
+        if subj_vecs:
+            row.extend(subj_vecs[i] if i < len(subj_vecs) else [0.0] * subj_dim)
+        if body_vecs:
+            row.extend(body_vecs[i] if i < len(body_vecs) else [0.0] * body_dim)
+        email_x.append(row)
+
+    # For compatibility, also expose a combined x_text (subject+body) if available
+    if subj_dim > 0 or body_dim > 0:
+        email_x_text = []
+        for i in range(n_emails_final):
+            comb: List[float] = []
+            if subj_vecs:
+                comb.extend(subj_vecs[i] if i < len(subj_vecs) else [0.0] * subj_dim)
+            if body_vecs:
+                comb.extend(body_vecs[i] if i < len(body_vecs) else [0.0] * body_dim)
+            email_x_text.append(comb)
 
     nodes: Dict[str, NodeIR] = {
         "email": NodeIR(index={}, x=email_x, index_to_meta=email_meta),
@@ -363,7 +430,11 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         "ts": email_ts,
         "n_urls": email_n_urls,
         "len_body": email_len_body,
-        "x_text": email_x_text,
+        # Only attach x_text if we actually built a non-empty vector per email
+        "x_text": email_x_text if email_x_text and len(email_x_text[0]) > 0 else [],
+        # Include per-email dimension indicators for Memgraph convenience
+        "x_text_subject_dim": [int(subj_dim)] * (len(email_meta) or 0),
+        "x_text_body_dim": [int(body_dim)] * (len(email_meta) or 0),
         # normalized variants (email only)
         "len_body_z": len_body_z,
         "ts_minmax": ts_minmax,
