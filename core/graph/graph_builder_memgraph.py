@@ -120,6 +120,106 @@ def _batch_create_edges(session, rel: str, rows: List[Dict[str, Any]],
     _with_tx(session, cypher, {"rows": rows})
 
 
+def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[Dict[str, Any]]]:
+    """Convert Graph IR nodes and attributes into Memgraph-ready node property rows per label."""
+    N = schema.nodes
+    out: Dict[str, List[Dict[str, Any]]] = {}
+
+    # Emails
+    email_rows: List[Dict[str, Any]] = []
+    email_meta = ir.nodes["email"].index_to_meta or []
+    n_emails = len(email_meta)
+    get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
+    ts_raw = get_attr("ts")
+    ts_norm = ir.email_attrs.get("ts_minmax") or [0.0] * n_emails
+    len_body_raw = get_attr("len_body")
+    len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
+    subj_dim_arr = ir.email_attrs.get("x_text_subject_dim") or [0] * n_emails
+    body_dim_arr = ir.email_attrs.get("x_text_body_dim") or [0] * n_emails
+    for eid, em in enumerate(email_meta):
+        email_rows.append(
+            {
+                "eid": int(eid),
+                "date": em.get("date", ""),
+                "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
+                "ts_minmax": float(ts_norm[eid]) if eid < len(ts_norm) else 0.0,
+                "n_urls": int(get_attr("n_urls")[eid]),
+                "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
+                "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
+                "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
+                "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
+            }
+        )
+    out[N["email"].memgraph] = email_rows
+
+    # Helper to pack simple string-keyed nodes with optional attributes aligned by index
+    def pack_string_nodes(node_key: str, extra_fields: Dict[str, List[Any]] = None) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        meta = ir.nodes[node_key].index_to_string or []
+        attrs = ir.nodes[node_key].attrs
+        id_key = N[node_key].memgraph_id_key
+        for i, s in enumerate(meta):
+            row = {id_key: s}
+            if extra_fields:
+                for k, arr in extra_fields.items():
+                    if arr and i < len(arr):
+                        row[k] = arr[i] if not isinstance(arr[i], bool) else int(arr[i])
+            if attrs:
+                # Support known scalar attrs
+                for k in ("docfreq", "len_subject", "len_subject_z", "docfreq_sender", "docfreq_receiver"):
+                    vals = attrs.get(k)
+                    if vals is not None and i < len(vals):
+                        row[k] = vals[i]
+            rows.append(row)
+        return rows
+
+    out[N["sender"].memgraph] = pack_string_nodes("sender")
+    out[N["receiver"].memgraph] = pack_string_nodes("receiver")
+    out[N["week"].memgraph] = pack_string_nodes("week")
+    out[N["subject"].memgraph] = pack_string_nodes("subject")
+    out[N["url"].memgraph] = pack_string_nodes("url")
+    out[N["domain"].memgraph] = pack_string_nodes("domain")
+    out[N["stem"].memgraph] = pack_string_nodes("stem")
+    out[N["email_domain"].memgraph] = pack_string_nodes("email_domain")
+
+    return out
+
+
+def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[Dict[str, Any]]]:
+    """Convert Graph IR edges into Memgraph-ready edge rows per relationship type."""
+    N = schema.nodes
+    E = schema.edges
+    out: Dict[str, List[Dict[str, Any]]] = {e.memgraph_type: [] for e in E.values()}
+
+    def add_email_edge_rows(edge_key: str, right_node_key: str, mem_type: str):
+        rows = out[mem_type]
+        src, dst = ir.edges[edge_key]
+        right_meta = ir.nodes[right_node_key].index_to_string or []
+        for l, r in zip(src, dst):
+            rows.append({"l": int(l), "r": right_meta[r]})
+
+    add_email_edge_rows("has_sender", "sender", E["has_sender"].memgraph_type)
+    add_email_edge_rows("has_receiver", "receiver", E["has_receiver"].memgraph_type)
+    add_email_edge_rows("in_week", "week", E["in_week"].memgraph_type)
+    add_email_edge_rows("has_subject", "subject", E["has_subject"].memgraph_type)
+    add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
+
+    def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
+        rows = out[mem_type]
+        src, dst = ir.edges[edge_key]
+        left_meta = ir.nodes[left_node_key].index_to_string or []
+        right_meta = ir.nodes[right_node_key].index_to_string or []
+        for l, r in zip(src, dst):
+            rows.append({"l": left_meta[l], "r": right_meta[r]})
+
+    add_string_edge_rows("url_has_domain", "url", "domain", E["url_has_domain"].memgraph_type)
+    add_string_edge_rows("url_has_stem", "url", "stem", E["url_has_stem"].memgraph_type)
+    add_string_edge_rows("sender_from_domain", "sender", "email_domain", E["sender_from_domain"].memgraph_type)
+    add_string_edge_rows("receiver_from_domain", "receiver", "email_domain", E["receiver_from_domain"].memgraph_type)
+
+    return out
+
+
 def build_memgraph(
     *,
     misp_events: Optional[List[dict]] = None,
@@ -147,145 +247,8 @@ def build_memgraph(
 
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
 
-    # Prepare node rows
-    email_rows: List[Dict[str, Any]] = []
-    email_meta = ir.nodes["email"].index_to_meta or []
-    n_emails = len(email_meta)
-    get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
-    # Build both raw and normalized arrays
-    ts_raw = get_attr("ts")
-    ts_norm = ir.email_attrs.get("ts_minmax") or [0.0] * n_emails
-    len_body_raw = get_attr("len_body")
-    len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
-
-    for eid, em in enumerate(email_meta):
-        email_rows.append(
-            {
-                "eid": int(eid),
-                "date": em.get("date", ""),
-                # raw + normalized
-                "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
-                "ts_minmax": float(ts_norm[eid]) if eid < len(ts_norm) else 0.0,
-                "n_urls": int(get_attr("n_urls")[eid]),
-                "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
-                "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
-            }
-        )
-
-    # Sender nodes with docfreq
-    sender_rows = []
-    snd_meta = ir.nodes["sender"].index_to_string or []
-    snd_attrs = ir.nodes["sender"].attrs
-    for i, s in enumerate(snd_meta):
-        row = {N["sender"].memgraph_id_key: s}
-        if snd_attrs.get("docfreq"):
-            row["docfreq"] = int(snd_attrs["docfreq"][i])
-        sender_rows.append(row)
-
-    # Receiver nodes with docfreq
-    receiver_rows = []
-    rcv_meta = ir.nodes["receiver"].index_to_string or []
-    rcv_attrs = ir.nodes["receiver"].attrs
-    for i, s in enumerate(rcv_meta):
-        row = {N["receiver"].memgraph_id_key: s}
-        if rcv_attrs.get("docfreq"):
-            row["docfreq"] = int(rcv_attrs["docfreq"][i])
-        receiver_rows.append(row)
-
-    week_rows = [{N["week"].memgraph_id_key: s} for s in (ir.nodes["week"].index_to_string or [])]
-
-    # Subject nodes with length props
-    subject_rows = []
-    subj_meta = ir.nodes["subject"].index_to_string or []
-    subj_attrs = ir.nodes["subject"].attrs
-    for i, s in enumerate(subj_meta):
-        row = {N["subject"].memgraph_id_key: s}
-        if subj_attrs.get("len_subject"):
-            row["len_subject"] = int(subj_attrs["len_subject"][i])
-        if subj_attrs.get("len_subject_z"):
-            row["len_subject_z"] = float(subj_attrs["len_subject_z"][i])
-        subject_rows.append(row)
-
-    # URL nodes with docfreq (no redundant full_url property)
-    url_rows = []
-    url_meta = ir.nodes["url"].index_to_string or []
-    url_attrs = ir.nodes["url"].attrs
-    for i, url in enumerate(url_meta):
-        row = {N["url"].memgraph_id_key: url}
-        if url_attrs.get("docfreq"):
-            row["docfreq"] = int(url_attrs["docfreq"][i])
-        url_rows.append(row)
-    # Domain rows with attributes
-    domain_rows = []
-    domain_meta = ir.nodes["domain"].index_to_string or []
-    d_attrs = ir.nodes["domain"].attrs
-    for i, s in enumerate(domain_meta):
-        row = {N["domain"].memgraph_id_key: s}
-        if d_attrs.get("docfreq"):
-            row["docfreq"] = int(d_attrs["docfreq"][i])
-        # We won't store x_lex vector in Memgraph by default to keep properties lean
-        domain_rows.append(row)
-
-    # Stem rows with attributes
-    stem_rows = []
-    stem_meta = ir.nodes["stem"].index_to_string or []
-    s_attrs = ir.nodes["stem"].attrs
-    for i, s in enumerate(stem_meta):
-        row = {N["stem"].memgraph_id_key: s}
-        if s_attrs.get("docfreq"):
-            row["docfreq"] = int(s_attrs["docfreq"][i])
-        stem_rows.append(row)
-
-    # EmailDomain rows with attributes
-    email_domain_rows = []
-    ed_meta = ir.nodes["email_domain"].index_to_string or []
-    ed_attrs = ir.nodes["email_domain"].attrs
-    for i, s in enumerate(ed_meta):
-        row = {N["email_domain"].memgraph_id_key: s}
-        if ed_attrs.get("docfreq_sender"):
-            row["docfreq_sender"] = int(ed_attrs["docfreq_sender"][i])
-        if ed_attrs.get("docfreq_receiver"):
-            row["docfreq_receiver"] = int(ed_attrs["docfreq_receiver"][i])
-        email_domain_rows.append(row)
-
-    # Prepare edge rows
-    has_sender_rows: List[Dict[str, Any]] = []
-    has_receiver_rows: List[Dict[str, Any]] = []
-    in_week_rows: List[Dict[str, Any]] = []
-    has_subject_rows: List[Dict[str, Any]] = []
-    has_url_rows: List[Dict[str, Any]] = []
-
-    url_domain_rows: List[Dict[str, Any]] = []
-    url_stem_rows: List[Dict[str, Any]] = []
-
-    sender_email_domain_rows: List[Dict[str, Any]] = []
-    receiver_email_domain_rows: List[Dict[str, Any]] = []
-
-    # Build edge rows from IR
-    def add_email_edge_rows(edge_key: str, right_node_key: str, rows: List[Dict[str, Any]]):
-        src, dst = ir.edges[edge_key]
-        right_meta = ir.nodes[right_node_key].index_to_string or []
-        for l, r in zip(src, dst):
-            rows.append({"l": int(l), "r": right_meta[r]})
-
-    add_email_edge_rows("has_sender", "sender", has_sender_rows)
-    add_email_edge_rows("has_receiver", "receiver", has_receiver_rows)
-    add_email_edge_rows("in_week", "week", in_week_rows)
-    add_email_edge_rows("has_subject", "subject", has_subject_rows)
-    add_email_edge_rows("has_url", "url", has_url_rows)
-
-    def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, rows: List[Dict[str, Any]]):
-        src, dst = ir.edges[edge_key]
-        left_meta = ir.nodes[left_node_key].index_to_string or []
-        right_meta = ir.nodes[right_node_key].index_to_string or []
-        for l, r in zip(src, dst):
-            rows.append({"l": left_meta[l], "r": right_meta[r]})
-
-    add_string_edge_rows("url_has_domain", "url", "domain", url_domain_rows)
-    add_string_edge_rows("url_has_stem", "url", "stem", url_stem_rows)
-
-    add_string_edge_rows("sender_from_domain", "sender", "email_domain", sender_email_domain_rows)
-    add_string_edge_rows("receiver_from_domain", "receiver", "email_domain", receiver_email_domain_rows)
+    node_rows_by_label = _prepare_node_rows_from_ir(ir, schema)
+    edge_rows_by_type = _prepare_edge_rows_from_ir(ir, schema)
 
     # Connect and write to Memgraph
     driver = GraphDatabase.driver(mg_uri, auth=(mg_user, mg_password) if mg_user or mg_password else None)
@@ -296,19 +259,13 @@ def build_memgraph(
             _create_indexes(session, schema)
 
         # Create nodes (batched)
-        _batch_create_nodes(session, N["email"].memgraph, email_rows)
-        _batch_create_nodes(session, N["sender"].memgraph, sender_rows)
-        _batch_create_nodes(session, N["receiver"].memgraph, receiver_rows)
-        _batch_create_nodes(session, N["week"].memgraph, week_rows)
-        _batch_create_nodes(session, N["subject"].memgraph, subject_rows)
-        _batch_create_nodes(session, N["url"].memgraph, url_rows)
-        _batch_create_nodes(session, N["domain"].memgraph, domain_rows)
-        _batch_create_nodes(session, N["stem"].memgraph, stem_rows)
-        _batch_create_nodes(session, N["email_domain"].memgraph, email_domain_rows)
+        for label, rows in node_rows_by_label.items():
+            _batch_create_nodes(session, label, rows)
 
         # Create edges (batched)
-        def add_edges(edge_key: str, rows: List[Dict[str, Any]]):
+        def add_edges(edge_key: str):
             e = E[edge_key]
+            rows = edge_rows_by_type.get(e.memgraph_type, [])
             _batch_create_edges(
                 session,
                 e.memgraph_type,
@@ -319,40 +276,27 @@ def build_memgraph(
                 e.memgraph_right_key,
             )
 
-        add_edges("has_sender", has_sender_rows)
-        add_edges("has_receiver", has_receiver_rows)
-        add_edges("in_week", in_week_rows)
-        add_edges("has_subject", has_subject_rows)
-        add_edges("has_url", has_url_rows)
-        add_edges("url_has_domain", url_domain_rows)
-        add_edges("url_has_stem", url_stem_rows)
-        add_edges("sender_from_domain", sender_email_domain_rows)
-        add_edges("receiver_from_domain", receiver_email_domain_rows)
+        for edge_key in [
+            "has_sender",
+            "has_receiver",
+            "in_week",
+            "has_subject",
+            "has_url",
+            "url_has_domain",
+            "url_has_stem",
+            "sender_from_domain",
+            "receiver_from_domain",
+        ]:
+            add_edges(edge_key)
 
     driver.close()
 
     return {
         "nodes": {
-            N["email"].memgraph: len(email_rows),
-            N["sender"].memgraph: len(sender_rows),
-            N["receiver"].memgraph: len(receiver_rows),
-            N["week"].memgraph: len(week_rows),
-            N["subject"].memgraph: len(subject_rows),
-            N["url"].memgraph: len(url_rows),
-            N["domain"].memgraph: len(domain_rows),
-            N["stem"].memgraph: len(stem_rows),
-            N["email_domain"].memgraph: len(email_domain_rows),
+            k: len(v) for k, v in node_rows_by_label.items()
         },
         "edges": {
-            E["has_sender"].memgraph_type: len(has_sender_rows),
-            E["has_receiver"].memgraph_type: len(has_receiver_rows),
-            E["in_week"].memgraph_type: len(in_week_rows),
-            E["has_subject"].memgraph_type: len(has_subject_rows),
-            E["has_url"].memgraph_type: len(has_url_rows),
-            E["url_has_domain"].memgraph_type: len(url_domain_rows),
-            E["url_has_stem"].memgraph_type: len(url_stem_rows),
-            f"{E['sender_from_domain'].memgraph_type}(sender)": len(sender_email_domain_rows),
-            f"{E['receiver_from_domain'].memgraph_type}(receiver)": len(receiver_email_domain_rows),
+            **{t: len(rows) for t, rows in edge_rows_by_type.items()},
         },
     }
 
