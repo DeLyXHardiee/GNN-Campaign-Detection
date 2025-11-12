@@ -150,38 +150,58 @@ def build_hetero_graph_from_misp(
     torch_lib = _ensure_torch()
     data = HData()
 
-    # Set node features for email and attach additional attributes
+    # Helper to merge base x with additional attribute columns (scalars or vectors)
+    def _merge_x(base: List[List[float]], attr_vals: Dict[str, Any], keys: List[str]) -> List[List[float]]:
+        if not base:
+            return []
+        n = len(base)
+        # Prepare per-row extras to append
+        extras_per_row: List[List[List[float]]] = [[] for _ in range(n)]
+        for k in keys:
+            vals = attr_vals.get(k)
+            if vals is None:
+                continue
+            # Vector attribute (list of lists)
+            if isinstance(vals, list) and len(vals) > 0 and isinstance(vals[0], (list, tuple)):
+                for i in range(n):
+                    v = vals[i] if i < len(vals) else []
+                    extras_per_row[i].append([float(x) for x in v])
+            else:
+                # Scalar attribute (list of numbers)
+                for i in range(n):
+                    x = float(vals[i]) if i < len(vals) else 0.0
+                    extras_per_row[i].append([x])
+        # Concatenate
+        out: List[List[float]] = []
+        for i in range(n):
+            row = list(base[i])
+            # flatten appended chunks
+            for chunk in extras_per_row[i]:
+                row.extend(chunk)
+            out.append(row)
+        return out
+
+    # Set node features for email and attach attributes by concatenation into x
     if email_x:
-        data[N["email"].pyg].x = torch_lib.tensor(email_x, dtype=torch_lib.float)
-        # Attach requested attributes
-        attrs = ir.email_attrs
-        if attrs:
-            if attrs.get("x_text"):
-                data[N["email"].pyg]["x_text"] = torch_lib.tensor(attrs["x_text"], dtype=torch_lib.float)
-            # Attach both raw and normalized timestamp
-            if attrs.get("ts") is not None:
-                data[N["email"].pyg]["ts"] = torch_lib.tensor(attrs["ts"], dtype=torch_lib.int64)
-            if attrs.get("ts_minmax") is not None:
-                data[N["email"].pyg]["ts_minmax"] = torch_lib.tensor(attrs["ts_minmax"], dtype=torch_lib.float)
-            # Other email scalar attributes
-            if attrs.get("n_urls") is not None:
-                data[N["email"].pyg]["n_urls"] = torch_lib.tensor(attrs["n_urls"], dtype=torch_lib.int16)
-            # Attach both raw and normalized subject/body lengths
-            if attrs.get("len_body") is not None:
-                data[N["email"].pyg]["len_body"] = torch_lib.tensor(attrs["len_body"], dtype=torch_lib.int32)
-            if attrs.get("len_body_z") is not None:
-                data[N["email"].pyg]["len_body_z"] = torch_lib.tensor(attrs["len_body_z"], dtype=torch_lib.float)
+        # Concatenate only the raw timestamp (ts) to avoid duplicating features already in x
+        attrs = ir.email_attrs or {}
+        merged_email_x = _merge_x(email_x, attrs, ["ts"])  # email.x already includes other scalars and text
+        data[N["email"].pyg].x = torch_lib.tensor(merged_email_x, dtype=torch_lib.float)
     else:
         data[N["email"].pyg].num_nodes = 0
 
     # Set node features for each component type
     if sender_x:
-        data[N["sender"].pyg].x = torch_lib.tensor(sender_x, dtype=torch_lib.float)
+        snd_attrs = ir.nodes["sender"].attrs
+        sender_x_merged = _merge_x(sender_x, snd_attrs, ["docfreq"]) if snd_attrs else sender_x
+        data[N["sender"].pyg].x = torch_lib.tensor(sender_x_merged, dtype=torch_lib.float)
     else:
         data[N["sender"].pyg].num_nodes = 0
 
     if receiver_x:
-        data[N["receiver"].pyg].x = torch_lib.tensor(receiver_x, dtype=torch_lib.float)
+        rcv_attrs = ir.nodes["receiver"].attrs
+        receiver_x_merged = _merge_x(receiver_x, rcv_attrs, ["docfreq"]) if rcv_attrs else receiver_x
+        data[N["receiver"].pyg].x = torch_lib.tensor(receiver_x_merged, dtype=torch_lib.float)
     else:
         data[N["receiver"].pyg].num_nodes = 0
 
@@ -191,7 +211,10 @@ def build_hetero_graph_from_misp(
         data[N["week"].pyg].num_nodes = 0
 
     if subject_x:
-        data[N["subject"].pyg].x = torch_lib.tensor(subject_x, dtype=torch_lib.float)
+        # Concatenate subject attributes: len_subject
+        subj_attrs = ir.nodes["subject"].attrs
+        subject_x_merged = _merge_x(subject_x, subj_attrs, ["len_subject"]) if subj_attrs else subject_x
+        data[N["subject"].pyg].x = torch_lib.tensor(subject_x_merged, dtype=torch_lib.float)
     else:
         data[N["subject"].pyg].num_nodes = 0
 
@@ -201,63 +224,34 @@ def build_hetero_graph_from_misp(
         data[N["url"].pyg].num_nodes = 0
 
     if domain_x:
-        data[N["domain"].pyg].x = torch_lib.tensor(domain_x, dtype=torch_lib.float)
+        # Concatenate domain attributes: x_lex (8-d), docfreq
+        dom_attrs = domain_attrs
+        domain_x_merged = _merge_x(domain_x, dom_attrs, ["x_lex", "docfreq"]) if dom_attrs else domain_x
+        data[N["domain"].pyg].x = torch_lib.tensor(domain_x_merged, dtype=torch_lib.float)
     else:
         data[N["domain"].pyg].num_nodes = 0
 
     if stem_x:
-        data[N["stem"].pyg].x = torch_lib.tensor(stem_x, dtype=torch_lib.float)
+        # Concatenate stem attributes: x_lex, docfreq
+        st_attrs = stem_attrs
+        stem_x_merged = _merge_x(stem_x, st_attrs, ["x_lex", "docfreq"]) if st_attrs else stem_x
+        data[N["stem"].pyg].x = torch_lib.tensor(stem_x_merged, dtype=torch_lib.float)
     else:
         data[N["stem"].pyg].num_nodes = 0
     
     if email_domain_x:
-        data[N["email_domain"].pyg].x = torch_lib.tensor(email_domain_x, dtype=torch_lib.float)
+        # Concatenate email_domain attributes: x_lex, docfreq_sender, docfreq_receiver
+        ed_attrs = email_domain_attrs
+        email_domain_x_merged = _merge_x(email_domain_x, ed_attrs, ["x_lex", "docfreq_sender", "docfreq_receiver"]) if ed_attrs else email_domain_x
+        data[N["email_domain"].pyg].x = torch_lib.tensor(email_domain_x_merged, dtype=torch_lib.float)
     else:
         data[N["email_domain"].pyg].num_nodes = 0
 
-    # Attach new attributes for domain (url_domain)
-    if domain_attrs:
-        if domain_attrs.get("x_lex"):
-            data[N["domain"].pyg]["x_lex"] = torch_lib.tensor(domain_attrs["x_lex"], dtype=torch_lib.float)
-        if domain_attrs.get("docfreq"):
-            data[N["domain"].pyg]["docfreq"] = torch_lib.tensor(domain_attrs["docfreq"], dtype=torch_lib.int32)
-
-    # Attach attributes for subject nodes (moved from email): lengths and z-scores
-    subject_attrs = ir.nodes["subject"].attrs
-    if subject_attrs:
-        if subject_attrs.get("len_subject"):
-            data[N["subject"].pyg]["len_subject"] = torch_lib.tensor(subject_attrs["len_subject"], dtype=torch_lib.int32)
-        if subject_attrs.get("len_subject_z"):
-            data[N["subject"].pyg]["len_subject_z"] = torch_lib.tensor(subject_attrs["len_subject_z"], dtype=torch_lib.float)
-
-    # Attach new attributes for stem (url_stem)
-    if stem_attrs:
-        if stem_attrs.get("x_lex"):
-            data[N["stem"].pyg]["x_lex"] = torch_lib.tensor(stem_attrs["x_lex"], dtype=torch_lib.float)
-        if stem_attrs.get("docfreq"):
-            data[N["stem"].pyg]["docfreq"] = torch_lib.tensor(stem_attrs["docfreq"], dtype=torch_lib.int32)
-
-    # Attach new attributes for email_domain (sender_domain/receiver_domain roles)
-    if email_domain_attrs:
-        if email_domain_attrs.get("x_lex"):
-            data[N["email_domain"].pyg]["x_lex"] = torch_lib.tensor(email_domain_attrs["x_lex"], dtype=torch_lib.float)
-        if email_domain_attrs.get("docfreq_sender"):
-            data[N["email_domain"].pyg]["docfreq_sender"] = torch_lib.tensor(email_domain_attrs["docfreq_sender"], dtype=torch_lib.int32)
-        if email_domain_attrs.get("docfreq_receiver"):
-            data[N["email_domain"].pyg]["docfreq_receiver"] = torch_lib.tensor(email_domain_attrs["docfreq_receiver"], dtype=torch_lib.int32)
-
-    # Attach docfreq for URL nodes
+    # URL: concatenate docfreq into x
     url_attrs = ir.nodes["url"].attrs
-    if url_attrs and url_attrs.get("docfreq"):
-        data[N["url"].pyg]["docfreq"] = torch_lib.tensor(url_attrs["docfreq"], dtype=torch_lib.int32)
-
-    # Attach docfreq for sender/receiver nodes
-    snd_attrs = ir.nodes["sender"].attrs
-    if snd_attrs and snd_attrs.get("docfreq"):
-        data[N["sender"].pyg]["docfreq"] = torch_lib.tensor(snd_attrs["docfreq"], dtype=torch_lib.int32)
-    rcv_attrs = ir.nodes["receiver"].attrs
-    if rcv_attrs and rcv_attrs.get("docfreq"):
-        data[N["receiver"].pyg]["docfreq"] = torch_lib.tensor(rcv_attrs["docfreq"], dtype=torch_lib.int32)
+    if url_x:
+        url_x_merged = _merge_x(url_x, url_attrs, ["docfreq"]) if url_attrs else url_x
+        data[N["url"].pyg].x = torch_lib.tensor(url_x_merged, dtype=torch_lib.float)
 
     # Set edges from IR
     def set_edges(edge_key: str):
@@ -292,56 +286,6 @@ def build_hetero_graph_from_misp(
     email_domain_meta = ir.nodes["email_domain"].index_to_string or []
     email_meta = ir.nodes["email"].index_to_meta or []
 
-    # Attribute shapes (optional diagnostics)
-    email_attr_shapes: Dict[str, List[int]] = {}
-    if "x_text" in data[N["email"].pyg]:
-        email_attr_shapes["x_text"] = list(data[N["email"].pyg]["x_text"].shape)
-    if "ts" in data[N["email"].pyg]:
-        email_attr_shapes["ts"] = list(data[N["email"].pyg]["ts"].shape)
-    if "ts_minmax" in data[N["email"].pyg]:
-        email_attr_shapes["ts_minmax"] = list(data[N["email"].pyg]["ts_minmax"].shape)
-    if "n_urls" in data[N["email"].pyg]:
-        email_attr_shapes["n_urls"] = list(data[N["email"].pyg]["n_urls"].shape)
-    if "len_body" in data[N["email"].pyg]:
-        email_attr_shapes["len_body"] = list(data[N["email"].pyg]["len_body"].shape)
-    if "len_body_z" in data[N["email"].pyg]:
-        email_attr_shapes["len_body_z"] = list(data[N["email"].pyg]["len_body_z"].shape)
-
-    extra_attr_shapes: Dict[str, Dict[str, List[int]]] = {}
-    # Domain
-    extra_attr_shapes[N["domain"].pyg] = {}
-    for k in ["x_lex", "docfreq"]:
-        if k in data[N["domain"].pyg]:
-            extra_attr_shapes[N["domain"].pyg][k] = list(data[N["domain"].pyg][k].shape)
-    # URL
-    extra_attr_shapes[N["url"].pyg] = {}
-    for k in ["docfreq"]:
-        if k in data[N["url"].pyg]:
-            extra_attr_shapes[N["url"].pyg][k] = list(data[N["url"].pyg][k].shape)
-    # Stem
-    extra_attr_shapes[N["stem"].pyg] = {}
-    for k in ["x_lex", "docfreq"]:
-        if k in data[N["stem"].pyg]:
-            extra_attr_shapes[N["stem"].pyg][k] = list(data[N["stem"].pyg][k].shape)
-    # Email domain
-    extra_attr_shapes[N["email_domain"].pyg] = {}
-    for k in ["x_lex", "docfreq_sender", "docfreq_receiver"]:
-        if k in data[N["email_domain"].pyg]:
-            extra_attr_shapes[N["email_domain"].pyg][k] = list(data[N["email_domain"].pyg][k].shape)
-    # Subject
-    extra_attr_shapes[N["subject"].pyg] = {}
-    for k in ["len_subject", "len_subject_z"]:
-        if k in data[N["subject"].pyg]:
-            extra_attr_shapes[N["subject"].pyg][k] = list(data[N["subject"].pyg][k].shape)
-    # Sender/Receiver
-    extra_attr_shapes[N["sender"].pyg] = {}
-    for k in ["docfreq"]:
-        if k in data[N["sender"].pyg]:
-            extra_attr_shapes[N["sender"].pyg][k] = list(data[N["sender"].pyg][k].shape)
-    extra_attr_shapes[N["receiver"].pyg] = {}
-    for k in ["docfreq"]:
-        if k in data[N["receiver"].pyg]:
-            extra_attr_shapes[N["receiver"].pyg][k] = list(data[N["receiver"].pyg][k].shape)
 
     metadata = {
         "node_maps": {
@@ -366,8 +310,7 @@ def build_hetero_graph_from_misp(
             N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
             N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
         },
-    "email_attr_shapes": email_attr_shapes,
-    "extra_attr_shapes": extra_attr_shapes,
+    # email_attr_shapes and extra_attr_shapes removed by request
         "edge_counts": {
             f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges['has_sender'][0]),
             f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges['has_receiver'][0]),

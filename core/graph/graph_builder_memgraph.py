@@ -158,6 +158,10 @@ def build_memgraph(
     len_body_raw = get_attr("len_body")
     len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
 
+    # Optional text dims from IR (arrays aligned with emails)
+    subj_dim_arr = ir.email_attrs.get("x_text_subject_dim") or [0] * n_emails
+    body_dim_arr = ir.email_attrs.get("x_text_body_dim") or [0] * n_emails
+
     for eid, em in enumerate(email_meta):
         email_rows.append(
             {
@@ -169,6 +173,9 @@ def build_memgraph(
                 "n_urls": int(get_attr("n_urls")[eid]),
                 "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
                 "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
+                # Text vectorization dimensions (for inspection)
+                "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
+                "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
             }
         )
 
