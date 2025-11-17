@@ -55,18 +55,17 @@ def _ordered_keys(d: Dict[str, int]) -> List[str]:
 def _index_uniques_and_url_components(
     emails: List[Dict[str, Any]]
 ) -> Tuple[
-    Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int],
+    Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int],
     Dict[str, Tuple[str, str]],
 ]:
     """Scan emails once to index unique entities and collect URL components.
 
-    Returns dicts mapping string -> index for senders/receivers/weeks/subjects/urls/domains/stems/email_domains,
+    Returns dicts mapping string -> index for senders/receivers/weeks/urls/domains/stems/email_domains,
     along with a url_components map: url -> (domain, stem).
     """
     sender_to_idx: Dict[str, int] = {}
     receiver_to_idx: Dict[str, int] = {}
     week_to_idx: Dict[str, int] = {}
-    subject_to_idx: Dict[str, int] = {}
     url_to_idx: Dict[str, int] = {}
     domain_to_idx: Dict[str, int] = {}
     stem_to_idx: Dict[str, int] = {}
@@ -92,10 +91,6 @@ def _index_uniques_and_url_components(
         if week_key:
             week_to_idx.setdefault(week_key, len(week_to_idx))
 
-        subj = em.get("subject", "")
-        if subj:
-            subject_to_idx.setdefault(subj, len(subject_to_idx))
-
         for u in em.get("urls", []) or []:
             if not u:
                 continue
@@ -113,7 +108,6 @@ def _index_uniques_and_url_components(
         sender_to_idx,
         receiver_to_idx,
         week_to_idx,
-        subject_to_idx,
         url_to_idx,
         domain_to_idx,
         stem_to_idx,
@@ -127,7 +121,6 @@ def _collect_edges_and_email_attrs(
     sender_to_idx: Dict[str, int],
     receiver_to_idx: Dict[str, int],
     week_to_idx: Dict[str, int],
-    subject_to_idx: Dict[str, int],
     url_to_idx: Dict[str, int],
     email_domain_to_idx: Dict[str, int],
 ) -> Tuple[
@@ -145,8 +138,6 @@ def _collect_edges_and_email_attrs(
         "has_receiver_dst": [],
         "in_week_src": [],
         "in_week_dst": [],
-        "has_subject_src": [],
-        "has_subject_dst": [],
         "has_url_src": [],
         "has_url_dst": [],
     }
@@ -229,10 +220,6 @@ def _collect_edges_and_email_attrs(
             edges_idx["in_week_src"].append(email_idx)
             edges_idx["in_week_dst"].append(week_to_idx[wk])
 
-        if subj and subj in subject_to_idx:
-            edges_idx["has_subject_src"].append(email_idx)
-            edges_idx["has_subject_dst"].append(subject_to_idx[subj])
-
         for u in urls:
             if u and u in url_to_idx:
                 edges_idx["has_url_src"].append(email_idx)
@@ -302,7 +289,6 @@ def _compute_node_attributes_and_features(
     sender_to_idx: Dict[str, int],
     receiver_to_idx: Dict[str, int],
     week_to_idx: Dict[str, int],
-    subject_to_idx: Dict[str, int],
     url_to_idx: Dict[str, int],
     domain_to_idx: Dict[str, int],
     stem_to_idx: Dict[str, int],
@@ -326,7 +312,6 @@ def _compute_node_attributes_and_features(
     sender_meta = _ordered_keys(sender_to_idx)
     receiver_meta = _ordered_keys(receiver_to_idx)
     week_meta = _ordered_keys(week_to_idx)
-    subject_meta = _ordered_keys(subject_to_idx)
     url_meta = _ordered_keys(url_to_idx)
     domain_meta = _ordered_keys(domain_to_idx)
     stem_meta = _ordered_keys(stem_to_idx)
@@ -336,7 +321,6 @@ def _compute_node_attributes_and_features(
     sender_x = [[float(len(s))] for s in sender_meta]
     receiver_x = [[float(len(s))] for s in receiver_meta]
     week_x = [[float(idx)] for idx in range(len(week_meta))]
-    subject_x = [[float(len(s))] for s in subject_meta]
     stem_x = [[float(len(s))] for s in stem_meta]
     email_domain_x = [[float(len(d))] for d in email_domain_meta]
 
@@ -369,9 +353,9 @@ def _compute_node_attributes_and_features(
     email_domain_docfreq_receiver: List[int] = [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in email_domain_meta]
 
     # Subject normalization
-    subject_lens: List[int] = [int(len(s)) for s in subject_meta]
+    subject_lens: List[int] = [int(v) for v in email_attrs_raw.get("len_subject", [])]
     subject_len_z, _, _ = zscore_list([float(v) for v in subject_lens])
-    subject_x = [[float(subject_len_z[i])] for i in range(len(subject_len_z))]
+    # Subject normalization moved to email attributes (no subject nodes)
 
     # Email normalization
     len_body_z, _, _ = zscore_list([float(v) for v in email_attrs_raw["len_body"]])
@@ -420,7 +404,6 @@ def _compute_node_attributes_and_features(
         "sender": sender_x,
         "receiver": receiver_x,
         "week": week_x,
-        "subject": subject_x,
         "url": url_x,
         "domain": domain_x,
         "stem": stem_x,
@@ -430,7 +413,6 @@ def _compute_node_attributes_and_features(
         "sender": sender_meta,
         "receiver": receiver_meta,
         "week": week_meta,
-        "subject": subject_meta,
         "url": url_meta,
         "domain": domain_meta,
         "stem": stem_meta,
@@ -439,7 +421,6 @@ def _compute_node_attributes_and_features(
     node_attrs: Dict[str, Dict[str, List[Any]]] = {
         "sender": {"docfreq": [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]},
         "receiver": {"docfreq": [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]},
-        "subject": {"len_subject": subject_lens, "len_subject_z": [float(z) for z in subject_len_z]},
         "url": {"docfreq": [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]},
         "domain": {"x_lex": domain_x_lex, "docfreq": domain_docfreq},
         "stem": {"x_lex": stem_x_lex, "docfreq": stem_docfreq},
@@ -449,7 +430,13 @@ def _compute_node_attributes_and_features(
             "docfreq_receiver": email_domain_docfreq_receiver,
         },
     }
-    email_norm: Dict[str, Any] = {"len_body_z": len_body_z, "ts_minmax": ts_minmax}
+    email_norm: Dict[str, Any] = {
+        "len_body_z": len_body_z,
+        "ts_minmax": ts_minmax,
+        # Move subject features onto email
+        "len_subject": email_attrs_raw.get("len_subject", []),
+        "len_subject_z": [float(z) for z in subject_len_z],
+    }
 
     return node_x, node_meta, node_attrs, email_norm, subj_vecs, body_vecs, subj_dim, body_dim
 
@@ -459,6 +446,8 @@ def _build_email_feature_matrix(
     email_n_urls: List[int],
     ts_minmax: List[float],
     len_body_z: List[float],
+    len_subject: List[int],
+    len_subject_z: List[float],
     subj_vecs: List[List[float]],
     body_vecs: List[List[float]],
     subj_dim: int,
@@ -474,6 +463,9 @@ def _build_email_feature_matrix(
             float(ts_minmax[i]) if i < len(ts_minmax) else 0.0,
             float(len_body_z[i]) if i < len(len_body_z) else 0.0,
         ]
+        # append subject scalar features
+        row.append(float(len_subject[i]) if i < len(len_subject) else 0.0)
+        row.append(float(len_subject_z[i]) if i < len(len_subject_z) else 0.0)
         if subj_vecs:
             row.extend(subj_vecs[i] if i < len(subj_vecs) else [0.0] * subj_dim)
         if body_vecs:
@@ -498,8 +490,6 @@ def _assemble_nodes(
         "receiver": NodeIR(index=indices["receiver"], x=node_x["receiver"], index_to_string=node_meta["receiver"],
                             attrs=node_attrs.get("receiver", {})),
         "week": NodeIR(index=indices["week"], x=node_x["week"], index_to_string=node_meta["week"]),
-        "subject": NodeIR(index=indices["subject"], x=node_x["subject"], index_to_string=node_meta["subject"],
-                           attrs=node_attrs.get("subject", {})),
         "url": NodeIR(index=indices["url"], x=node_x["url"], index_to_string=node_meta["url"],
                        attrs=node_attrs.get("url", {})),
         "domain": NodeIR(index=indices["domain"], x=node_x["domain"], index_to_string=node_meta["domain"],
@@ -523,7 +513,6 @@ def _assemble_edges(
         "has_sender": (edges_idx["has_sender_src"], edges_idx["has_sender_dst"]),
         "has_receiver": (edges_idx["has_receiver_src"], edges_idx["has_receiver_dst"]),
         "in_week": (edges_idx["in_week_src"], edges_idx["in_week_dst"]),
-        "has_subject": (edges_idx["has_subject_src"], edges_idx["has_subject_dst"]),
         "has_url": (edges_idx["has_url_src"], edges_idx["has_url_dst"]),
         "url_has_domain": (url_dom_src, url_dom_dst),
         "url_has_stem": (url_stem_src, url_stem_dst),
@@ -556,11 +545,13 @@ def _assemble_email_attrs(
         "ts": email_attrs_raw["ts"],
         "n_urls": email_attrs_raw["n_urls"],
         "len_body": email_attrs_raw["len_body"],
+        "len_subject": email_attrs_raw.get("len_subject", []),
         "x_text": x_text if x_text and (len(x_text[0]) > 0 if x_text else False) else [],
         "x_text_subject_dim": [int(subj_dim)] * n_emails,
         "x_text_body_dim": [int(body_dim)] * n_emails,
         "len_body_z": email_norm.get("len_body_z", []),
         "ts_minmax": email_norm.get("ts_minmax", []),
+        "len_subject_z": email_norm.get("len_subject_z", []),
     }
 
 
@@ -581,7 +572,6 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         sender_to_idx,
         receiver_to_idx,
         week_to_idx,
-        subject_to_idx,
         url_to_idx,
         domain_to_idx,
         stem_to_idx,
@@ -594,7 +584,6 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         sender_to_idx,
         receiver_to_idx,
         week_to_idx,
-        subject_to_idx,
         url_to_idx,
         email_domain_to_idx,
     )
@@ -620,7 +609,6 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         sender_to_idx,
         receiver_to_idx,
         week_to_idx,
-        subject_to_idx,
         url_to_idx,
         domain_to_idx,
         stem_to_idx,
@@ -636,6 +624,8 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         email_attrs_raw["n_urls"],
         email_norm.get("ts_minmax", []),
         email_norm.get("len_body_z", []),
+        email_attrs_raw.get("len_subject", []),
+        email_norm.get("len_subject_z", []),
         subj_vecs,
         body_vecs,
         subj_dim,
@@ -650,7 +640,6 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
             "sender": sender_to_idx,
             "receiver": receiver_to_idx,
             "week": week_to_idx,
-            "subject": subject_to_idx,
             "url": url_to_idx,
             "domain": domain_to_idx,
             "stem": stem_to_idx,

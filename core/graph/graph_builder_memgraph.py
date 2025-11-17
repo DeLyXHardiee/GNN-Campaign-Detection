@@ -3,16 +3,15 @@ Build and store a Memgraph-compatible graph from MISP JSON events.
 
 - Mirrors the heterogeneous schema used in graph_builder_pytorch, but as labeled nodes & relationships.
 - Connects to Memgraph over Bolt using the Neo4j Python driver (works with Memgraph's openCypher).
-- Deduplicates component nodes (Sender, Receiver, Week, Subject, Url, Domain, Stem, EmailDomain).
+- Deduplicates component nodes (Sender, Receiver, Week, Url, Domain, Stem, EmailDomain).
 - Stores a lightweight set of properties for each node for inspection/filters.
 
 Node labels and key properties:
-- Email { eid: int, info: str, date: str, body_len: float }
+- Email { eid: int, date: str, ts: int, ts_minmax: float, n_urls: int, len_body: int, len_body_z: float, len_subject: int, len_subject_z: float, x_text_subject_dim: int, x_text_body_dim: int }
 - Sender { key: str }
 - Receiver { key: str }
 - Week { key: str }
-- Subject { key: str }
-- Url { key: str, full_url: str }
+- Url { key: str }
 - Domain { key: str }
 - Stem { key: str }
 - EmailDomain { key: str }
@@ -21,7 +20,6 @@ Relationship types:
 - (Email)-[:HAS_SENDER]->(Sender)
 - (Email)-[:HAS_RECEIVER]->(Receiver)
 - (Email)-[:IN_WEEK]->(Week)
-- (Email)-[:HAS_SUBJECT]->(Subject)
 - (Email)-[:HAS_URL]->(Url)
 - (Url)-[:HAS_DOMAIN]->(Domain)
 - (Url)-[:HAS_STEM]->(Stem)
@@ -72,7 +70,6 @@ def _create_indexes(session, schema: GraphSchema) -> None:
         f"CREATE INDEX ON :{N['sender'].memgraph}({N['sender'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['receiver'].memgraph}({N['receiver'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['week'].memgraph}({N['week'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['subject'].memgraph}({N['subject'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['url'].memgraph}({N['url'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['domain'].memgraph}({N['domain'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['stem'].memgraph}({N['stem'].memgraph_id_key})",
@@ -136,6 +133,8 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
     subj_dim_arr = ir.email_attrs.get("x_text_subject_dim") or [0] * n_emails
     body_dim_arr = ir.email_attrs.get("x_text_body_dim") or [0] * n_emails
+    len_subject_arr = ir.email_attrs.get("len_subject") or [0] * n_emails
+    len_subject_z_arr = ir.email_attrs.get("len_subject_z") or [0.0] * n_emails
     for eid, em in enumerate(email_meta):
         email_rows.append(
             {
@@ -148,6 +147,8 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
                 "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
                 "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
                 "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
+                "len_subject": int(len_subject_arr[eid]) if eid < len(len_subject_arr) else 0,
+                "len_subject_z": float(len_subject_z_arr[eid]) if eid < len(len_subject_z_arr) else 0.0,
             }
         )
     out[N["email"].memgraph] = email_rows
@@ -176,7 +177,6 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     out[N["sender"].memgraph] = pack_string_nodes("sender")
     out[N["receiver"].memgraph] = pack_string_nodes("receiver")
     out[N["week"].memgraph] = pack_string_nodes("week")
-    out[N["subject"].memgraph] = pack_string_nodes("subject")
     out[N["url"].memgraph] = pack_string_nodes("url")
     out[N["domain"].memgraph] = pack_string_nodes("domain")
     out[N["stem"].memgraph] = pack_string_nodes("stem")
@@ -201,7 +201,6 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     add_email_edge_rows("has_sender", "sender", E["has_sender"].memgraph_type)
     add_email_edge_rows("has_receiver", "receiver", E["has_receiver"].memgraph_type)
     add_email_edge_rows("in_week", "week", E["in_week"].memgraph_type)
-    add_email_edge_rows("has_subject", "subject", E["has_subject"].memgraph_type)
     add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
 
     def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
@@ -280,7 +279,6 @@ def build_memgraph(
             "has_sender",
             "has_receiver",
             "in_week",
-            "has_subject",
             "has_url",
             "url_has_domain",
             "url_has_stem",
