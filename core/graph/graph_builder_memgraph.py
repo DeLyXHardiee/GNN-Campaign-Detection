@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
+from .graph_filter import NodeType, filter_graph_ir
 
 try:
     from neo4j import GraphDatabase  # type: ignore
@@ -124,7 +125,8 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
 
     # Emails
     email_rows: List[Dict[str, Any]] = []
-    email_meta = ir.nodes["email"].index_to_meta or []
+    email_node = ir.nodes.get("email")
+    email_meta = (email_node and email_node.index_to_meta) or []
     n_emails = len(email_meta)
     get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
     ts_raw = get_attr("ts")
@@ -156,8 +158,9 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     # Helper to pack simple string-keyed nodes with optional attributes aligned by index
     def pack_string_nodes(node_key: str, extra_fields: Dict[str, List[Any]] = None) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
-        meta = ir.nodes[node_key].index_to_string or []
-        attrs = ir.nodes[node_key].attrs
+        node = ir.nodes.get(node_key)
+        meta = (node and node.index_to_string) or []
+        attrs = (node and node.attrs) or {}
         id_key = N[node_key].memgraph_id_key
         for i, s in enumerate(meta):
             row = {id_key: s}
@@ -192,9 +195,12 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     out: Dict[str, List[Dict[str, Any]]] = {e.memgraph_type: [] for e in E.values()}
 
     def add_email_edge_rows(edge_key: str, right_node_key: str, mem_type: str):
+        if edge_key not in ir.edges:
+            return
         rows = out[mem_type]
         src, dst = ir.edges[edge_key]
-        right_meta = ir.nodes[right_node_key].index_to_string or []
+        right_node = ir.nodes.get(right_node_key)
+        right_meta = (right_node and right_node.index_to_string) or []
         for l, r in zip(src, dst):
             rows.append({"l": int(l), "r": right_meta[r]})
 
@@ -204,10 +210,14 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
 
     def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
+        if edge_key not in ir.edges:
+            return
         rows = out[mem_type]
         src, dst = ir.edges[edge_key]
-        left_meta = ir.nodes[left_node_key].index_to_string or []
-        right_meta = ir.nodes[right_node_key].index_to_string or []
+        left_node = ir.nodes.get(left_node_key)
+        right_node = ir.nodes.get(right_node_key)
+        left_meta = (left_node and left_node.index_to_string) or []
+        right_meta = (right_node and right_node.index_to_string) or []
         for l, r in zip(src, dst):
             rows.append({"l": left_meta[l], "r": right_meta[r]})
 
@@ -229,6 +239,7 @@ def build_memgraph(
     clear: bool = True,
     create_indexes: bool = True,
     schema: Optional[GraphSchema] = None,
+    exclude_nodes: Optional[list[NodeType]] = None,
 ) -> Dict[str, Any]:
     """
     Build the Memgraph graph and store it via Bolt.
@@ -245,6 +256,8 @@ def build_memgraph(
     E = schema.edges
 
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
+    if exclude_nodes:
+        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes), schema=schema)
 
     node_rows_by_label = _prepare_node_rows_from_ir(ir, schema)
     edge_rows_by_type = _prepare_edge_rows_from_ir(ir, schema)
