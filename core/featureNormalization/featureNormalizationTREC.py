@@ -15,21 +15,22 @@ from utils.url_extractor import extract_urls_from_text
 def extract_time_features(date_str):
     try:
         dt = parsedate_to_datetime(date_str)
-        # ensure integer values (no decimals)
-        return {
-            'date_sent': dt.date().isoformat() if hasattr(dt, "date") else None,
-            'time_sent': dt.time().isoformat() if hasattr(dt, "time") else None,
+        data = {
             'day': int(dt.day),
             'month': int(dt.month),
             'year': int(dt.year),
             'weekday': dt.strftime("%A"),
             'workday': int(1 if dt.weekday() < 5 else 0)
         }
+        if hasattr(dt, "date"):
+            data["date_sent"] = dt.date().isoformat()
+
+        if hasattr(dt, "time"):
+            data["time_sent"] = dt.time().isoformat()
+        # ensure integer values (no decimals)
+        return data
     except:
-        return {
-            'date_sent': None, 'time_sent': None, 'day': None,
-            'month': None, 'year': None, 'weekday': None, 'workday': None
-        }
+        return {}
 
 def extract_subject_features(subject):
     if not isinstance(subject, str):
@@ -127,7 +128,7 @@ def extract_body_based_features(body):
         "body_word_count": num_words,
         "num_lines": num_lines,
         "avg_word_length": avg_word_length,
-        "greeting": greeting_features.get("greeting", None),
+        "greeting": greeting_features.get("greeting", ""),
         "bow": bow
     }
 
@@ -137,7 +138,7 @@ def extract_greeting_features(body):
     Examples: {'greeting': 'hi, name'}, {'greeting': 'hello, email'}, {'greeting': None}
     """
     if not isinstance(body, str) or not body.strip():
-        return {"greeting": None}
+        return {"greeting": ""}
 
     text = body.lstrip()
     first_line = text.splitlines()[0].strip()
@@ -150,10 +151,10 @@ def extract_greeting_features(body):
     greet_regex = r'^(?:' + '|'.join(re.escape(g) for g in greetings) + r')\b[,\s:!-]*([^\n,!?]*)'
     m = re.search(greet_regex, first_line, flags=re.I)
     if not m:
-        return {"greeting": None}
+        return {"greeting": ""}
 
     greet_found = re.match(r'^(?:' + '|'.join(re.escape(g) for g in greetings) + r')\b', first_line, flags=re.I)
-    greeting_token = greet_found.group(0).strip().lower() if greet_found else None
+    greeting_token = greet_found.group(0).strip().lower() if greet_found else ""
 
     follow_text = (m.group(1) or "").strip()
     if not follow_text:
@@ -189,7 +190,7 @@ def extract_origin_based_features(sender):
     Removes surrounding quotes from names (e.g., "name lastname" -> name lastname)
     """
     if not isinstance(sender, str) or not sender.strip():
-        return {"sender_name": None, "sender_email": None}
+        return {"sender_name": "", "sender_email": ""}
     
     sender = sender.strip()
     
@@ -200,7 +201,7 @@ def extract_origin_based_features(sender):
         email = angle_match.group(2).strip()
         # Remove surrounding quotes from name
         name = name.strip('"')
-        return {"sender_name": name if name else None, "sender_email": email}
+        return {"sender_name": name if name else "", "sender_email": email}
     
     # Format 1: email@domain.com
     email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', sender)
@@ -209,7 +210,7 @@ def extract_origin_based_features(sender):
         return {"sender_name": name, "sender_email": sender}
     
     # Fallback: couldn't parse
-    return {"sender_name": None, "sender_email": None}
+    return {"sender_name": "", "sender_email": ""}
 
 def extract_recipient_based_features(recipient):
     """
@@ -218,7 +219,7 @@ def extract_recipient_based_features(recipient):
     2. Name <email@domain.com> -> name is 'Name'
     """
     if not isinstance(recipient, str) or not recipient.strip():
-        return {"recipient_name": None, "recipient_email": None}
+        return {"recipient_name": "", "recipient_email": ""}
     
     recipient = recipient.strip()
     
@@ -227,7 +228,7 @@ def extract_recipient_based_features(recipient):
     if angle_match:
         name = angle_match.group(1).strip()
         email = angle_match.group(2).strip()
-        return {"recipient_name": name if name else None, "recipient_email": email}
+        return {"recipient_name": name if name else "", "recipient_email": email}
     
     # Format 1: email@domain.com
     email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', recipient)
@@ -236,7 +237,7 @@ def extract_recipient_based_features(recipient):
         return {"recipient_name": name, "recipient_email": recipient}
     
     # Fallback: couldn't parse
-    return {"recipient_name": None, "recipient_email": None}
+    return {"recipient_name": "", "recipient_email": ""}
 
 def extract_url_based_features(urls):
     """
@@ -428,7 +429,7 @@ def get_FS7(csv_path):
                         and not (k == "sender_email")}  # Only keep sender_name, not sender_email
         
         filtered_features.append(filtered_feat)
-    
+    #print(features_list[0])
     return filtered_features
 
 def extract_features(csv_path, features):
@@ -555,17 +556,17 @@ if __name__ == "__main__":
     csv_path = "../../data/csv/TREC-07-only-phishing.csv"
     
     # Extract FS features
-    fs_features = get_FS6(csv_path)
+    fs_features = get_FS7(csv_path)
     
     # Save to JSON file
     input_dir = os.path.dirname(csv_path)
     input_base = os.path.splitext(os.path.basename(csv_path))[0]
-    output_path = os.path.join(input_dir, f"{input_base}_FS6.json")
+    output_path = os.path.join(input_dir, f"{input_base}_FS7.json")
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(fs_features, f, indent=2, ensure_ascii=False)
     
-    print(f"Saved FS6 features to: {output_path}")
+    print(f"Saved FS7 features to: {output_path}")
     print(f"Total emails processed: {len(fs_features)}")
     if fs_features:
         print(f"Sample feature keys: {list(fs_features[0].keys())}")
