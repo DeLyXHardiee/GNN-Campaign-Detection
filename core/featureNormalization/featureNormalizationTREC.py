@@ -16,7 +16,7 @@ def extract_time_features(date_str):
     try:
         dt = parsedate_to_datetime(date_str)
         # ensure integer values (no decimals)
-        return pd.Series({
+        return {
             'date_sent': dt.date().isoformat() if hasattr(dt, "date") else None,
             'time_sent': dt.time().isoformat() if hasattr(dt, "time") else None,
             'day': int(dt.day),
@@ -24,46 +24,36 @@ def extract_time_features(date_str):
             'year': int(dt.year),
             'weekday': dt.strftime("%A"),
             'workday': int(1 if dt.weekday() < 5 else 0)
-        })
+        }
     except:
-        return pd.Series({
-            'date_sent': None, 'time_sent': None, 'day': pd.NA,
-            'month': pd.NA, 'year': pd.NA, 'weekday': None, 'workday': pd.NA
-        })
+        return {
+            'date_sent': None, 'time_sent': None, 'day': None,
+            'month': None, 'year': None, 'weekday': None, 'workday': None
+        }
 
+def extract_subject_features(subject):
+    if not isinstance(subject, str):
+        subject = ""
 
-def extract_subject_features(subj):
-    if not isinstance(subj, str):
-        subj = ""
+    num_chars = len(subject)
+    num_whitespace = sum(c.isspace() for c in subject)
 
-    num_chars = len(subj)
-    num_whitespace = sum(c.isspace() for c in subj)
-
-    return pd.Series({
+    return {
         "subject_length": num_chars,
-        "subject_whitespace_count": num_whitespace
-    })
+        "subject_whitespace_count": num_whitespace,
+        "subject_term_frequency": get_term_frequency(subject)
+    }
 
-def compute_and_save_idf(subjects, output_path, max_features=2000):
-    """Compute and save IDF values for subject terms to a separate CSV"""
-    vectorizer = TfidfVectorizer(max_features=max_features) 
-    vectorizer.fit(subjects) 
+def get_term_frequency(subject):
     
-    # Get IDF values and terms
-    terms = vectorizer.get_feature_names_out()
-    idfs = vectorizer.idf_
+    if not isinstance(subject, str):
+        subject = ""
+        
+    terms = subject.lower().split()
     
-    # Create and save IDF DataFrame
-    idf_df = pd.DataFrame({
-        'term': terms,
-        'idf': idfs
-    }).sort_values('idf', ascending=False)
+    return dict(Counter(terms))
     
-    idf_df.to_csv(output_path, index=False)
-    print(f"Saved IDF values to: {output_path}")
-    return vectorizer
-
-def compute_and_save_term_frequencies(subjects, output_path):
+def save_term_frequencies(subjects, output_path):
     """Compute and save term frequencies as JSON objects (subjects)"""
     email_frequencies = []
     
@@ -90,9 +80,56 @@ def compute_and_save_term_frequencies(subjects, output_path):
         json.dump(email_frequencies, f, indent=2, ensure_ascii=False)
     
     print(f"Saved subject term frequencies to: {output_path}")
+    
+
+def get_idf(subjects, output_path, max_features=2000):
+    """Compute and save IDF values for subject terms to a separate CSV"""
+    vectorizer = TfidfVectorizer(max_features=max_features) 
+    vectorizer.fit(subjects) 
+    
+    # Get IDF values and terms
+    terms = vectorizer.get_feature_names_out()
+    idfs = vectorizer.idf_
+    
+    # Create and save IDF DataFrame
+    idf_df = pd.DataFrame({
+        'term': terms,
+        'idf': idfs
+    }).sort_values('idf', ascending=False)
+    
+    idf_df.to_csv(output_path, index=False)
+    print(f"Saved IDF values to: {output_path}")
+    return vectorizer
 
 def extract_body_based_features(body):
-    return
+    # Extract URLs from the email body (using utils/url_extractor.py)
+    extracted_urls = extract_urls_from_text(body) if body else []
+    
+    # Calculate number of lines
+    num_lines = len(body.splitlines())
+    
+    # Calculate number of words
+    words = re.findall(r"\w+", body.lower())
+    num_words = len(words)
+    
+    # Calculate average word length
+    avg_word_length = round(sum(len(word) for word in words) / num_words,1) if num_words > 0 else 0
+
+    # Extract greeting features from body
+    greeting_features = extract_greeting_features(body)
+
+    bow = compute_body_bow(body)
+
+    # Build feature dict for this row
+    return {
+        "num_urls": len(extracted_urls),
+        "has_urls": 1 if len(extracted_urls) > 0 else 0,
+        "body_word_count": num_words,
+        "num_lines": num_lines,
+        "avg_word_length": avg_word_length,
+        "greeting": greeting_features.get("greeting", None),
+        "bow": bow
+    }
 
 def extract_greeting_features(body):
     """
@@ -149,6 +186,7 @@ def extract_origin_based_features(sender):
     Extract sender name and email from two possible formats:
     1. email@domain.com -> name is 'email'
     2. Name <email@domain.com> -> name is 'Name'
+    Removes surrounding quotes from names (e.g., "name lastname" -> name lastname)
     """
     if not isinstance(sender, str) or not sender.strip():
         return {"sender_name": None, "sender_email": None}
@@ -160,6 +198,8 @@ def extract_origin_based_features(sender):
     if angle_match:
         name = angle_match.group(1).strip()
         email = angle_match.group(2).strip()
+        # Remove surrounding quotes from name
+        name = name.strip('"')
         return {"sender_name": name if name else None, "sender_email": email}
     
     # Format 1: email@domain.com
@@ -220,6 +260,7 @@ def extract_url_based_features(urls):
             "has_extra_http": 0,
             "avg_subdomain_count": 0,
             "avg_hyphen_count": 0,
+            
             #"has_ev_certificate": 0,
             #"has_webhost_domain": 0,
             #"num_blacklisted_urls": 0,
@@ -288,7 +329,6 @@ def extract_url_based_features(urls):
             hyphen_count = domain.count('-')
             total_hyphens += hyphen_count
         
-        # Placeholder: would require external data sources
         # ev_cert_count += check_ev_certificate(url)
         # blacklisted_urls += check_blacklist(url)
         # webhost_count += check_webhost(domain)
@@ -318,10 +358,20 @@ def extract_url_based_features(urls):
         #"visual_url_mismatch": 0   # Would need hyperlink/display text comparison
     }
 
-
+def compute_body_bow(body):
+    """Compute and return bag-of-words (term frequencies) for a single email body"""
+    if not isinstance(body, str):
+        body = ""
+    
+    # Use regex word tokenizer to keep common words and punctuation-free tokens
+    words = re.findall(r"\w+", body.lower())
+    word_freq = dict(Counter(words))
+    
+    return word_freq
 
 def compute_and_save_body_bow(bodies, output_path):
     """Compute and save bag-of-words (term frequencies) for each email body as JSON objects"""
+    # should also include latent semantic analysis at some point #TODO
     email_bows = []
     
     for idx, body in enumerate(bodies):
@@ -344,6 +394,86 @@ def compute_and_save_body_bow(bodies, output_path):
     
     print(f"Saved body bag-of-words to: {output_path}")
 
+
+def get_FS6(csv_path):
+    """
+    Extract FS6 features: subject (length + spaces), attachments (count + size), 
+    date, body, origin (sender_name only), and URL features.
+    """
+    features_list = extract_features(csv_path, ["subject", "time", "body", "origin", "urls"])
+    #features_list = extract_features(csv_path, ["subject", "attachments", "time", "body", "origin", "urls"])
+    
+    # Filter out unwanted keys from each feature dictionary
+    filtered_features = []
+    for feat in features_list:
+        filtered_feat = {k: v for k, v in feat.items() 
+                        if k not in ["subject_term_frequency", "bow", "sender_email", "greeting"]
+                        }
+        filtered_features.append(filtered_feat)
+    
+    return filtered_features
+
+def get_FS7(csv_path):
+    """
+    Extract FS7 features: subject, body, origin (sender_name only), and urls.
+    Excludes subject/body term frequencies and only includes sender_name from origin.
+    """
+    features_list = extract_features(csv_path, ["subject", "body", "origin", "urls"])
+    
+    # Filter out unwanted keys from each feature dictionary
+    filtered_features = []
+    for feat in features_list:
+        filtered_feat = {k: v for k, v in feat.items() 
+                        if not (k == "bow")  # Exclude body bag-of-words
+                        and not (k == "sender_email")}  # Only keep sender_name, not sender_email
+        
+        filtered_features.append(filtered_feat)
+    
+    return filtered_features
+
+def extract_features(csv_path, features):
+    """
+    Extract baseline features for specified types.
+    
+    Args:
+        csv_path: Path to the CSV file
+        types: List of feature types to extract (e.g., ["time", "subject", "body", "attachments", "origin", "receiver", "urls"])
+    
+    Returns:
+        List of feature dictionaries, one per row
+    """
+    df = pd.read_csv(csv_path)
+    features_list = []
+    
+    for idx, row in df.iterrows():
+        feat = {'email_index': idx}
+        
+        # Extract features for each requested type
+        for feature_type in features:
+            if feature_type == "time":
+                feat.update(extract_time_features(row.get("date")))
+            elif feature_type == "subject":
+                feat.update(extract_subject_features(row.get("subject")))
+            elif feature_type == "body":
+                feat.update(extract_body_based_features(row.get("body")))
+            elif feature_type == "attachments":
+                continue
+                #Not implemented yet
+                feat.update(extract_attachment_features(row.get("attachments")))
+            elif feature_type == "origin":
+                feat.update(extract_origin_based_features(row.get("sender")))
+            elif feature_type == "receiver":
+                feat.update(extract_recipient_based_features(row.get("receiver")))
+            elif feature_type == "urls":
+                body = row.get("body", "") if row.get("body", "") is not None else ""
+                extracted_urls = extract_urls_from_text(body) if body else []
+                feat.update(extract_url_based_features(extracted_urls))
+        
+        features_list.append(feat)
+    
+    return features_list
+
+'''
 def run_feature_normalization(csv_path, max_features=2000):
     # Read CSV
     df = pd.read_csv(csv_path)
@@ -378,8 +508,8 @@ def run_feature_normalization(csv_path, max_features=2000):
         }
 
         # merge time, subject and greeting features (Series -> dict)
-        feat.update(time_features.to_dict())
-        feat.update(subject_features.to_dict())
+        feat.update(time_features)
+        feat.update(subject_features)
         feat.update(greeting_features)
 
         features_list.append(feat)
@@ -405,15 +535,37 @@ def run_feature_normalization(csv_path, max_features=2000):
 
     # Save IDF values to separate CSV (subjects)
     idf_path = os.path.join(input_dir, f"{input_base}_subject_idf.csv")
-    compute_and_save_idf(subjects, idf_path, max_features)
+    get_idf(subjects, idf_path, max_features)
 
     # Save subject term frequencies to JSON
     term_freq_path = os.path.join(input_dir, f"{input_base}_term_frequencies.json")
-    compute_and_save_term_frequencies(subjects, term_freq_path)
+    save_term_frequencies(subjects, term_freq_path)
 
     # Save body bag-of-words (per-email JSON)
     body_bow_path = os.path.join(input_dir, f"{input_base}_body_bow.json")
     compute_and_save_body_bow(bodies, body_bow_path)
-    
 
 run_feature_normalization("../../data/csv/TREC-07-only-phishing.csv")
+    
+'''
+
+
+
+if __name__ == "__main__":
+    csv_path = "../../data/csv/TREC-07-only-phishing.csv"
+    
+    # Extract FS features
+    fs_features = get_FS6(csv_path)
+    
+    # Save to JSON file
+    input_dir = os.path.dirname(csv_path)
+    input_base = os.path.splitext(os.path.basename(csv_path))[0]
+    output_path = os.path.join(input_dir, f"{input_base}_FS6.json")
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(fs_features, f, indent=2, ensure_ascii=False)
+    
+    print(f"Saved FS6 features to: {output_path}")
+    print(f"Total emails processed: {len(fs_features)}")
+    if fs_features:
+        print(f"Sample feature keys: {list(fs_features[0].keys())}")
