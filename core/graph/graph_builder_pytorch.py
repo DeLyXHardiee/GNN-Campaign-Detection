@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Shared schema configuration and assembler
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
+from .graph_filter import NodeType, filter_graph_ir
 
 if TYPE_CHECKING:  # For type checkers only; avoids runtime import requirement
     import torch  # type: ignore
@@ -133,6 +134,10 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     N = schema.nodes
 
     # Email: append only raw ts (others already included in IR email.x)
+    if "email" not in ir.nodes:
+        # No emails; create empty type
+        data[N["email"].pyg].num_nodes = 0
+        return
     email_x = ir.nodes["email"].x
     if email_x:
         merged_email_x = _merge_features_with_attrs(email_x, ir.email_attrs or {}, ["ts"])  # avoid duplicates
@@ -141,6 +146,9 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         data[N["email"].pyg].num_nodes = 0
 
     def set_simple(node_key: str, extra_keys: List[str] = None):
+        if node_key not in ir.nodes:
+            # Skip entirely when filtered out
+            return
         x = ir.nodes[node_key].x
         if x:
             attrs = ir.nodes[node_key].attrs
@@ -166,6 +174,8 @@ def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     N = schema.nodes
 
     def set_edges(edge_key: str):
+        if edge_key not in ir.edges:
+            return
         e = schema.edge(edge_key)
         src, dst = ir.edges[edge_key]
         if src:
@@ -187,14 +197,14 @@ def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
 def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str, Any]:
     """Construct the metadata dict summarizing node maps, feature shapes, and edge counts."""
     N = schema.nodes
-    sender_meta = ir.nodes["sender"].index_to_string or []
-    receiver_meta = ir.nodes["receiver"].index_to_string or []
-    week_meta = ir.nodes["week"].index_to_string or []
-    url_meta = ir.nodes["url"].index_to_string or []
-    domain_meta = ir.nodes["domain"].index_to_string or []
-    stem_meta = ir.nodes["stem"].index_to_string or []
-    email_domain_meta = ir.nodes["email_domain"].index_to_string or []
-    email_meta = ir.nodes["email"].index_to_meta or []
+    sender_meta = (ir.nodes.get("sender") and ir.nodes["sender"].index_to_string) or []
+    receiver_meta = (ir.nodes.get("receiver") and ir.nodes["receiver"].index_to_string) or []
+    week_meta = (ir.nodes.get("week") and ir.nodes["week"].index_to_string) or []
+    url_meta = (ir.nodes.get("url") and ir.nodes["url"].index_to_string) or []
+    domain_meta = (ir.nodes.get("domain") and ir.nodes["domain"].index_to_string) or []
+    stem_meta = (ir.nodes.get("stem") and ir.nodes["stem"].index_to_string) or []
+    email_domain_meta = (ir.nodes.get("email_domain") and ir.nodes["email_domain"].index_to_string) or []
+    email_meta = (ir.nodes.get("email") and ir.nodes["email"].index_to_meta) or []
 
     meta = {
         "node_maps": {
@@ -218,14 +228,14 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
         },
         "edge_counts": {
-            f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges['has_sender'][0]),
-            f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges['has_receiver'][0]),
-            f"{N['email'].pyg}->{N['week'].pyg}:{schema.edge('in_week').rel_pyg}": len(ir.edges['in_week'][0]),
-            f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges['has_url'][0]),
-            f"{N['url'].pyg}->{N['domain'].pyg}:{schema.edge('url_has_domain').rel_pyg}": len(ir.edges['url_has_domain'][0]),
-            f"{N['url'].pyg}->{N['stem'].pyg}:{schema.edge('url_has_stem').rel_pyg}": len(ir.edges['url_has_stem'][0]),
-            f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges['sender_from_domain'][0]),
-            f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges['receiver_from_domain'][0]),
+            f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges.get('has_sender', ([], []))[0]),
+            f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges.get('has_receiver', ([], []))[0]),
+            f"{N['email'].pyg}->{N['week'].pyg}:{schema.edge('in_week').rel_pyg}": len(ir.edges.get('in_week', ([], []))[0]),
+            f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges.get('has_url', ([], []))[0]),
+            f"{N['url'].pyg}->{N['domain'].pyg}:{schema.edge('url_has_domain').rel_pyg}": len(ir.edges.get('url_has_domain', ([], []))[0]),
+            f"{N['url'].pyg}->{N['stem'].pyg}:{schema.edge('url_has_stem').rel_pyg}": len(ir.edges.get('url_has_stem', ([], []))[0]),
+            f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges.get('sender_from_domain', ([], []))[0]),
+            f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges.get('receiver_from_domain', ([], []))[0]),
         },
     }
     return meta
@@ -235,6 +245,7 @@ def build_hetero_graph_from_misp(
     misp_events: List[dict],
     *,
     schema: Optional[GraphSchema] = None,
+    exclude_nodes: Optional[list[NodeType]] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -265,6 +276,8 @@ def build_hetero_graph_from_misp(
     # Resolve node labels per backend
     N = schema.nodes
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
+    if exclude_nodes:
+        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes), schema=schema)
 
     HData = _ensure_heterodata()
     data = HData()
@@ -308,6 +321,7 @@ def build_graph(
     out_dir: str = "results",
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
+    exclude_nodes: Optional[list[NodeType]] = None,
 ) -> Tuple[Any, str, str]:
     """
     Convenience entrypoint.
@@ -321,7 +335,7 @@ def build_graph(
     if misp_events is None:
         misp_events = _load_misp_json(misp_json_path)  # type: ignore[arg-type]
 
-    graph, metadata = build_hetero_graph_from_misp(misp_events, schema=schema)
+    graph, metadata = build_hetero_graph_from_misp(misp_events, schema=schema, exclude_nodes=exclude_nodes)
 
     # Determine output name
     if out_name is None:

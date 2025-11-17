@@ -42,7 +42,3 @@
     RETURN
         count(CASE WHEN email_count > 1 THEN 1 END) AS domains_with_multiple_emails,
         count(d) AS total_domains;
-
-
-
-<!-- Subject nodes were removed; subject features now live on Email (len_subject, len_subject_z). -->
