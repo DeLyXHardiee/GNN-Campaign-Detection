@@ -1,6 +1,6 @@
 # Graph Analysis Report
 
-Generated: 2025-11-17T13:24:45.803123Z
+Generated: 2025-11-17T13:43:32.452722Z
 
 
 ## Graph Overview
@@ -80,4 +80,18 @@ No week data found in the graph.
 
 ## Connected Components
 
-Could not compute components: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'
+- 1. 104,047 nodes
+- 2. 21 nodes
+- 3. 13 nodes
+- 4. 10 nodes
+- 5. 8 nodes
+
+
+## Max-Degree Node in Largest Component
+
+- Node type: receiver
+- Local index: 5
+- Global index: 56828
+- Degree: 4086
+- Component size: 104047
+- Label: theorize@plg.uwaterloo.ca

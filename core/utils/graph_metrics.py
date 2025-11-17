@@ -21,32 +21,147 @@ def load_graph_metadata(meta_path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
-def print_graph_overview(metadata: Dict[str, Any]) -> None:
-    """Print high-level graph statistics."""
-    print("=" * 70)
-    print("GRAPH OVERVIEW")
-    print("=" * 70)
-    
-    feature_shapes = metadata.get("feature_shapes", {})
-    edge_counts = metadata.get("edge_counts", {})
-    
-    print("\nNode Counts:")
-    total_nodes = 0
-    for node_type, shape in feature_shapes.items():
-        count = shape[0] if shape else 0
-        total_nodes += count
-        print(f"  {node_type:12s}: {count:8,d} nodes")
-    print(f"  {'TOTAL':12s}: {total_nodes:8,d} nodes")
-    
-    print("\nEdge Counts:")
-    total_edges = 0
-    for edge_name, count in edge_counts.items():
-        total_edges += count
-        print(f"  {edge_name:35s}: {count:8,d} edges")
-    print(f"  {'TOTAL':35s}: {total_edges:8,d} edges")
-    
-    print()
+def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Find the node with the highest total degree (incoming + outgoing across all edge types)
+    within the largest connected component of the heterogeneous graph.
 
+    Returns a dictionary with keys: node_type, local_index, global_index, degree, component_size, label.
+    Returns None if the graph is empty or cannot be loaded.
+    """
+    try:
+        import torch
+
+        graph = torch.load(graph_path, weights_only=False)
+
+        # Infer counts per node type (avoid relying on num_nodes which can be None)
+        node_types = list(getattr(graph, "node_types", []))
+        if not node_types:
+            return None
+
+        inferred_counts: Dict[str, int] = {nt: 0 for nt in node_types}
+        for (src_t, rel, dst_t) in getattr(graph, "edge_types", []):
+            store = graph[src_t, rel, dst_t]
+            edge_index = getattr(store, "edge_index", None)
+            if edge_index is None or edge_index.numel() == 0:
+                continue
+            src_max = int(edge_index[0].max().item()) if edge_index[0].numel() > 0 else -1
+            dst_max = int(edge_index[1].max().item()) if edge_index[1].numel() > 0 else -1
+            if src_max >= 0:
+                inferred_counts[src_t] = max(inferred_counts[src_t], src_max + 1)
+            if dst_max >= 0:
+                inferred_counts[dst_t] = max(inferred_counts[dst_t], dst_max + 1)
+        # Also consider feature matrices if present
+        for nt in node_types:
+            try:
+                if "x" in graph[nt]:
+                    inferred_counts[nt] = max(inferred_counts[nt], int(graph[nt].x.size(0)))
+            except Exception:
+                pass
+
+        # Build offsets and totals
+        offsets: Dict[str, int] = {}
+        off = 0
+        for nt in node_types:
+            offsets[nt] = off
+            off += int(inferred_counts.get(nt, 0))
+        total = off
+        if total == 0:
+            return None
+
+        # Build undirected adjacency and degrees
+        adj: List[List[int]] = [[] for _ in range(total)]
+        deg = [0] * total
+        for src_t, rel, dst_t in getattr(graph, "edge_types", []):
+            store = graph[src_t, rel, dst_t]
+            edge_index = getattr(store, "edge_index", None)
+            if edge_index is None or edge_index.numel() == 0:
+                continue
+            bs = offsets[src_t]
+            bd = offsets[dst_t]
+            src_idx = edge_index[0].tolist()
+            dst_idx = edge_index[1].tolist()
+            for s_i, d_i in zip(src_idx, dst_idx):
+                s_g = bs + int(s_i)
+                d_g = bd + int(d_i)
+                if 0 <= s_g < total and 0 <= d_g < total:
+                    adj[s_g].append(d_g)
+                    adj[d_g].append(s_g)
+                    deg[s_g] += 1
+                    deg[d_g] += 1
+
+        # Compute components and track membership
+        visited = [False] * total
+        comp_id = [-1] * total
+        comp_sizes: List[int] = []
+        current_id = 0
+        for nid in range(total):
+            if visited[nid]:
+                continue
+            # BFS even for isolated nodes
+            from collections import deque
+            q = deque([nid])
+            visited[nid] = True
+            comp_id[nid] = current_id
+            size = 0
+            while q:
+                v = q.popleft()
+                size += 1
+                for nb in adj[v]:
+                    if not visited[nb]:
+                        visited[nb] = True
+                        comp_id[nb] = current_id
+                        q.append(nb)
+            comp_sizes.append(size)
+            current_id += 1
+
+        # Identify largest component
+        if not comp_sizes:
+            return None
+        largest_c = max(range(len(comp_sizes)), key=lambda i: comp_sizes[i])
+        largest_size = comp_sizes[largest_c]
+
+        # Within largest component, pick node with max degree
+        best_global = None
+        best_deg = -1
+        for gid in range(total):
+            if comp_id[gid] != largest_c:
+                continue
+            if deg[gid] > best_deg:
+                best_deg = deg[gid]
+                best_global = gid
+
+        if best_global is None:
+            return None
+
+        # Map global index back to node_type and local_index
+        best_type = node_types[0]
+        best_local = 0
+        for nt in node_types:
+            base = offsets[nt]
+            count = inferred_counts.get(nt, 0)
+            if base <= best_global < base + count:
+                best_type = nt
+                best_local = best_global - base
+                break
+
+        # Lookup human-readable label if available
+        label: Optional[str] = None
+        nm = metadata.get("node_maps", {}).get(best_type, {})
+        idx2str = nm.get("index_to_string")
+        if isinstance(idx2str, list) and 0 <= best_local < len(idx2str):
+            label = idx2str[best_local]
+
+        return {
+            "node_type": best_type,
+            "local_index": int(best_local),
+            "global_index": int(best_global),
+            "degree": int(best_deg),
+            "component_size": int(largest_size),
+            "label": label,
+        }
+    except Exception:
+        return None
 
 def _md_graph_overview(metadata: Dict[str, Any]) -> str:
     feature_shapes = metadata.get("feature_shapes", {})
@@ -171,33 +286,6 @@ def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], t
         return []
 
 
-def print_top_urls(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
-    """Print the top N most referenced URLs."""
-    print("=" * 70)
-    print(f"TOP {top_n} MOST REFERENCED URLs")
-    print("=" * 70)
-    
-    if graph_path:
-        top_urls = count_url_references_from_graph(graph_path, metadata, top_n)
-    else:
-        # Fallback: just list URLs from metadata
-        url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
-        top_urls = [(url, 0) for url in url_strings[:top_n]]
-    
-    if not top_urls:
-        print("\nNo URLs found in the graph.")
-        print()
-        return
-    
-    for i, (url, count) in enumerate(top_urls, 1):
-        if count > 0:
-            print(f"{i:2d}. {url:60s} ({count:4d} emails)")
-        else:
-            print(f"{i:2d}. {url}")
-    
-    print()
-
-
 def _md_top_list(title: str, pairs: List[Tuple[str, int]], unit: str) -> str:
     lines = [f"## {title}", ""]
     if not pairs:
@@ -209,49 +297,6 @@ def _md_top_list(title: str, pairs: List[Tuple[str, int]], unit: str) -> str:
         lines.append(f"- {i}. {label}{suffix}")
     lines.append("")
     return "\n".join(lines)
-
-
-def print_top_domains(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
-    """Print the top N most referenced domains."""
-    print("=" * 70)
-    print(f"TOP {top_n} MOST REFERENCED DOMAINS")
-    print("=" * 70)
-    
-    domain_strings = metadata.get("node_maps", {}).get("domain", {}).get("index_to_string", [])
-    
-    if not domain_strings:
-        print("\nNo domains found in the graph.")
-        print()
-        return
-    
-    if graph_path:
-        try:
-            import torch
-            graph = torch.load(graph_path, weights_only=False)
-            
-            domain_counts = Counter()
-            
-            if ("url", "has_domain", "domain") in graph.edge_types:
-                edge_index = graph["url", "has_domain", "domain"].edge_index
-                domain_indices = edge_index[1].tolist()
-                
-                for domain_idx in domain_indices:
-                    if 0 <= domain_idx < len(domain_strings):
-                        domain_counts[domain_strings[domain_idx]] += 1
-            
-            top_domains = domain_counts.most_common(top_n)
-            
-            for i, (domain, count) in enumerate(top_domains, 1):
-                print(f"{i:2d}. {domain:50s} ({count:4d} URLs)")
-        except Exception as e:
-            print(f"\nCould not load graph for domain counting: {e}")
-            for i, domain in enumerate(domain_strings[:top_n], 1):
-                print(f"{i:2d}. {domain}")
-    else:
-        for i, domain in enumerate(domain_strings[:top_n], 1):
-            print(f"{i:2d}. {domain}")
-    
-    print()
 
 
 def get_top_stems_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
@@ -270,123 +315,6 @@ def get_top_stems_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: i
         return c.most_common(top_n)
     except Exception:
         return []
-
-
-def print_top_senders(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
-    """Print the top N most active senders."""
-    print("=" * 70)
-    print(f"TOP {top_n} MOST ACTIVE SENDERS")
-    print("=" * 70)
-    
-    sender_strings = metadata.get("node_maps", {}).get("sender", {}).get("index_to_string", [])
-    
-    if not sender_strings:
-        print("\nNo senders found in the graph.")
-        print()
-        return
-    
-    if graph_path:
-        try:
-            import torch
-            graph = torch.load(graph_path, weights_only=False)
-            
-            sender_counts = Counter()
-            
-            if ("email", "has_sender", "sender") in graph.edge_types:
-                edge_index = graph["email", "has_sender", "sender"].edge_index
-                sender_indices = edge_index[1].tolist()
-                
-                for sender_idx in sender_indices:
-                    if 0 <= sender_idx < len(sender_strings):
-                        sender_counts[sender_strings[sender_idx]] += 1
-            
-            top_senders = sender_counts.most_common(top_n)
-            
-            for i, (sender, count) in enumerate(top_senders, 1):
-                print(f"{i:2d}. {sender:60s} ({count:4d} emails)")
-        except Exception as e:
-            print(f"\nCould not load graph for sender counting: {e}")
-            for i, sender in enumerate(sender_strings[:top_n], 1):
-                print(f"{i:2d}. {sender}")
-    else:
-        for i, sender in enumerate(sender_strings[:top_n], 1):
-            print(f"{i:2d}. {sender}")
-    
-    print()
-
-
-def print_top_receivers(metadata: Dict[str, Any], graph_path: Optional[str] = None, top_n: int = 5) -> None:
-    print("=" * 70)
-    print(f"TOP {top_n} MOST ACTIVE RECEIVERS")
-    print("=" * 70)
-
-    receiver_strings = metadata.get("node_maps", {}).get("receiver", {}).get("index_to_string", [])
-    if not receiver_strings:
-        print("\nNo receivers found in the graph.")
-        print()
-        return
-
-    pairs: List[Tuple[str, int]] = []
-    if graph_path:
-        pairs = get_top_receivers_from_graph(graph_path, metadata, top_n)
-    else:
-        pairs = [(r, 0) for r in receiver_strings[:top_n]]
-
-    if not pairs:
-        print("\nNo receiver edges found.")
-        print()
-        return
-
-    for i, (receiver, count) in enumerate(pairs, 1):
-        if count > 0:
-            print(f"{i:2d}. {receiver:60s} ({count:4d} emails)")
-        else:
-            print(f"{i:2d}. {receiver}")
-    print()
-
-
-def print_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str] = None) -> None:
-    """Print email distribution across weeks."""
-    print("=" * 70)
-    print("EMAIL DISTRIBUTION BY WEEK")
-    print("=" * 70)
-    
-    week_strings = metadata.get("node_maps", {}).get("week", {}).get("index_to_string", [])
-    
-    if not week_strings:
-        print("\nNo week data found in the graph.")
-        print()
-        return
-    
-    if graph_path:
-        try:
-            import torch
-            graph = torch.load(graph_path, weights_only=False)
-            
-            week_counts = Counter()
-            
-            if ("email", "in_week", "week") in graph.edge_types:
-                edge_index = graph["email", "in_week", "week"].edge_index
-                week_indices = edge_index[1].tolist()
-                
-                for week_idx in week_indices:
-                    if 0 <= week_idx < len(week_strings):
-                        week_counts[week_strings[week_idx]] += 1
-            
-            # Sort by week string (chronological)
-            sorted_weeks = sorted(week_counts.items())
-            
-            print()
-            for week, count in sorted_weeks:
-                bar = "█" * min(50, count // 10)
-                print(f"{week:12s}: {count:5d} emails {bar}")
-        except Exception as e:
-            print(f"\nCould not load graph for week distribution: {e}")
-            print(f"Total weeks: {len(week_strings)}")
-    else:
-        print(f"\nTotal weeks: {len(week_strings)}")
-    
-    print()
 
 
 def _md_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str]) -> str:
@@ -500,67 +428,112 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     sections.append(_md_week_distribution(metadata, graph_path))
 
     # Connected components
-    # We'll reuse the existing print function logic by recomputing here as MD
     comp_md_lines = ["## Connected Components", ""]
     if graph_path:
         try:
             import torch
             graph = torch.load(graph_path, weights_only=False)
+
+            # Infer node counts from edges and features
             node_types = list(graph.node_types)
-            offsets = {}
-            off = 0
-            for nt in node_types:
-                num = graph[nt].num_nodes if hasattr(graph[nt], "num_nodes") else (graph[nt].x.size(0) if "x" in graph[nt] else 0)
-                offsets[nt] = off
-                off += int(num)
-            total = off
-            adj = [[] for _ in range(total)]
-            for src_t, rel, dst_t in graph.edge_types:
-                edge_index = graph[src_t, rel, dst_t].edge_index
+            inferred_counts: Dict[str, int] = {nt: 0 for nt in node_types}
+            for (src_t, rel, dst_t) in getattr(graph, "edge_types", []):
+                store = graph[src_t, rel, dst_t]
+                edge_index = getattr(store, "edge_index", None)
                 if edge_index is None:
                     continue
-                src_idx = edge_index[0].tolist()
-                dst_idx = edge_index[1].tolist()
-                bs = offsets[src_t]
-                bd = offsets[dst_t]
-                for s_i, d_i in zip(src_idx, dst_idx):
-                    s_g = bs + int(s_i)
-                    d_g = bd + int(d_i)
-                    adj[s_g].append(d_g)
-                    adj[d_g].append(s_g)
-            visited = [False]*total
-            sizes: List[int] = []
-            for nid in range(total):
-                if visited[nid]:
+                if edge_index.numel() == 0:
                     continue
-                if not adj[nid]:
-                    visited[nid] = True
-                    sizes.append(1)
-                    continue
-                dq = deque([nid])
-                visited[nid] = True
-                size = 0
-                while dq:
-                    v = dq.popleft()
-                    size += 1
-                    for nb in adj[v]:
-                        if not visited[nb]:
-                            visited[nb] = True
-                            dq.append(nb)
-                sizes.append(size)
-            sizes.sort(reverse=True)
-            top = sizes[:5]
-            if not top:
-                comp_md_lines.append("No components found.")
+                src_max = int(edge_index[0].max().item()) if edge_index[0].numel() > 0 else -1
+                dst_max = int(edge_index[1].max().item()) if edge_index[1].numel() > 0 else -1
+                if src_max >= 0:
+                    inferred_counts[src_t] = max(inferred_counts[src_t], src_max + 1)
+                if dst_max >= 0:
+                    inferred_counts[dst_t] = max(inferred_counts[dst_t], dst_max + 1)
+            # Also consider feature matrices if present
+            for nt in node_types:
+                try:
+                    if "x" in graph[nt]:
+                        inferred_counts[nt] = max(inferred_counts[nt], int(graph[nt].x.size(0)))
+                except Exception:
+                    pass
+
+            offsets: Dict[str, int] = {}
+            off = 0
+            for nt in node_types:
+                offsets[nt] = off
+                off += int(inferred_counts.get(nt, 0))
+            total = off
+
+            if total == 0:
+                comp_md_lines.append("No nodes present to compute components.")
             else:
-                for i, sz in enumerate(top, 1):
-                    comp_md_lines.append(f"- {i}. {sz:,d} nodes")
+                adj: List[List[int]] = [[] for _ in range(total)]
+                for src_t, rel, dst_t in getattr(graph, "edge_types", []):
+                    store = graph[src_t, rel, dst_t]
+                    edge_index = getattr(store, "edge_index", None)
+                    if edge_index is None or edge_index.numel() == 0:
+                        continue
+                    bs = offsets[src_t]
+                    bd = offsets[dst_t]
+                    src_idx = edge_index[0].tolist()
+                    dst_idx = edge_index[1].tolist()
+                    for s_i, d_i in zip(src_idx, dst_idx):
+                        s_g = bs + int(s_i)
+                        d_g = bd + int(d_i)
+                        if 0 <= s_g < total and 0 <= d_g < total:
+                            adj[s_g].append(d_g)
+                            adj[d_g].append(s_g)
+
+                visited = [False] * total
+                sizes: List[int] = []
+                for nid in range(total):
+                    if visited[nid]:
+                        continue
+                    if not adj[nid]:
+                        visited[nid] = True
+                        sizes.append(1)
+                        continue
+                    dq = deque([nid])
+                    visited[nid] = True
+                    size = 0
+                    while dq:
+                        v = dq.popleft()
+                        size += 1
+                        for nb in adj[v]:
+                            if not visited[nb]:
+                                visited[nb] = True
+                                dq.append(nb)
+                    sizes.append(size)
+                sizes.sort(reverse=True)
+                top = sizes[:5]
+                if not top:
+                    comp_md_lines.append("No components found.")
+                else:
+                    for i, sz in enumerate(top, 1):
+                        comp_md_lines.append(f"- {i}. {sz:,d} nodes")
         except Exception as e:
             comp_md_lines.append(f"Could not compute components: {e}")
     else:
         comp_md_lines.append("Graph path not provided.")
     comp_md_lines.append("")
     sections.append("\n".join(comp_md_lines))
+
+    # Max-degree node in largest component
+    maxdeg_md = ["## Max-Degree Node in Largest Component", ""]
+    info = get_max_degree_node_in_largest_component(graph_path, metadata) if graph_path else None
+    if info is None:
+        maxdeg_md.append("No data available (graph missing or empty).")
+    else:
+        maxdeg_md.append(f"- Node type: {info['node_type']}")
+        maxdeg_md.append(f"- Local index: {info['local_index']}")
+        maxdeg_md.append(f"- Global index: {info['global_index']}")
+        maxdeg_md.append(f"- Degree: {info['degree']}")
+        maxdeg_md.append(f"- Component size: {info['component_size']}")
+        if info.get("label"):
+            maxdeg_md.append(f"- Label: {info['label']}")
+    maxdeg_md.append("")
+    sections.append("\n".join(maxdeg_md))
 
     # Write report
     out_dir = os.path.join("core", "utils", "results")
@@ -571,103 +544,6 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
         f.write("\n\n".join(sections))
 
     print(f"\nSaved analysis report: {out_path}\n")
-
-
-def print_connected_components(metadata: Dict[str, Any], graph_path: Optional[str], top_n: int = 5) -> None:
-    """Load the HeteroData graph and compute connected components across all node types.
-
-    The HeteroData stores edge_index per edge type; we build an undirected adjacency across
-    node-type/index pairs and perform BFS to find connected components. We then print the
-    sizes of the top N largest components.
-    """
-    print("=" * 70)
-    print(f"TOP {top_n} LARGEST CONNECTED COMPONENTS")
-    print("=" * 70)
-
-    if not graph_path:
-        print("\nNo graph file provided; cannot compute connected components.\n")
-        return
-
-    try:
-        import torch
-
-        graph = torch.load(graph_path, weights_only=False)
-
-        # Build mapping from (node_type, local_idx) -> global id
-        node_types = list(graph.node_types)
-        node_type_offsets = {}
-        offset = 0
-        for nt in node_types:
-            num = graph[nt].num_nodes if hasattr(graph[nt], "num_nodes") else (graph[nt].x.size(0) if "x" in graph[nt] else 0)
-            node_type_offsets[nt] = offset
-            offset += int(num)
-
-        total_nodes = offset
-
-        # Build adjacency list as list of lists
-        adj = [[] for _ in range(total_nodes)]
-
-        # Iterate over all edge types and add undirected edges
-        for src_type, rel, dst_type in graph.edge_types:
-            ekey = (src_type, rel, dst_type)
-            if ekey not in graph.edge_types:
-                continue
-            edge_index = graph[src_type, rel, dst_type].edge_index
-            if edge_index is None:
-                continue
-            src_indices = edge_index[0].tolist()
-            dst_indices = edge_index[1].tolist()
-            base_src = node_type_offsets[src_type]
-            base_dst = node_type_offsets[dst_type]
-
-            for s_i, d_i in zip(src_indices, dst_indices):
-                s_global = base_src + int(s_i)
-                d_global = base_dst + int(d_i)
-                # undirected
-                adj[s_global].append(d_global)
-                adj[d_global].append(s_global)
-
-        # BFS to compute components
-        visited = [False] * total_nodes
-        comps = []
-        from collections import deque
-
-        for nid in range(total_nodes):
-            if visited[nid]:
-                continue
-            if not adj[nid]:
-                # isolated node
-                visited[nid] = True
-                comps.append(1)
-                continue
-
-            q = deque([nid])
-            visited[nid] = True
-            size = 0
-            while q:
-                v = q.popleft()
-                size += 1
-                for nb in adj[v]:
-                    if not visited[nb]:
-                        visited[nb] = True
-                        q.append(nb)
-
-            comps.append(size)
-
-        comps.sort(reverse=True)
-        top = comps[:top_n]
-
-        if not top:
-            print("\nNo components found in graph.\n")
-            return
-
-        for i, sz in enumerate(top, 1):
-            print(f"{i:2d}. {sz:,d} nodes")
-
-        print()
-
-    except Exception as e:
-        print(f"Could not compute connected components: {e}\n")
 
 
 if __name__ == "__main__":
