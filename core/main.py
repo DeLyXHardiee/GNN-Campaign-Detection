@@ -11,7 +11,7 @@ def run_trec_misp_converter(csv_path="data/csv/TREC-07.csv", misp_json_path="dat
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = True,
+def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = False,
                        mg_uri: str = "bolt://localhost:7687",
                        mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
