@@ -8,11 +8,11 @@ def run_preprocessing():
     # Placeholder for any preprocessing steps if needed
     pass
 
-def run_trec_misp_converter(csv_path="data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
+def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = True,
+def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = False,
                        mg_uri: str = "bolt://localhost:7687",
                        mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # run_preprocessing()
     run_trec_misp_converter()
-    run_graph_creation()
+run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
