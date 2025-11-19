@@ -8,7 +8,7 @@ def run_preprocessing():
     # Placeholder for any preprocessing steps if needed
     pass
 
-def run_trec_misp_converter(csv_path="data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
+def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 

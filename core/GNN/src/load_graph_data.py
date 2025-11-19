@@ -11,7 +11,7 @@ def load_imdb(root: str = "data/IMDB"):
     dataset = IMDB(root=root)
     return dataset[0]
 
-def load_hetero_pt(path: str = "data/email/trec07_misp_hetero.pt"):
+def load_hetero_pt(path: str = "../../results/trec07_misp_hetero.pt"):
     """
     Load a saved HeteroData object from a .pt file.
     """
