@@ -19,7 +19,7 @@ Capabilities:
 - URLs are parsed into domain and stem components for better deduplication.
 - Email addresses are normalized (lowercase, angle brackets removed) and connected to their 
     domain nodes (email_domain) to increase graph connectivity.
-- Email features include body length, URL count, time normalization, subject length/z, and optional TF-IDF.
+ - Email features include normalized scalars (ts_minmax, len_body_z, n_urls_z, len_subject_z) and optional TF-IDF.
 - Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
 
@@ -133,15 +133,14 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     torch_lib = _ensure_torch()
     N = schema.nodes
 
-    # Email: append only raw ts (others already included in IR email.x)
+    # Email: use IR-provided features as-is (normalized only)
     if "email" not in ir.nodes:
         # No emails; create empty type
         data[N["email"].pyg].num_nodes = 0
         return
     email_x = ir.nodes["email"].x
     if email_x:
-        merged_email_x = _merge_features_with_attrs(email_x, ir.email_attrs or {}, ["ts"])  # avoid duplicates
-        data[N["email"].pyg].x = torch_lib.tensor(merged_email_x, dtype=torch_lib.float)
+        data[N["email"].pyg].x = torch_lib.tensor(email_x, dtype=torch_lib.float)
     else:
         data[N["email"].pyg].num_nodes = 0
 
@@ -158,14 +157,15 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         else:
             data[N[node_key].pyg].num_nodes = 0
 
-    set_simple("sender", ["docfreq"])
-    set_simple("receiver", ["docfreq"])
+    # Use normalized docfreqs for sender/receiver
+    set_simple("sender", ["docfreq_z"])
+    set_simple("receiver", ["docfreq_z"])
     set_simple("week")
-    # url has docfreq; domain/stem/email_domain have lexical vectors + docfreqs
+    # url has raw docfreq; domain/stem have lexical vectors + docfreqs; email_domain uses normalized docfreqs
     set_simple("url", ["docfreq"])
     set_simple("domain", ["x_lex", "docfreq"])
     set_simple("stem", ["x_lex", "docfreq"])
-    set_simple("email_domain", ["x_lex", "docfreq_sender", "docfreq_receiver"])
+    set_simple("email_domain", ["x_lex", "docfreq_sender_z", "docfreq_receiver_z"])
 
 
 def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
@@ -267,8 +267,8 @@ def build_hetero_graph_from_misp(
     Email addresses are normalized (lowercase, angle brackets removed) and connected to 
     their domain nodes to increase connectivity.
     
-    Email features include body length, URL count, ts minmax, len_body_z,
-    len_subject, len_subject_z, and optional TF-IDF of subject/body.
+    Email features include normalized scalars: ts_minmax, len_body_z,
+    n_urls_z, len_subject_z, and optional TF-IDF of subject/body.
 
     Returns (graph, metadata) where metadata contains mappings for node indices.
     """

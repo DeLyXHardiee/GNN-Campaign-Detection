@@ -351,6 +351,15 @@ def _compute_node_attributes_and_features(
     email_domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in email_domain_meta]
     email_domain_docfreq_sender: List[int] = [len(docfreq_maps["email_domain_sender_sets"].get(d, set())) for d in email_domain_meta]
     email_domain_docfreq_receiver: List[int] = [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in email_domain_meta]
+    # Normalize email-domain docfreqs (sender/receiver perspectives)
+    email_domain_docfreq_sender_z, _, _ = zscore_list([float(v) for v in email_domain_docfreq_sender])
+    email_domain_docfreq_receiver_z, _, _ = zscore_list([float(v) for v in email_domain_docfreq_receiver])
+
+    # Sender/Receiver docfreqs and normalized variants
+    sender_docfreq: List[int] = [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]
+    receiver_docfreq: List[int] = [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]
+    sender_docfreq_z, _, _ = zscore_list([float(v) for v in sender_docfreq])
+    receiver_docfreq_z, _, _ = zscore_list([float(v) for v in receiver_docfreq])
 
     # Subject normalization
     subject_lens: List[int] = [int(v) for v in email_attrs_raw.get("len_subject", [])]
@@ -360,6 +369,8 @@ def _compute_node_attributes_and_features(
     # Email normalization
     len_body_z, _, _ = zscore_list([float(v) for v in email_attrs_raw["len_body"]])
     ts_minmax, _, _ = minmax_list([float(v) for v in email_attrs_raw["ts"]])
+    # Normalize URL counts too to avoid mixing raw + normalized features
+    n_urls_z, _, _ = zscore_list([float(v) for v in email_attrs_raw["n_urls"]])
 
     # Text vectorization (TF-IDF)
     TEXT_SUBJ_MAX_FEATS = 128
@@ -419,8 +430,9 @@ def _compute_node_attributes_and_features(
         "email_domain": email_domain_meta,
     }
     node_attrs: Dict[str, Dict[str, List[Any]]] = {
-        "sender": {"docfreq": [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]},
-        "receiver": {"docfreq": [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]},
+        # Keep raw counts in attrs for metadata/debugging, but consumers should use *_z keys
+        "sender": {"docfreq": sender_docfreq, "docfreq_z": [float(x) for x in sender_docfreq_z]},
+        "receiver": {"docfreq": receiver_docfreq, "docfreq_z": [float(x) for x in receiver_docfreq_z]},
         "url": {"docfreq": [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]},
         "domain": {"x_lex": domain_x_lex, "docfreq": domain_docfreq},
         "stem": {"x_lex": stem_x_lex, "docfreq": stem_docfreq},
@@ -428,13 +440,15 @@ def _compute_node_attributes_and_features(
             "x_lex": email_domain_x_lex,
             "docfreq_sender": email_domain_docfreq_sender,
             "docfreq_receiver": email_domain_docfreq_receiver,
+            "docfreq_sender_z": [float(x) for x in email_domain_docfreq_sender_z],
+            "docfreq_receiver_z": [float(x) for x in email_domain_docfreq_receiver_z],
         },
     }
     email_norm: Dict[str, Any] = {
         "len_body_z": len_body_z,
         "ts_minmax": ts_minmax,
-        # Move subject features onto email
-        "len_subject": email_attrs_raw.get("len_subject", []),
+        "n_urls_z": n_urls_z,
+        # Move subject features onto email (normalized only)
         "len_subject_z": [float(z) for z in subject_len_z],
     }
 
@@ -442,34 +456,30 @@ def _compute_node_attributes_and_features(
 
 
 def _build_email_feature_matrix(
-    email_len_body: List[int],
-    email_n_urls: List[int],
     ts_minmax: List[float],
     len_body_z: List[float],
-    len_subject: List[int],
+    n_urls_z: List[float],
     len_subject_z: List[float],
     subj_vecs: List[List[float]],
     body_vecs: List[List[float]],
-    subj_dim: int,
-    body_dim: int,
 ) -> List[List[float]]:
-    """Construct the final email feature matrix in the agreed order."""
-    n_emails = len(email_len_body)
+    """Construct the email feature matrix using normalized scalars + TF-IDF vectors.
+
+    Order: [ts_minmax, len_body_z, n_urls_z, len_subject_z, TFIDF(subject), TFIDF(body)]
+    """
+    n_emails = max(len(ts_minmax), len(len_body_z), len(n_urls_z), len(len_subject_z), len(subj_vecs) if subj_vecs else 0, len(body_vecs) if body_vecs else 0)
     email_x: List[List[float]] = []
     for i in range(n_emails):
         row: List[float] = [
-            float(email_len_body[i]) if i < len(email_len_body) else 0.0,
-            float(email_n_urls[i]) if i < len(email_n_urls) else 0.0,
             float(ts_minmax[i]) if i < len(ts_minmax) else 0.0,
             float(len_body_z[i]) if i < len(len_body_z) else 0.0,
+            float(n_urls_z[i]) if i < len(n_urls_z) else 0.0,
+            float(len_subject_z[i]) if i < len(len_subject_z) else 0.0,
         ]
-        # append subject scalar features
-        row.append(float(len_subject[i]) if i < len(len_subject) else 0.0)
-        row.append(float(len_subject_z[i]) if i < len(len_subject_z) else 0.0)
         if subj_vecs:
-            row.extend(subj_vecs[i] if i < len(subj_vecs) else [0.0] * subj_dim)
+            row.extend(subj_vecs[i] if i < len(subj_vecs) else [])
         if body_vecs:
-            row.extend(body_vecs[i] if i < len(body_vecs) else [0.0] * body_dim)
+            row.extend(body_vecs[i] if i < len(body_vecs) else [])
         email_x.append(row)
     return email_x
 
@@ -547,10 +557,9 @@ def _assemble_email_attrs(
         "len_body": email_attrs_raw["len_body"],
         "len_subject": email_attrs_raw.get("len_subject", []),
         "x_text": x_text if x_text and (len(x_text[0]) > 0 if x_text else False) else [],
-        "x_text_subject_dim": [int(subj_dim)] * n_emails,
-        "x_text_body_dim": [int(body_dim)] * n_emails,
         "len_body_z": email_norm.get("len_body_z", []),
         "ts_minmax": email_norm.get("ts_minmax", []),
+        "n_urls_z": email_norm.get("n_urls_z", []),
         "len_subject_z": email_norm.get("len_subject_z", []),
     }
 
@@ -620,16 +629,12 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     )
 
     email_x = _build_email_feature_matrix(
-        email_attrs_raw["len_body"],
-        email_attrs_raw["n_urls"],
         email_norm.get("ts_minmax", []),
         email_norm.get("len_body_z", []),
-        email_attrs_raw.get("len_subject", []),
+        email_norm.get("n_urls_z", []),
         email_norm.get("len_subject_z", []),
         subj_vecs,
         body_vecs,
-        subj_dim,
-        body_dim,
     )
 
     nodes = _assemble_nodes(
