@@ -2,6 +2,7 @@ from email.utils import parsedate_to_datetime
 import pandas as pd
 import os
 import sys
+import csv
 from collections import Counter
 import json
 import re
@@ -32,18 +33,69 @@ def extract_time_features(date_str):
     except:
         return {}
 
-def extract_subject_features(subject):
+def extract_subject_features(subject, idf_dict):
     if not isinstance(subject, str):
         subject = ""
 
     num_chars = len(subject)
     num_whitespace = sum(c.isspace() for c in subject)
 
-    return {
+    dict = {
         "subject_length": num_chars,
         "subject_whitespace_count": num_whitespace,
-        "subject_term_frequency": get_term_frequency(subject)
     }
+
+    dict.update(get_term_frequency_information(subject, idf_dict))
+
+    return dict
+
+def get_term_frequency_information(subject, idf_dict=None):
+    """
+    Returns a dictionary with:
+      - average idf of subject terms
+      - highest idf among subject terms
+      - number of terms in the subject
+    If idf_dict is not provided, uses term frequency (count) as a fallback.
+    """
+    if not isinstance(subject, str):
+        subject = ""
+    terms = subject.lower().split()
+    n_terms = len(terms)
+    if n_terms == 0:
+        return {
+            "subject_avg_idf": 0.0,
+            "subject_max_idf": 0.0,
+            "subject_n_terms": 0
+        }
+    # If no idf_dict provided, just use term frequency as fallback
+    if idf_dict is None:
+        idfs = [1.0 for _ in terms]
+    else:
+        idfs = [idf_dict.get(term, 0.0) for term in terms]
+    avg_idf = sum(idfs) / n_terms
+    max_idf = max(idfs)
+    return {
+        "subject_avg_idf": avg_idf,
+        "subject_max_idf": max_idf,
+        "subject_n_terms": n_terms
+    }
+
+def load_idf_dict(csv_path):
+    """
+    Load IDF values from a CSV file into a dictionary.
+    Assumes columns: term,idf
+    """
+    idf_dict = {}
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            term = row['term']
+            try:
+                idf = round(float(row['idf']), 3)
+            except Exception:
+                idf = 0.0
+            idf_dict[term] = idf
+    return idf_dict
 
 def get_term_frequency(subject):
     
@@ -71,7 +123,7 @@ def save_term_frequencies(subjects, output_path):
         # Only store if we found words
         if word_freq:
             email_frequencies.append({
-                "email_id": idx,
+                "email_id": idx+1,
                 "subject": subject,  # store original subject for reference
                 "frequencies": word_freq
             })
@@ -101,6 +153,17 @@ def get_idf(subjects, output_path, max_features=2000):
     idf_df.to_csv(output_path, index=False)
     print(f"Saved IDF values to: {output_path}")
     return vectorizer
+
+
+def get_idf_path(csv_path):
+    """
+    Given a csv_path, returns the path for the corresponding subject IDF CSV.
+    Example: '../../data/csv/TREC-07-only-phishing.csv' ->
+             '../../data/csv/TREC-07-only-phishing_subject_idf.csv'
+    """
+    dir_name = os.path.dirname(csv_path)
+    base, ext = os.path.splitext(os.path.basename(csv_path))
+    return os.path.join(dir_name, f"{base}_subject_idf{ext}")
 
 def extract_body_based_features(body):
     # Extract URLs from the email body (using utils/url_extractor.py)
@@ -385,7 +448,7 @@ def compute_and_save_body_bow(bodies, output_path):
         
         if word_freq:
             email_bows.append({
-                "email_id": idx,
+                "email_id": idx+1,
                 # omit storing full body to keep file smaller; add if you need it
                 "frequencies": word_freq
             })
@@ -432,6 +495,20 @@ def get_FS7(csv_path):
     #print(features_list[0])
     return filtered_features
 
+def get_test_set(csv_path):
+    """
+    Extract features: origin, receiver, url, and subject (without term frequency).
+    Excludes subject term frequencies and only includes sender_name from origin.
+    """
+    features_list = extract_features(csv_path, ["subject", "origin", "receiver", "urls"])
+    
+    filtered_features = []
+    for feat in features_list:
+        filtered_feat = {k: v for k, v in feat.items()
+                         if k not in ["subject_term_frequency", "bow",]}
+        filtered_features.append(filtered_feat)
+    return filtered_features
+
 def extract_features(csv_path, features):
     """
     Extract baseline features for specified types.
@@ -447,14 +524,14 @@ def extract_features(csv_path, features):
     features_list = []
     
     for idx, row in df.iterrows():
-        feat = {'email_index': idx}
+        feat = {'email_index': idx+1}
         
         # Extract features for each requested type
         for feature_type in features:
             if feature_type == "time":
                 feat.update(extract_time_features(row.get("date")))
             elif feature_type == "subject":
-                feat.update(extract_subject_features(row.get("subject")))
+                feat.update(extract_subject_features(row.get("subject"), load_idf_dict(get_idf_path(csv_path))))
             elif feature_type == "body":
                 feat.update(extract_body_based_features(row.get("body")))
             elif feature_type == "attachments":
@@ -556,12 +633,12 @@ if __name__ == "__main__":
     csv_path = "../../data/csv/TREC-07-only-phishing.csv"
     
     # Extract FS features
-    fs_features = get_FS7(csv_path)
+    fs_features = get_test_set(csv_path)
     
     # Save to JSON file
     input_dir = os.path.dirname(csv_path)
     input_base = os.path.splitext(os.path.basename(csv_path))[0]
-    output_path = os.path.join(input_dir, f"{input_base}_FS7.json")
+    output_path = os.path.join(input_dir, f"{input_base}_FSTest.json")
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(fs_features, f, indent=2, ensure_ascii=False)
