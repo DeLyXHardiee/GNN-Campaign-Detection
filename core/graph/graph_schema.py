@@ -111,14 +111,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="index",
         ),
-        # Content/URLs
-        "subject": NodeMapping(
-            canonical="subject",
-            pyg="subject",
-            memgraph="Subject",
-            memgraph_id_key="key",
-            feature_strategy="str_len",
-        ),
+        # Content/URLs (subject removed; now an email feature)
         "url": NodeMapping(
             canonical="url",
             pyg="url",
@@ -182,17 +175,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_label="Email",
             memgraph_left_key="eid",
             memgraph_right_label="Week",
-            memgraph_right_key="key",
-        ),
-        "has_subject": EdgeMapping(
-            canonical="has_subject",
-            src="email",
-            rel_pyg="has_subject",
-            dst="subject",
-            memgraph_type="HAS_SUBJECT",
-            memgraph_left_label="Email",
-            memgraph_left_key="eid",
-            memgraph_right_label="Subject",
             memgraph_right_key="key",
         ),
         "has_url": EdgeMapping(
