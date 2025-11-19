@@ -161,10 +161,10 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     set_simple("sender", ["docfreq_z"])
     set_simple("receiver", ["docfreq_z"])
     set_simple("week")
-    # url has raw docfreq; domain/stem have lexical vectors + docfreqs; email_domain uses normalized docfreqs
-    set_simple("url", ["docfreq"])
-    set_simple("domain", ["x_lex", "docfreq"])
-    set_simple("stem", ["x_lex", "docfreq"])
+    # url/domain/stem/email_domain append normalized docfreq/lexical stats
+    set_simple("url", ["docfreq_z"])
+    set_simple("domain", ["x_lex", "docfreq_z"])
+    set_simple("stem", ["x_lex", "docfreq_z"])
     set_simple("email_domain", ["x_lex", "docfreq_sender_z", "docfreq_receiver_z"])
 
 
