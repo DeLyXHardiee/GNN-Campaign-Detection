@@ -24,7 +24,7 @@ from .common import (
     compute_lexical_features,
     is_freemail_domain,
 )
-from .normalizer import zscore_list, minmax_list
+from .normalizer import zscore_list, minmax_list, normalize_feature_matrix
 
 # ----------------------------------------------------------------------------
 # Graph IR data structures
@@ -318,11 +318,25 @@ def _compute_node_attributes_and_features(
     email_domain_meta = _ordered_keys(email_domain_to_idx)
 
     # Base numeric x for simple nodes
-    sender_x = [[float(len(s))] for s in sender_meta]
-    receiver_x = [[float(len(s))] for s in receiver_meta]
-    week_x = [[float(idx)] for idx in range(len(week_meta))]
-    stem_x = [[float(len(s))] for s in stem_meta]
-    email_domain_x = [[float(len(d))] for d in email_domain_meta]
+    sender_len = [float(len(s)) for s in sender_meta]
+    sender_len_z, _, _ = zscore_list(sender_len)
+    sender_x = [[sender_len_z[i]] for i in range(len(sender_len_z))]
+
+    receiver_len = [float(len(r)) for r in receiver_meta]
+    receiver_len_z, _, _ = zscore_list(receiver_len)
+    receiver_x = [[receiver_len_z[i]] for i in range(len(receiver_len_z))]
+
+    week_indices = [float(idx) for idx in range(len(week_meta))]
+    week_idx_z, _, _ = zscore_list(week_indices)
+    week_x = [[week_idx_z[i]] for i in range(len(week_idx_z))]
+
+    stem_len = [float(len(s)) for s in stem_meta]
+    stem_len_z, _, _ = zscore_list(stem_len)
+    stem_x = [[stem_len_z[i]] for i in range(len(stem_len_z))]
+
+    email_domain_len = [float(len(d)) for d in email_domain_meta]
+    email_domain_len_z, _, _ = zscore_list(email_domain_len)
+    email_domain_x = [[email_domain_len_z[i]] for i in range(len(email_domain_len_z))]
 
     # URL x: path length zscore
     url_path_lens: List[float] = []
@@ -335,20 +349,27 @@ def _compute_node_attributes_and_features(
             url_path_lens.append(float(len(comp.get("stem", "/"))))
     url_path_len_z, _, _ = zscore_list(url_path_lens)
     url_x = [[float(url_path_len_z[i])] for i in range(len(url_path_len_z))]
+    url_docfreq: List[int] = [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]
+    url_docfreq_z, _, _ = zscore_list([float(v) for v in url_docfreq])
 
     # Domain attrs
     domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
+    domain_x_lex_norm = normalize_feature_matrix(domain_x_lex)
     domain_entropies: List[float] = [v[7] if len(v) > 7 else 0.0 for v in domain_x_lex]
     domain_entropy_z, _, _ = zscore_list(domain_entropies)
     domain_x = [[float(domain_entropy_z[i])] for i in range(len(domain_entropy_z))]
     domain_docfreq: List[int] = [len(docfreq_maps["domain_email_sets"].get(d, set())) for d in domain_meta]
+    domain_docfreq_z, _, _ = zscore_list([float(v) for v in domain_docfreq])
 
     # Stem attrs
     stem_x_lex: List[List[float]] = [compute_lexical_features(s) for s in stem_meta]
+    stem_x_lex_norm = normalize_feature_matrix(stem_x_lex)
     stem_docfreq: List[int] = [len(docfreq_maps["stem_email_sets"].get(s, set())) for s in stem_meta]
+    stem_docfreq_z, _, _ = zscore_list([float(v) for v in stem_docfreq])
 
     # Email domain attrs
     email_domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in email_domain_meta]
+    email_domain_x_lex_norm = normalize_feature_matrix(email_domain_x_lex)
     email_domain_docfreq_sender: List[int] = [len(docfreq_maps["email_domain_sender_sets"].get(d, set())) for d in email_domain_meta]
     email_domain_docfreq_receiver: List[int] = [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in email_domain_meta]
     # Normalize email-domain docfreqs (sender/receiver perspectives)
@@ -430,14 +451,28 @@ def _compute_node_attributes_and_features(
         "email_domain": email_domain_meta,
     }
     node_attrs: Dict[str, Dict[str, List[Any]]] = {
-        # Keep raw counts in attrs for metadata/debugging, but consumers should use *_z keys
+        # Keep raw counts in attrs for metadata/debugging; features consume *_z keys
         "sender": {"docfreq": sender_docfreq, "docfreq_z": [float(x) for x in sender_docfreq_z]},
         "receiver": {"docfreq": receiver_docfreq, "docfreq_z": [float(x) for x in receiver_docfreq_z]},
-        "url": {"docfreq": [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]},
-        "domain": {"x_lex": domain_x_lex, "docfreq": domain_docfreq},
-        "stem": {"x_lex": stem_x_lex, "docfreq": stem_docfreq},
+        "url": {
+            "docfreq": url_docfreq,
+            "docfreq_z": [float(x) for x in url_docfreq_z],
+        },
+        "domain": {
+            "x_lex": domain_x_lex_norm,
+            "x_lex_raw": domain_x_lex,
+            "docfreq": domain_docfreq,
+            "docfreq_z": [float(x) for x in domain_docfreq_z],
+        },
+        "stem": {
+            "x_lex": stem_x_lex_norm,
+            "x_lex_raw": stem_x_lex,
+            "docfreq": stem_docfreq,
+            "docfreq_z": [float(x) for x in stem_docfreq_z],
+        },
         "email_domain": {
-            "x_lex": email_domain_x_lex,
+            "x_lex": email_domain_x_lex_norm,
+            "x_lex_raw": email_domain_x_lex,
             "docfreq_sender": email_domain_docfreq_sender,
             "docfreq_receiver": email_domain_docfreq_receiver,
             "docfreq_sender_z": [float(x) for x in email_domain_docfreq_sender_z],

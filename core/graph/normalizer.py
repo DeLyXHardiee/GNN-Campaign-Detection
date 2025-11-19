@@ -35,3 +35,26 @@ def minmax_list(values: List[float]) -> Tuple[List[float], float, float]:
     if rng <= 0.0:
         return [0.0 for _ in values], float(vmin), float(vmax)
     return [float((v - vmin) / rng) for v in values], float(vmin), float(vmax)
+
+def normalize_feature_matrix(matrix: List[List[float]]) -> List[List[float]]:
+    """Z-score normalize each column of a 2D feature matrix."""
+    if not matrix:
+        return []
+    width = max((len(row) for row in matrix), default=0)
+    if width == 0:
+        return [[0.0] * 0 for _ in matrix]
+    cols: List[List[float]] = [[0.0] * len(matrix) for _ in range(width)]
+    for row_idx, row in enumerate(matrix):
+        for col_idx in range(width):
+            cols[col_idx][row_idx] = float(row[col_idx]) if col_idx < len(row) else 0.0
+    norm_cols: List[List[float]] = []
+    for col_vals in cols:
+        norm_col, _, _ = zscore_list(col_vals)
+        if not norm_col:
+            norm_cols.append([0.0] * len(matrix))
+        else:
+            norm_cols.append(norm_col)
+    normalized: List[List[float]] = []
+    for row_idx in range(len(matrix)):
+        normalized.append([norm_cols[col_idx][row_idx] for col_idx in range(width)])
+    return normalized
