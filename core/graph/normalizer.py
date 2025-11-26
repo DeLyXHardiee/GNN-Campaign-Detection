@@ -1,60 +1,26 @@
-from typing import List, Tuple
-import math
+import torch
 
-def zscore_list(values: List[float]) -> Tuple[List[float], float, float]:
-    """Compute z-score normalization for a 1D list.
-
-    Returns (normalized_values, mean, std). If std is 0 or list empty, returns zeros.
+def normalize_graph(data):
     """
-    n = len(values)
-    if n == 0:
-        return [], 0.0, 0.0
-    mean = sum(values) / float(n)
-    # population std (can switch to sample if desired)
-    var = 0.0
-    for v in values:
-        dv = v - mean
-        var += dv * dv
-    var /= float(n)
-    std = math.sqrt(var)
-    if std <= 1e-12:
-        return [0.0 for _ in values], mean, 0.0
-    return [float((v - mean) / std) for v in values], mean, std
-
-
-def minmax_list(values: List[float]) -> Tuple[List[float], float, float]:
-    """Compute min-max scaling to [0,1] for a 1D list.
-
-    Returns (normalized_values, vmin, vmax). If vmax==vmin or empty, returns zeros.
+    Standardize features: zero mean, unit variance per feature dim.
+    Expects a PyG HeteroData object.
     """
-    if not values:
-        return [], 0.0, 0.0
-    vmin = min(values)
-    vmax = max(values)
-    rng = float(vmax - vmin)
-    if rng <= 0.0:
-        return [0.0 for _ in values], float(vmin), float(vmax)
-    return [float((v - vmin) / rng) for v in values], float(vmin), float(vmax)
+    for ntype in data.node_types:
+        if 'x' not in data[ntype]:
+            continue
 
-def normalize_feature_matrix(matrix: List[List[float]]) -> List[List[float]]:
-    """Z-score normalize each column of a 2D feature matrix."""
-    if not matrix:
-        return []
-    width = max((len(row) for row in matrix), default=0)
-    if width == 0:
-        return [[0.0] * 0 for _ in matrix]
-    cols: List[List[float]] = [[0.0] * len(matrix) for _ in range(width)]
-    for row_idx, row in enumerate(matrix):
-        for col_idx in range(width):
-            cols[col_idx][row_idx] = float(row[col_idx]) if col_idx < len(row) else 0.0
-    norm_cols: List[List[float]] = []
-    for col_vals in cols:
-        norm_col, _, _ = zscore_list(col_vals)
-        if not norm_col:
-            norm_cols.append([0.0] * len(matrix))
-        else:
-            norm_cols.append(norm_col)
-    normalized: List[List[float]] = []
-    for row_idx in range(len(matrix)):
-        normalized.append([norm_cols[col_idx][row_idx] for col_idx in range(width)])
-    return normalized
+        x = data[ntype].x
+
+        # 1) ensure float32
+        if x.dtype != torch.float32:
+            x = x.float()
+
+        # 2) standardize features: zero mean, unit variance per feature dim
+        mu = x.mean(dim=0)
+        sigma = x.std(dim=0).clamp_min(1e-6)  # avoid division by zero
+
+        data[ntype].x = (x - mu) / sigma
+    
+    return data
+
+
