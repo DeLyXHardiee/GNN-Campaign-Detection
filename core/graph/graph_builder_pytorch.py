@@ -130,7 +130,8 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
 
 
 def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
-    """Populate node feature tensors on a HeteroData object from Graph IR."""
+    """Populate node feature tensors on a HeteroData object from Graph IR.
+       Merges features with attributes."""
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
     N = schema.nodes
