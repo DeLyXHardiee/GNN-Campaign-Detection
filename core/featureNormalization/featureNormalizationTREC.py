@@ -13,6 +13,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.url_extractor import extract_urls_from_text
 
+
+'''
+1) TIME-BASED FEATURES
+This feature category covers the time in which the phishing email was received. Phishing campaigns tend to be sent
+to organisation email addresses in batches within a short
+time frame [1], [16] making time-based features valuable
+for identification. Features are taken from the DATE header
+of the email. They are: date sent [38], time, day, month,
+year, weekday, and a derived binary feature (work day / nonwork day). 
+We added this feature since phishers might target
+working days as it is likely victims read the message before it is deleted [38]
+
+This function is able to extract all of the above features from the DATE header.
+'''
+
 def extract_time_features(date_str):
     try:
         dt = parsedate_to_datetime(date_str)
@@ -32,6 +47,20 @@ def extract_time_features(date_str):
         return data
     except:
         return {}
+
+'''
+This feature category is extracted from the email SUBJECT
+header. It covers number of characters [38], number of white
+spaces, and the vector of Term Frequency - Inverse Document
+Frequency (TF-IDF) values of all words in the subject.
+
+This function extracts all of the features above 
+but collapses the TF-IDF vector into three summary statistics:
+    - average idf of subject terms
+    - highest idf among subject terms  
+    - number of terms in the subject
+
+'''
 
 def extract_subject_features(subject, idf_dict):
     if not isinstance(subject, str):
@@ -165,6 +194,36 @@ def get_idf_path(csv_path):
     base, ext = os.path.splitext(os.path.basename(csv_path))
     return os.path.join(dir_name, f"{base}_subject_idf{ext}")
 
+'''
+This feature category was derived from the plain text part and
+the HTML part of the email object. In order to check the
+web technology used, we computed the types and numbers
+of email elements, presence and number of images, presence
+and number of URLs, and presence of HTML tags, scripts,
+and CSS specifications [45], [46], [47]. We then removed all
+HTML tags and other scripts as well as links to obtain the
+pure body text. The text was converted into a bag of words.
+We used Latent Semantic Analysis to extract the top ten terms
+describing the emails content [38], [45]. We also computed
+the number of lines, number of words, and average word
+length [38]. While prior research focused on whether an email
+contain a greeting line or not [47], from our observations
+we found that several campaigns follow the same greeting
+type. Therefore, we added a feature describing the greeting
+type (style of greeting, such as hi, hello, and dear; checking
+whether greeting is followed by recipient name, username or
+email address).
+
+This function extracts the body based features, however since the TREC data is much simpler
+the amount of features has been reduced.
+There are no HTML tags or attachments in the TREC data. 
+It currently also does not do LSA on the body text.
+Bag of word should probably be reduced to some summary statistics instead of full vector
+or flattened to a single feature somehow, as otherwise the feature vector gets too impactful
+and reduces clustering performance.
+
+'''
+
 def extract_body_based_features(body):
     # Extract URLs from the email body (using utils/url_extractor.py)
     extracted_urls = extract_urls_from_text(body) if body else []
@@ -194,6 +253,42 @@ def extract_body_based_features(body):
         "greeting": greeting_features.get("greeting", ""),
         "bow": bow
     }
+
+def compute_body_bow(body):
+    """Compute and return bag-of-words (term frequencies) for a single email body"""
+    if not isinstance(body, str):
+        body = ""
+    
+    # Use regex word tokenizer to keep common words and punctuation-free tokens
+    words = re.findall(r"\w+", body.lower())
+    word_freq = dict(Counter(words))
+    
+    return word_freq
+
+def compute_and_save_body_bow(bodies, output_path):
+    """Compute and save bag-of-words (term frequencies) for each email body as JSON objects"""
+    # should also include latent semantic analysis at some point #TODO
+    email_bows = []
+    
+    for idx, body in enumerate(bodies):
+        if not isinstance(body, str):
+            body = ""
+        
+        # Use regex word tokenizer to keep common words and punctuation-free tokens
+        words = re.findall(r"\w+", body.lower())
+        word_freq = dict(Counter(words))
+        
+        if word_freq:
+            email_bows.append({
+                "email_id": idx+1,
+                # omit storing full body to keep file smaller; add if you need it
+                "frequencies": word_freq
+            })
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(email_bows, f, indent=2, ensure_ascii=False)
+    
+    print(f"Saved body bag-of-words to: {output_path}")
 
 def extract_greeting_features(body):
     """
@@ -242,8 +337,37 @@ def extract_greeting_features(body):
 
     return {"greeting": f"{greeting_token}, other"}
 
+'''
+This feature category concerns the email attachments.
+We determined whether the email has an attachment, how
+many attachments the email has [38], [46], and attachment
+size and type [38]. This information indicates if the attacker
+distributes the same files within a campaign.
+
+For the TREC dataset this is irrelevant so not implemented
+
+'''
+
 def extract_attachment_features(attachments):
     return
+
+'''
+The origin feature category is mostly about the sender of
+the email. This can be either the attacker themselves or the
+compromised accounts. We extracted name and email address
+from both the FROM header and the RECEIVED header.
+We also checked whether the email from the RECEIVED
+header matches the one in the FROM header in order to
+detect spoofed FROM addresses. This information can indicate the impersonated identity and details on the origin of
+phishing campaign. We extracted the sender IP [38] and relevant domain information such as the domain from both
+headers [38], domain registrar, domain registration date and
+the registrar location [38]. This provides information about
+the attacker origin and whether they used a public service or
+compromised accounts to send the email.
+
+This function extracts only the sender name and email from the FROM header.
+The sender IP, domain information etc. is unavailable in the TREC dataset.
+'''
 
 def extract_origin_based_features(sender):
     """
@@ -275,6 +399,16 @@ def extract_origin_based_features(sender):
     # Fallback: couldn't parse
     return {"sender_name": "", "sender_email": ""}
 
+'''
+Recipient features concern the target users which only
+includes recipient names and recipient counts. Other information that has been shown to be effective at 
+identifying the target characteristics [38] was excluded as most of the 
+information we have about recipients was redacted for anonymity reasons
+
+This function extracts only the recipient name and email from the RECEIVER header.
+No idea what recipient counts means.
+'''
+
 def extract_recipient_based_features(recipient):
     """
     Extract recipient name and email from two possible formats:
@@ -301,6 +435,41 @@ def extract_recipient_based_features(recipient):
     
     # Fallback: couldn't parse
     return {"recipient_name": "", "recipient_email": ""}
+
+'''
+URL-based features are one of the most important features in
+phishing detection [48], [49], [50]. In this work we excluded
+any feature that requires visiting the link, because it takes
+a long time, and for older emails, the links probably were
+taken down or changed. Features in the URL category include
+the domain names, hostnames, domain categories, location
+of domain registrar, subdomain count, and hyphen count.
+We also computed binary features that reflect whether at least
+one URL in the email has an Extended Validation Certificate (EV) that validates 
+the owner of the domain, an extra http
+and Top-Level Domain (TLD), a web-host domain, a @
+symbol, non-ASCII characters, whether it has typos comparing to top 10,000 popular domains, 
+whether it is similar to
+top targeted domains on PhishTank and whether one of the
+subdomains contains a popular domain on PhishTank [51].
+For emails with several URLs, we counted the number of
+URLs with an IP address, the number of different domains,
+number of short URLs, and number of blacklisted links.
+In the case of hyperlinks, we checked whether the visual link
+presented in the email directed to the same URL [46], [47] and
+checked whether there was a link under a text such as click
+here. For the domain information, we collect the registration
+dates of the oldest and the most recent domains, the minimum
+PageRank and popularity, and the maximum PageRank and
+Popularity for the list of URLs.
+
+This function currently extracts only a subset of the above URL features.
+Included are:
+This function currently extracts the following URL features:
+- URL counts: total URLs, unique domains, URLs with IP addresses, short URLs
+- Binary indicators: @symbol presence, non-ASCII characters, extra http/https
+- Aggregate statistics: average subdomain count, average hyphen count per URL
+'''
 
 def extract_url_based_features(urls):
     """
@@ -422,41 +591,7 @@ def extract_url_based_features(urls):
         #"visual_url_mismatch": 0   # Would need hyperlink/display text comparison
     }
 
-def compute_body_bow(body):
-    """Compute and return bag-of-words (term frequencies) for a single email body"""
-    if not isinstance(body, str):
-        body = ""
-    
-    # Use regex word tokenizer to keep common words and punctuation-free tokens
-    words = re.findall(r"\w+", body.lower())
-    word_freq = dict(Counter(words))
-    
-    return word_freq
 
-def compute_and_save_body_bow(bodies, output_path):
-    """Compute and save bag-of-words (term frequencies) for each email body as JSON objects"""
-    # should also include latent semantic analysis at some point #TODO
-    email_bows = []
-    
-    for idx, body in enumerate(bodies):
-        if not isinstance(body, str):
-            body = ""
-        
-        # Use regex word tokenizer to keep common words and punctuation-free tokens
-        words = re.findall(r"\w+", body.lower())
-        word_freq = dict(Counter(words))
-        
-        if word_freq:
-            email_bows.append({
-                "email_id": idx+1,
-                # omit storing full body to keep file smaller; add if you need it
-                "frequencies": word_freq
-            })
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(email_bows, f, indent=2, ensure_ascii=False)
-    
-    print(f"Saved body bag-of-words to: {output_path}")
 
 
 def get_FS6(csv_path):
