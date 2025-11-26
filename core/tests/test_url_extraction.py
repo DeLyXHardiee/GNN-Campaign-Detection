@@ -7,9 +7,9 @@ import sys
 import os
 
 # Add parent to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from utils.url_extractor import extract_urls_from_text, parse_url_components, extract_and_parse_urls
+from core.utils.url_extractor import extract_urls_from_text, parse_url_components, extract_and_parse_urls
 
 
 def test_url_extraction():
@@ -61,7 +61,7 @@ def test_url_extraction():
     for url in urls:
         print(f"  - {url}")
     
-    from utils.url_extractor import deduplicate_urls
+    from core.utils.url_extractor import deduplicate_urls
     unique = deduplicate_urls(urls)
     print(f"\nAfter deduplication: {len(unique)} unique URLs:")
     for url in unique:
