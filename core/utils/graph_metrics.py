@@ -349,6 +349,72 @@ def _md_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str]) -
         return "\n".join(lines)
     except Exception as e:
         return "\n".join(lines + [f"Could not load graph for week distribution: {e}", ""]) 
+    
+
+def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = None, sample_size: int = 5) -> str:
+    """
+    Generate a Markdown table with random samples of node features for each node type.
+
+    Args:
+        meta_path: Path to metadata JSON file
+        graph_path: Optional path to .pt graph file
+        sample_size: Number of random samples per node type
+
+    Returns:
+        Markdown string with feature samples
+    """
+    import random
+
+    metadata = load_graph_metadata(meta_path)
+    feature_shapes = metadata.get("feature_shapes", {})
+    node_maps = metadata.get("node_maps", {})
+
+    samples_md = ["## Random Node Feature Samples", ""]
+
+    try:
+        import torch
+        graph = None
+        if graph_path:
+            graph = torch.load(graph_path, weights_only=False)
+
+        for node_type, shape in feature_shapes.items():
+            count = shape[0] if shape else 0
+            if count == 0:
+                continue
+            samples_md.append(f"### Node Type: {node_type} (Total Nodes: {count})")
+            samples_md.append("")
+            # Get random indices
+            indices = random.sample(range(count), min(sample_size, count))
+            # Prepare table header
+            header = ["Index"] + [f"Feat_{i}" for i in range(shape[1])] if len(shape) > 1 else ["Index", "Feature"]
+            samples_md.append("| " + " | ".join(header) + " |")
+            samples_md.append("|" + " --- |" * len(header))
+            # Fetch features
+            for idx in indices:
+                feat_values = []
+                if graph and node_type in graph.node_types:
+                    try:
+                        feat_tensor = graph[node_type].x
+                        if feat_tensor is not None and idx < feat_tensor.size(0):
+                            feat_row = feat_tensor[idx].tolist()
+                            feat_values = [f"{v:.4f}" if isinstance(v, float) else str(v) for v in feat_row]
+                    except Exception:
+                        pass
+                if not feat_values:
+                    feat_values = ["N/A"] * (shape[1] if len(shape) > 1 else 1)
+                row = [str(idx)] + feat_values
+                samples_md.append("| " + " | ".join(row) + " |")
+            samples_md.append("")
+
+    except ImportError:
+        samples_md.append("Warning: torch not available, cannot sample node features.")
+    except Exception as e:
+        samples_md.append(f"Warning: Could not load graph for feature sampling: {e}")
+
+    if len(samples_md) == 2:
+        samples_md.append("No node features were found in metadata to sample.")
+
+    return "\n".join(samples_md)
 
 
 def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
@@ -535,8 +601,16 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     maxdeg_md.append("")
     sections.append("\n".join(maxdeg_md))
 
+    samples_md = ["## Random Node Feature Samples", ""]
+    sample_data = md_random_node_features_sample(meta_path, graph_path)
+    if sample_data is None:
+        samples_md.append("No data available for node feature samples.")
+    else:
+        samples_md.append(sample_data)
+    sections.append("\n".join(samples_md))
+
     # Write report
-    out_dir = os.path.join("core", "utils", "results")
+    out_dir = os.path.join("results")
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(meta_path))[0] or "graph"
     out_path = os.path.join(out_dir, f"{base}_analysis.md")
@@ -551,8 +625,8 @@ if __name__ == "__main__":
     import os
     
     # Default paths
-    default_meta = os.path.join("results", "trec07_misp_hetero.meta.json")
-    default_graph = os.path.join("results", "trec07_misp_hetero.pt")
+    default_meta = os.path.join("../results", "trec07_misp_hetero.meta.json")
+    default_graph = os.path.join("../results", "trec07_misp_hetero.pt")
     
     if len(sys.argv) > 1:
         meta_path = sys.argv[1]
