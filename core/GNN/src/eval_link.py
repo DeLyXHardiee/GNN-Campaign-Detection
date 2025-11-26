@@ -31,35 +31,67 @@ import math
 
 # ---------- 1) Helpers ----------
 
+import torch
+import torch.nn.functional as F
+
 def recall_at_k_mrr(h, edge_type, test_edges, K=20, use_dot=True, restrict_to_sources_with_pos=True):
+    """
+    h: dict {node_type: embeddings [N_t, d]} (all on SAME device)
+    edge_type: (src_type, rel, dst_type)
+    test_edges: edge_index [2, E_test] (same device as embeddings OR will be moved)
+    """
     src_t, _, dst_t = edge_type
-    S = h[src_t]; D = h[dst_t]
+    S = h[src_t]
+    D = h[dst_t]
+
+    device = S.device
+    test_edges = test_edges.to(device)
+
     if not use_dot:  # cosine
-        S = torch.nn.functional.normalize(S, p=2, dim=1)
-        D = torch.nn.functional.normalize(D, p=2, dim=1)
+        S = F.normalize(S, p=2, dim=1)
+        D = F.normalize(D, p=2, dim=1)
 
     Ns, Nd = S.size(0), D.size(0)
-    gt = torch.zeros((Ns, Nd), dtype=torch.bool)
+
+    # ground-truth adjacency for evaluation
+    gt = torch.zeros((Ns, Nd), dtype=torch.bool, device=device)
     gt[test_edges[0], test_edges[1]] = True
 
-    src_mask = gt.any(dim=1) if restrict_to_sources_with_pos else torch.ones(Ns, dtype=torch.bool)
-    S_eval = S[src_mask]; gt_eval = gt[src_mask]
+    # restrict to sources that actually have at least one true edge in test
+    if restrict_to_sources_with_pos:
+        src_mask = gt.any(dim=1)
+    else:
+        src_mask = torch.ones(Ns, dtype=torch.bool, device=device)
 
-    scores = S_eval @ D.T
+    S_eval = S[src_mask]
+    gt_eval = gt[src_mask]
+
+    # compute scores and top-K
+    scores = S_eval @ D.T                         # [Ns_eval, Nd]
     K = min(K, Nd)
-    topk = torch.topk(scores, K, dim=1).indices
-    hits = gt_eval.gather(1, topk)
+    topk = torch.topk(scores, K, dim=1).indices   # [Ns_eval, K]
+
+    # check which of top-K are true edges
+    hits = gt_eval.gather(1, topk)                # same device now
 
     recall_k = hits.any(dim=1).float().mean().item()
+
     has = hits.any(dim=1)
     first_pos = torch.argmax(hits.int(), dim=1)
-    ranks = torch.full((hits.size(0),), float('inf'))
+    ranks = torch.full((hits.size(0),), float('inf'), device=device)
     ranks[has] = (first_pos[has] + 1).float()
-    mrr = (1.0 / ranks[ranks != float('inf')]).mean().item() if (ranks != float('inf')).any() else 0.0
-    return {'recall@K': recall_k, 'MRR': mrr, 'K': K, 'n_eval_sources': int(hits.size(0))}
+    mask = ranks != float('inf')
+    mrr = (1.0 / ranks[mask]).mean().item() if mask.any() else 0.0
 
-def topk_eval_with_splits(model, splits, edge_types, K=20, use_dot=True):
-    h_train = embed_with_graph(model, splits['train_graph'])   # leakage-safe embeddings
+    return {
+        'recall@K': recall_k,
+        'MRR': mrr,
+        'K': K,
+        'n_eval_sources': int(hits.size(0)),
+    }
+
+def topk_eval_with_splits(DEVICE, model, splits, edge_types, K=20, use_dot=True):
+    h_train = embed_with_graph(DEVICE, model, splits['train_graph'])   # leakage-safe embeddings
     results = {}
     for et in edge_types:
         res = recall_at_k_mrr(h_train, et, splits['test_pos'][et], K=K, use_dot=use_dot)

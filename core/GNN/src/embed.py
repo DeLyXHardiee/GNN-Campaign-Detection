@@ -25,8 +25,11 @@ def get_primary_embeddings(DEVICE, model, data, primary_ntype='movie', batch_siz
     return out
 
 @torch.no_grad()
-def embed_with_graph(model, graph):
+def embed_with_graph(DEVICE, model, graph):
     model.eval()
+    if DEVICE is not None:
+        # This moves *all* node features and edge_index tensors to device
+        graph = graph.to(DEVICE)
     return model(graph.x_dict, graph.edge_index_dict)
 
 def normalize_dict(h_dict):
