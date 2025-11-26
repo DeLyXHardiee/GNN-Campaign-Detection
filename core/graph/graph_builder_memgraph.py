@@ -130,27 +130,21 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     n_emails = len(email_meta)
     get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
     ts_raw = get_attr("ts")
-    ts_norm = ir.email_attrs.get("ts_minmax") or [0.0] * n_emails
     len_body_raw = get_attr("len_body")
-    len_body_norm = ir.email_attrs.get("len_body_z") or [0.0] * n_emails
     subj_dim_arr = ir.email_attrs.get("x_text_subject_dim") or [0] * n_emails
     body_dim_arr = ir.email_attrs.get("x_text_body_dim") or [0] * n_emails
     len_subject_arr = ir.email_attrs.get("len_subject") or [0] * n_emails
-    len_subject_z_arr = ir.email_attrs.get("len_subject_z") or [0.0] * n_emails
     for eid, em in enumerate(email_meta):
         email_rows.append(
             {
                 "eid": int(eid),
                 "date": em.get("date", ""),
                 "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
-                "ts_minmax": float(ts_norm[eid]) if eid < len(ts_norm) else 0.0,
                 "n_urls": int(get_attr("n_urls")[eid]),
                 "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
-                "len_body_z": float(len_body_norm[eid]) if eid < len(len_body_norm) else 0.0,
                 "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
                 "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
                 "len_subject": int(len_subject_arr[eid]) if eid < len(len_subject_arr) else 0,
-                "len_subject_z": float(len_subject_z_arr[eid]) if eid < len(len_subject_z_arr) else 0.0,
             }
         )
     out[N["email"].memgraph] = email_rows
@@ -170,10 +164,11 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
                         row[k] = arr[i] if not isinstance(arr[i], bool) else int(arr[i])
             if attrs:
                 # Support known scalar attrs
-                for k in ("docfreq", "len_subject", "len_subject_z", "docfreq_sender", "docfreq_receiver"):
+                for k in ("docfreq", "len_subject", "docfreq_sender", "docfreq_receiver"):
                     vals = attrs.get(k)
                     if vals is not None and i < len(vals):
                         row[k] = vals[i]
+
             rows.append(row)
         return rows
 
