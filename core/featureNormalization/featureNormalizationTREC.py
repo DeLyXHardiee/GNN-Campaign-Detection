@@ -152,7 +152,7 @@ def save_term_frequencies(subjects, output_path):
         # Only store if we found words
         if word_freq:
             email_frequencies.append({
-                "email_id": idx+1,
+                "email_id": idx,
                 "subject": subject,  # store original subject for reference
                 "frequencies": word_freq
             })
@@ -280,7 +280,7 @@ def compute_and_save_body_bow(bodies, output_path):
         
         if word_freq:
             email_bows.append({
-                "email_id": idx+1,
+                "email_id": idx,
                 # omit storing full body to keep file smaller; add if you need it
                 "frequencies": word_freq
             })
@@ -630,12 +630,12 @@ def get_FS7(csv_path):
     #print(features_list[0])
     return filtered_features
 
-def get_test_set(csv_path):
+def get_test_set(misp_path):
     """
     Extract features: origin, receiver, url, and subject (without term frequency).
     Excludes subject term frequencies and only includes sender_name from origin.
     """
-    features_list = extract_features(csv_path, ["subject", "origin", "receiver", "urls"])
+    features_list = extract_features(misp_path, ["subject", "origin", "receiver", "urls"])
     
     filtered_features = []
     for feat in features_list:
@@ -644,6 +644,7 @@ def get_test_set(csv_path):
         filtered_features.append(filtered_feat)
     return filtered_features
 
+'''
 def extract_features(csv_path, features):
     """
     Extract baseline features for specified types.
@@ -659,7 +660,7 @@ def extract_features(csv_path, features):
     features_list = []
     
     for idx, row in df.iterrows():
-        feat = {'email_index': idx+1}
+        feat = {'email_index': idx}
         
         # Extract features for each requested type
         for feature_type in features:
@@ -685,7 +686,127 @@ def extract_features(csv_path, features):
         features_list.append(feat)
     
     return features_list
+'''
 
+def extract_features(misp_path, features):
+    """
+    Extract baseline features for specified types from MISP JSON format.
+    
+    Args:
+        misp_path: Path to the MISP JSON file
+        features: List of feature types to extract (e.g., ["time", "subject", "body", "origin", "receiver", "urls"])
+    
+    Returns:
+        List of feature dictionaries, one per event
+    """
+    with open(misp_path, 'r', encoding='utf-8') as f:
+        misp_data = json.load(f)
+    events = []
+    # Handle different MISP JSON structures
+    if isinstance(misp_data, list):
+        # Direct list of events
+        events = misp_data
+    elif isinstance(misp_data, dict):
+        # Nested structure with 'response' key
+        events = misp_data.get('response', {}).get('Event', [])
+        if not isinstance(events, list):
+            events = [events]  # Handle single event case
+    else:
+        events = []
+    
+
+    features_list = []
+    
+    print("extracting features from MISP events...")
+
+    for event_idx, event in enumerate(events):
+        feat = {'email_index': event_idx}
+
+        # Parse MISP attributes into email fields
+        email_fields = parse_misp_event_attributes(event.get('Event', {}))
+        
+        # Extract features for each requested type
+        for feature_type in features:
+            if feature_type == "time":
+                feat.update(extract_time_features(email_fields.get("date")))
+            elif feature_type == "subject":
+                # Get IDF path relative to MISP file
+                idf_path = get_idf_path_for_misp(misp_path)
+                idf_dict = load_idf_dict(idf_path) if os.path.exists(idf_path) else None
+                feat.update(extract_subject_features(email_fields.get("subject"), idf_dict))
+            elif feature_type == "body":
+                feat.update(extract_body_based_features(email_fields.get("body")))
+            elif feature_type == "attachments":
+                # Not implemented yet
+                continue
+            elif feature_type == "origin":
+                feat.update(extract_origin_based_features(email_fields.get("sender")))
+            elif feature_type == "receiver":
+                feat.update(extract_recipient_based_features(email_fields.get("receiver")))
+            elif feature_type == "urls":
+                body = email_fields.get("body", "") if email_fields.get("body", "") is not None else ""
+                extracted_urls = extract_urls_from_text(body) if body else []
+                feat.update(extract_url_based_features(extracted_urls))
+        
+        features_list.append(feat)
+
+    print("returning extracted features...")
+
+    return features_list
+
+def parse_misp_event_attributes(event):
+    """
+    Parse MISP event attributes into normalized email field dictionary.
+    
+    Returns:
+        Dict with keys: subject, body, sender, receiver, date, etc.
+    """
+    email_fields = {
+        'subject': '',
+        'body': '',
+        'sender': '',
+        'receiver': '',
+        'date': ''
+    }
+    attributes = event.get('Attribute', [])
+    for attr in attributes:
+        attr_type = attr.get('type', '')
+        attr_value = attr.get('value', '')
+        
+        # Map MISP attribute types to email fields
+        if attr_type == 'email-subject':
+            email_fields['subject'] = attr_value
+        elif attr_type == 'email-body':
+            email_fields['body'] = attr_value
+        elif attr_type == 'email-src':
+            email_fields['sender'] = attr_value
+        elif attr_type == 'email-dst':
+            email_fields['receiver'] = attr_value
+        elif attr_type == 'email-date':
+            email_fields['date'] = attr_value
+    
+    return email_fields
+
+def get_idf_path_for_misp(misp_path):
+    """
+    Given a MISP JSON path, returns the path for the corresponding subject IDF CSV.
+    Example: '../../data/misp/TREC-07-misp.json' ->
+             '../../data/csv/TREC-07-only-phishing_subject_idf.csv'
+    """
+    # Convert MISP path to corresponding CSV IDF path
+    dir_name = os.path.dirname(misp_path)
+    base_name = os.path.splitext(os.path.basename(misp_path))[0]
+    
+    # Map from MISP naming to CSV naming (adjust as needed)
+    if base_name.endswith('-misp'):
+        csv_base = base_name.replace('-misp', '-only-phishing')
+    else:
+        csv_base = base_name + '-only-phishing'
+    
+    # Assume CSV files are in ../csv/ relative to MISP files
+    csv_dir = os.path.join(os.path.dirname(dir_name), 'csv')
+    #return os.path.join(csv_dir, f"{csv_base}_subject_idf.csv")
+    return "../../data/csv/TREC-07-only-phishing_subject_idf.csv"
 '''
 def run_feature_normalization(csv_path, max_features=2000):
     # Read CSV
@@ -711,7 +832,7 @@ def run_feature_normalization(csv_path, max_features=2000):
 
         # Build feature dict for this row
         feat = {
-            "email_index": idx+1,  # Add email index to features
+            "email_index": idx,  # Add email index to features
             "num_urls": len(extracted_urls),
             "has_urls": 1 if len(extracted_urls) > 0 else 0,
             "first_url": extracted_urls[0] if len(extracted_urls) > 0 else None,
@@ -766,14 +887,15 @@ run_feature_normalization("../../data/csv/TREC-07-only-phishing.csv")
 
 if __name__ == "__main__":
     csv_path = "../../data/csv/TREC-07-only-phishing.csv"
+    misp_path = "../../data/misp/TREC-07-misp.json"
     
     # Extract FS features
-    fs_features = get_test_set(csv_path)
+    fs_features = get_test_set(misp_path)
     
     # Save to JSON file
-    input_dir = os.path.dirname(csv_path)
-    input_base = os.path.splitext(os.path.basename(csv_path))[0]
-    output_path = os.path.join(input_dir, f"{input_base}_FSTest.json")
+    input_dir = os.path.dirname(misp_path)
+    input_base = os.path.splitext(os.path.basename(misp_path))[0]
+    output_path = f"../../data/featuresets/{input_base}-FSTest.json"
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(fs_features, f, indent=2, ensure_ascii=False)
