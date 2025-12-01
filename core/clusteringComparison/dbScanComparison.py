@@ -160,15 +160,99 @@ def save_clusters_to_json(clusters, records, csv_path):
     print(f"Saved cluster results to: {output_path}")
     return output_path
 
+
+
+def read_misp_data(misp_path):
+    """
+    Read MISP JSON data and extract email records with features.
+    Returns list of email dictionaries with normalized structure.
+    """
+    with open(misp_path, 'r', encoding='utf-8') as f:
+        misp_data = json.load(f)
+    
+    records = []
+    
+    # Extract events from MISP format
+    events = misp_data.get('response', {}).get('Event', [])
+    if not isinstance(events, list):
+        events = [events]  # Handle single event case
+    
+    for event_idx, event in enumerate(events):
+        # Extract email attributes from event
+        attributes = event.get('Attribute', [])
+        
+        email_record = {
+            'email_index': event_idx,
+            'event_id': event.get('id', ''),
+            'event_uuid': event.get('uuid', ''),
+        }
+        
+        # Parse attributes to extract email features
+        for attr in attributes:
+            attr_type = attr.get('type', '')
+            attr_value = attr.get('value', '')
+            
+            # Map MISP attribute types to feature names
+            if attr_type == 'email-subject':
+                email_record['subject'] = attr_value
+                email_record['subject_length'] = len(attr_value)
+                email_record['subject_whitespace'] = attr_value.count(' ')
+            
+            elif attr_type == 'email-body':
+                email_record['body'] = attr_value
+                email_record['body_length'] = len(attr_value)
+            
+            elif attr_type == 'email-src':
+                email_record['sender_email'] = attr_value
+                # Extract sender name/domain if needed
+                if '@' in attr_value:
+                    email_record['sender_domain'] = attr_value.split('@')[1]
+            
+            elif attr_type == 'email-dst':
+                email_record['recipient_email'] = attr_value
+                if '@' in attr_value:
+                    email_record['recipient_domain'] = attr_value.split('@')[1]
+            
+            elif attr_type == 'email-date':
+                email_record['date'] = attr_value
+            
+            elif attr_type == 'url':
+                # Collect URLs (can be multiple)
+                if 'urls' not in email_record:
+                    email_record['urls'] = []
+                email_record['urls'].append(attr_value)
+        
+        # Compute derived URL features
+        urls = email_record.get('urls', [])
+        email_record['num_urls'] = len(urls)
+        email_record['has_urls'] = len(urls) > 0
+        
+        # Set defaults for missing fields
+        for field in ['subject', 'body', 'sender_email', 'recipient_email', 'date']:
+            if field not in email_record:
+                email_record[field] = ''
+        
+        for field in ['subject_length', 'body_length', 'subject_whitespace']:
+            if field not in email_record:
+                email_record[field] = 0
+        
+        records.append(email_record)
+    
+    return records
+
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
-    csv_path = "../../data/csv/TREC-07-only-phishing.csv"
+    # Use pre-computed feature set instead of extracting from CSV/MISP
+    feature_set_path = "../../data/featuresets/TREC-07-misp-FSTest.json"
 
-    records = get_test_set(csv_path)[:10000]
+    with open(feature_set_path, 'r', encoding='utf-8') as f:
+        records = json.load(f)#[:5000]
+        
+    # Run clustering
     clusters, labels = cluster_with_ids(records)
 
-    # Save clusters to JSON file
-    output_path = save_clusters_to_json(clusters, records, csv_path)
+    # Save clusters to JSON file (use feature set path for output naming)
+    output_path = save_clusters_to_json(clusters, records, feature_set_path)
     
     # Print summary
     print(f"\nCluster Summary:")
