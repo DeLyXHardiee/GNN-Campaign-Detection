@@ -25,4 +25,4 @@ def filter_phishing_emails(csv_path):
     print(f"Saved filtered dataset to: {output_path}")
 
 # Run the filter
-filter_phishing_emails("csv/TREC-07.csv")
+filter_phishing_emails("../data/csv/TREC-07.csv")
