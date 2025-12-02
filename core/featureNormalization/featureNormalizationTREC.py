@@ -889,17 +889,17 @@ if __name__ == "__main__":
     misp_path = "../../data/misp/TREC-07-misp.json"
     
     # Extract FS features
-    fs_features = get_FS7(misp_path)
+    fs_features = get_FS1(misp_path)
     
     # Save to JSON file
     input_dir = os.path.dirname(misp_path)
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
-    output_path = f"../../data/featuresets/{input_base}-FS7.json"
+    output_path = f"../../data/featuresets/{input_base}-FS1.json"
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(fs_features, f, indent=2, ensure_ascii=False)
     
-    print(f"Saved FS7 features to: {output_path}")
+    print(f"Saved FS1 features to: {output_path}")
     print(f"Total emails processed: {len(fs_features)}")
     if fs_features:
         print(f"Sample feature keys: {list(fs_features[0].keys())}")
