@@ -27,12 +27,7 @@ def cluster_with_ids(records, quantile=0.3, n_samples=500):
     idxs = [r["email_index"] for r in records]
 
     # Preprocess with outlier clipping (following "small numeric features" principle)
-    X, feature_names = preprocess_for_clustering(
-        records, 
-        max_categories=20,      # Limit one-hot explosion
-        clip_outliers=True,     # Clip to [-5, +5] range
-        use_robust_scaler=False # Can try True if issues persist
-    )
+    X, feature_names = preprocess_for_clustering(records)
 
     # DIAGNOSTIC: Check feature statistics
     print(f"\n--- Feature Statistics ---")
@@ -60,7 +55,7 @@ def cluster_with_ids(records, quantile=0.3, n_samples=500):
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
     # Use pre-computed feature set (schema-driven from Graph IR pipeline)
-    feature_set_path = "../../data/featuresets/TREC-07-misp-FS7.json"
+    feature_set_path = "../../data/featuresets/TREC-07-misp-FS4.json"
 
     with open(feature_set_path, 'r', encoding='utf-8') as f:
         records = json.load(f)[:1000]
