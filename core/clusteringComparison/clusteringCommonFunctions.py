@@ -6,103 +6,117 @@ Following repo's schema-driven pattern: single source of truth for feature prepr
 import json
 import os
 import numpy as np
-import pandas as pd
-from sklearn.preprocessing import StandardScaler, RobustScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-def preprocess_for_clustering(records, max_categories=20, clip_outliers=False, use_robust_scaler=False):
+def preprocess_for_clustering(records, max_tfidf_features=500, text_fields=None, exclude_fields=None):
     """
-    Preprocess features for clustering algorithms (DBSCAN, Mean Shift, etc.).
-    Schema-driven: automatically detects numeric vs categorical fields from data.
+    Preprocess email records for clustering algorithms (DBSCAN, Mean Shift, etc.).
+    Automatically detects numeric and text features, applies TF-IDF to text fields separately.
     
     Args:
-        records: List of email feature dictionaries (must include 'email_index')
-        max_categories: Max unique values for one-hot encoding (reduces dimensionality)
-        clip_outliers: Clip standardized features to [-5, +5] range
-        use_robust_scaler: Use RobustScaler instead of StandardScaler (better for outliers)
+        records: List of email feature dictionaries (can have varying schemas)
+        max_tfidf_features: int - maximum number of TF-IDF features per text field
+        text_fields: list of str - specific text field names to vectorize (auto-detect if None)
+        exclude_fields: list of str - fields to exclude from feature extraction
     
     Returns:
-        X_scaled: Standardized feature matrix (numpy array)
-        feature_names: List of feature names corresponding to columns in X_scaled
+        X: numpy array of shape (n_samples, n_features) - feature matrix
+        feature_names: list of feature names corresponding to columns
     
     Notes:
-        - Follows repo's "small numeric features" principle
-        - One-hot encodes categorical (string) features with cardinality limit
-        - Standardizes all features to mean=0, std=1
-        - Clips extreme outliers to prevent bandwidth estimation issues
-        - Excludes identifier fields (email_index, *_id, id, guid)
+        - Auto-detects numeric fields (int, float) and text fields (str)
+        - Applies TF-IDF separately to each text field for better granularity
+        - Returns standardized features using RobustScaler (robust to outliers)
+        - Compatible with sklearn clustering algorithms
     """
-    # 1. Create DataFrame from records (excluding email_index)
-    records_wo_id = [{k: v for k, v in r.items() if k != "email_index"} for r in records]
-    df = pd.DataFrame(records_wo_id)
+    if not records:
+        raise ValueError("Empty records list")
     
-    # 2. Drop identifier fields
-    drop_cols = [c for c in df.columns if c.endswith("_id") or c in ["id", "guid"]]
-    df = df.drop(columns=drop_cols, errors='ignore')
+    # Default exclude fields (identifiers, dates that shouldn't be clustered on)
+    if exclude_fields is None:
+        exclude_fields = ['email_index']
     
-    # 3. Split categorical vs numeric (pandas auto-detection)
-    cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
-    num_cols = df.select_dtypes(exclude=["object"]).columns.tolist()
+    # Analyze first record to determine field types
+    sample_record = records[0]
+    numeric_fields = []
+    detected_text_fields = []
     
-    '''
-    # 4. Limit categorical cardinality (following "small numeric features" principle)
-    if len(cat_cols) > 0:
-        for col in cat_cols:
-            # Keep only top N categories, rest become 'other'
-            value_counts = df[col].value_counts()
-            if len(value_counts) > max_categories:
-                top_categories = value_counts.nlargest(max_categories).index
-                df[col] = df[col].where(df[col].isin(top_categories), 'other')
-                print(f"Limited '{col}' from {len(value_counts)} to {max_categories} categories")
-    '''
-    # 5. One-hot encode categoricals
-    if len(cat_cols) > 0:
-        enc = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
-        encoded = enc.fit_transform(df[cat_cols])
-        cat_df = pd.DataFrame(
-            encoded, 
-            columns=enc.get_feature_names_out(cat_cols),
-            index=df.index
-        )
-        df_final = pd.concat(
-            [df[num_cols].reset_index(drop=True), 
-             cat_df.reset_index(drop=True)], 
-            axis=1
-        )
+    for key, value in sample_record.items():
+        if key in exclude_fields:
+            continue
+            
+        # Check field type
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            numeric_fields.append(key)
+        elif isinstance(value, str) and len(value) > 0:
+            # Only consider non-empty strings as potential text fields
+            detected_text_fields.append(key)
+    
+    # Use provided text_fields or auto-detected ones
+    if text_fields is None:
+        text_fields = detected_text_fields
     else:
-        df_final = df[num_cols].reset_index(drop=True)
+        # Filter to only text fields that exist in records
+        text_fields = [f for f in text_fields if f in detected_text_fields]
     
-    # 6. Drop zero-variance columns (prevent NaN in standardization)
-    zero_var_cols = df_final.columns[df_final.std() == 0]
-    if len(zero_var_cols) > 0:
-        print(f"Dropping {len(zero_var_cols)} zero-variance columns")
-        df_final = df_final.drop(columns=zero_var_cols)
+    print(f"Detected {len(numeric_fields)} numeric fields: {numeric_fields[:5]}...")
+    print(f"Using {len(text_fields)} text fields for TF-IDF: {text_fields}")
     
-    # 7. Fill NaNs with 0
-    df_final = df_final.fillna(0)
+    # Extract numeric features
+    X_numeric = []
+    for record in records:
+        features = []
+        for fname in numeric_fields:
+            # Get feature value, default to 0.0 if missing
+            features.append(float(record.get(fname, 0.0)))
+        X_numeric.append(features)
     
-    # 8. Replace infinities
-    df_final = df_final.replace([np.inf, -np.inf], 0)
+    X_numeric = np.array(X_numeric)
     
-    # 9. Standardize all features
-    if use_robust_scaler:
-        # RobustScaler uses median/IQR, less sensitive to outliers
-        scaler = RobustScaler()
-    else:
-        scaler = StandardScaler()
+    # Start with numeric features
+    feature_parts = [X_numeric]
+    feature_names = numeric_fields.copy()
     
-    X_scaled = scaler.fit_transform(df_final)
+    # Add TF-IDF features for each text field separately
+    for text_field in text_fields:
+        texts = [str(record.get(text_field, '')) for record in records]
+        
+        # Skip if all texts are empty
+        if all(len(t.strip()) == 0 for t in texts):
+            print(f"  Skipping '{text_field}': all empty")
+            continue
+        
+        try:
+            tfidf = TfidfVectorizer(
+                max_features=max_tfidf_features,
+                stop_words='english',
+                min_df=2,          # Ignore terms appearing in < 2 documents
+                max_df=0.8,        # Ignore terms appearing in > 80% of documents
+                ngram_range=(1, 2) # Unigrams and bigrams
+            )
+            X_text = tfidf.fit_transform(texts).toarray()
+            
+            if X_text.shape[1] > 0:
+                feature_parts.append(X_text)
+                feature_names.extend([f"{text_field}_tfidf_{i}" for i in range(X_text.shape[1])])
+                print(f"  {text_field}: extracted {X_text.shape[1]} TF-IDF features")
+            else:
+                print(f"  Skipping '{text_field}': no features extracted")
+        except Exception as e:
+            print(f"  Error processing '{text_field}': {e}")
     
-    # 10. Clip extreme outliers (prevents bandwidth explosion in Mean Shift)
-    if clip_outliers:
-        X_scaled = np.clip(X_scaled, -5, 5)
-        print(f"Clipped outliers to [-5, +5] range")
+    # Combine all features
+    X = np.hstack(feature_parts)
     
-    print(f"Final feature matrix: {X_scaled.shape}")
-    print(f"After scaling - Mean: {X_scaled.mean():.4f}, Std: {X_scaled.std():.4f}")
-    print(f"Range: [{X_scaled.min():.2f}, {X_scaled.max():.2f}]")
+    print(f"\nTotal features: {X.shape[1]} ({len(numeric_fields)} numeric + {X.shape[1] - len(numeric_fields)} TF-IDF)")
     
-    return X_scaled, df_final.columns.tolist()
+    # Standardize features using RobustScaler (robust to outliers in phishing data)
+    scaler = RobustScaler()
+    X = scaler.fit_transform(X)
+    
+    return X, feature_names
 
 
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
