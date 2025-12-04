@@ -557,6 +557,161 @@ def _assemble_email_attrs(
     }
 
 
+def _compute_degrees(ir: GraphIR, schema: GraphSchema, node_type: str) -> List[int]:
+    """Compute total degree (in + out) for all nodes of a given type."""
+    node = ir.nodes.get(node_type)
+    if not node:
+        return []
+    num_nodes = len(node.x)
+    degrees = [0] * num_nodes
+    
+    for edge_name, (srcs, dsts) in ir.edges.items():
+        edge_def = schema.edges.get(edge_name)
+        if not edge_def: 
+            continue
+            
+        if edge_def.src == node_type:
+            for idx in srcs:
+                if idx < num_nodes: degrees[idx] += 1
+        
+        if edge_def.dst == node_type:
+            for idx in dsts:
+                if idx < num_nodes: degrees[idx] += 1
+                
+    return degrees
+
+
+def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_type: str, edge_name: str) -> bool:
+    """
+    Attempt to collapse child nodes into parent nodes via edge_name.
+    Returns True if any nodes were collapsed.
+    """
+    if parent_type not in ir.nodes or child_type not in ir.nodes or edge_name not in ir.edges:
+        return False
+        
+    parent_node = ir.nodes[parent_type]
+    child_node = ir.nodes[child_type]
+    src_indices, dst_indices = ir.edges[edge_name]
+    
+    # 1. Compute degrees of children considering ALL edges
+    degrees = _compute_degrees(ir, schema, child_type)
+    
+    # 2. Identify collapsible children (degree 1 and connected via this edge)
+    # Since degree is 1, and it is connected via this edge (as dst), this edge is the ONLY connection.
+    collapsible_children = set()
+    parent_to_collapsed_children = {} 
+    
+    for p, c in zip(src_indices, dst_indices):
+        if c < len(degrees) and degrees[c] == 1:
+            collapsible_children.add(c)
+            if p not in parent_to_collapsed_children:
+                parent_to_collapsed_children[p] = []
+            parent_to_collapsed_children[p].append(c)
+            
+    if not collapsible_children:
+        return False
+        
+    # 3. Aggregate features
+    child_dim = len(child_node.x[0]) if child_node.x else 0
+    if child_dim > 0:
+        # Extend all parents
+        for i in range(len(parent_node.x)):
+            if i in parent_to_collapsed_children:
+                agg = [0.0] * child_dim
+                for c_idx in parent_to_collapsed_children[i]:
+                    c_feat = child_node.x[c_idx]
+                    for k in range(child_dim):
+                        agg[k] += c_feat[k]
+                parent_node.x[i].extend(agg)
+            else:
+                # Pad with zeros
+                parent_node.x[i].extend([0.0] * child_dim)
+                
+    # 4. Remove collapsed children and reindex
+    old_to_new = {}
+    new_x = []
+    new_index_to_string = []
+    new_index_map = {}
+    new_attrs = {k: [] for k in child_node.attrs}
+    
+    kept_count = 0
+    original_strings = child_node.index_to_string or []
+    
+    for i in range(len(child_node.x)):
+        if i in collapsible_children:
+            continue
+            
+        old_to_new[i] = kept_count
+        new_x.append(child_node.x[i])
+        
+        if i < len(original_strings):
+            s = original_strings[i]
+            new_index_to_string.append(s)
+            new_index_map[s] = kept_count
+            
+        for k, v_list in child_node.attrs.items():
+            if i < len(v_list):
+                new_attrs[k].append(v_list[i])
+                
+        kept_count += 1
+        
+    child_node.x = new_x
+    child_node.index = new_index_map
+    child_node.index_to_string = new_index_to_string
+    child_node.attrs = new_attrs
+    
+    # 5. Update edges
+    for ename, (esrc, edst) in ir.edges.items():
+        edef = schema.edges.get(ename)
+        if not edef: continue
+        
+        if edef.src == child_type:
+            new_srcs, new_dsts = [], []
+            for s, d in zip(esrc, edst):
+                if s in old_to_new:
+                    new_srcs.append(old_to_new[s])
+                    new_dsts.append(d)
+            ir.edges[ename] = (new_srcs, new_dsts)
+            
+        elif edef.dst == child_type:
+            new_srcs, new_dsts = [], []
+            for s, d in zip(esrc, edst):
+                if d in old_to_new:
+                    new_srcs.append(s)
+                    new_dsts.append(old_to_new[d])
+            ir.edges[ename] = (new_srcs, new_dsts)
+            
+    return True
+
+
+def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
+    """
+    Iteratively collapse 1:1 mappings where a child node is connected only to a single parent
+    and has no other edges.
+    """
+    # Define hierarchy of collapses (Parent, Child, Edge)
+    # Order matters slightly for efficiency, but loop handles dependencies.
+    collapse_specs = [
+        ("url", "domain", "url_has_domain"),
+        ("url", "stem", "url_has_stem"),
+        ("sender", "email_domain", "sender_from_domain"),
+        ("receiver", "email_domain", "receiver_from_domain"),
+        ("email", "sender", "has_sender"),
+        ("email", "receiver", "has_receiver"),
+        ("email", "url", "has_url"),
+    ]
+    
+    while True:
+        something_changed = False
+        for parent_type, child_type, edge_name in collapse_specs:
+            if _perform_collapse(ir, schema, parent_type, child_type, edge_name):
+                something_changed = True
+                
+        if not something_changed:
+            break
+            
+    return ir
+
 
 def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSchema] = None) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
@@ -666,7 +821,8 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         body_vecs,
     )
 
-    return GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
+    ir = GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
+    return _collapse_graph_ir(ir, schema)
 
 
 __all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir"]

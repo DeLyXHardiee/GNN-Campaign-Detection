@@ -625,8 +625,8 @@ if __name__ == "__main__":
     import os
     
     # Default paths
-    default_meta = os.path.join("../results", "trec07_misp_hetero.meta.json")
-    default_graph = os.path.join("../results", "trec07_misp_hetero.pt")
+    default_meta = os.path.join("../results", "TREC-07-misp_hetero.meta.json")
+    default_graph = os.path.join("../results", "TREC-07-misp_hetero.pt")
     
     if len(sys.argv) > 1:
         meta_path = sys.argv[1]
