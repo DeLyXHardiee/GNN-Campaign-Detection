@@ -5,14 +5,24 @@ from graph.graph_builder_memgraph import build_memgraph
 from graph.graph_filter import NodeType
 
 def run_preprocessing():
-    # Placeholder for any preprocessing steps if needed
-    pass
+    """
+    Run preprocessing steps to filter and prepare data.
+    Currently removes non-phishing emails from TREC-07 dataset.
+    """
+    from utils.filter_csv import filter_phishing_emails
+    
+    input_csv = "../data/csv/TREC-07.csv"
+    output_csv = "../data/csv/TREC-07-only-phishing-6m.csv"
+    
+    print(f"Filtering phishing emails from {input_csv}...")
+    phishing_count = filter_phishing_emails(input_csv, months=6)
+    print(f"Filtered dataset saved to {output_csv} ({phishing_count} phishing emails)")
 
-def run_trec_misp_converter(csv_path="../data/csv/TREC-07.csv", misp_json_path="data/misp/trec07_misp.json"):
+def run_trec_misp_converter(csv_path="../data/csv/TREC-07-only-phishing-6m.csv", misp_json_path="../data/misp/TREC-07-misp.json"):
     # input csv file --> Run MISP converter --> output MISP JSON file
     csv_to_misp(csv_path, misp_json_path)
 
-def run_graph_creation(misp_json_path="data/misp/trec07_misp.json", *, to_memgraph: bool = False,
+def run_graph_creation(misp_json_path="../data/misp/TREC-07-misp.json", *, to_memgraph: bool = False,
                        mg_uri: str = "bolt://localhost:7687",
                        mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
@@ -69,9 +79,9 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    # run_preprocessing()
+    run_preprocessing()
     run_trec_misp_converter()
-run_graph_creation(to_memgraph=True)
+    run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()

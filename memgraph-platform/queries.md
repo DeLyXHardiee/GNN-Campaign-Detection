@@ -1,10 +1,15 @@
-### Visualize all nodes and edges for emails connected to week 14 in 2007 (some of the weeks just above contain thousands of emails)
+### Visualize all nodes and edges for emails connected to the top degree receiver
 
-    MATCH (w:Week {key: "2007-W14"})<-[r_in:IN_WEEK]-(e:Email)
+    MATCH (r:Receiver)<-[:HAS_RECEIVER]-(:Email)
+    WITH r, count(*) as degree
+    ORDER BY degree DESC
+    LIMIT 1
+    MATCH (r)<-[r_recv:HAS_RECEIVER]-(e:Email)
     OPTIONAL MATCH (e)-[r_sender:HAS_SENDER]->(s:Sender)-[r_sender_dom:FROM_DOMAIN]->(sd:EmailDomain)
-    OPTIONAL MATCH (e)-[r_recv:HAS_RECEIVER]->(r:Receiver)-[r_recv_dom:FROM_DOMAIN]->(rd:EmailDomain)
+    OPTIONAL MATCH (r)-[r_recv_dom:FROM_DOMAIN]->(rd:EmailDomain)
     OPTIONAL MATCH (e)-[r_url:HAS_URL]->(u:Url)-[r_dom:HAS_DOMAIN]->(d:Domain)
     OPTIONAL MATCH (u)-[r_stem:HAS_STEM]->(st:Stem)
+    OPTIONAL MATCH (e)-[r_in:IN_WEEK]->(w:Week)
     RETURN w, e, s, sd, r, rd, u, d, st,
         r_in, r_sender, r_sender_dom, r_recv, r_recv_dom, 
         r_url, r_dom, r_stem;

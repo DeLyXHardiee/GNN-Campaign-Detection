@@ -71,6 +71,7 @@ def csv_to_misp(csv_path, misp_json_path):
         event = {
             "Event": {
                 "info": f"TREC-07 Email {idx}",
+                "email_index": idx,
                 "Attribute": attributes
             }
         }
@@ -78,7 +79,7 @@ def csv_to_misp(csv_path, misp_json_path):
     
     # Print first 10 events
     for i, event in enumerate(misp_events[:10]):
-        print(f"Event {i+1}:")
+        print(f"Event {i}:")
         print(json.dumps(event, indent=2))
         print("-" * 40)
     
@@ -89,3 +90,4 @@ def csv_to_misp(csv_path, misp_json_path):
 
     with open(misp_json_path, "w", encoding="utf-8") as f:
         json.dump(misp_events, f, indent=2, ensure_ascii=False)
+

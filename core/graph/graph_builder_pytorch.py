@@ -38,6 +38,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir
+from .normalizer import normalize_graph
+
 
 if TYPE_CHECKING:  # For type checkers only; avoids runtime import requirement
     import torch  # type: ignore
@@ -128,7 +130,8 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
 
 
 def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
-    """Populate node feature tensors on a HeteroData object from Graph IR."""
+    """Populate node feature tensors on a HeteroData object from Graph IR.
+       Merges features with attributes."""
     HData = _ensure_heterodata()
     torch_lib = _ensure_torch()
     N = schema.nodes
@@ -158,14 +161,15 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
             data[N[node_key].pyg].num_nodes = 0
 
     # Use normalized docfreqs for sender/receiver
-    set_simple("sender", ["docfreq_z"])
-    set_simple("receiver", ["docfreq_z"])
+    set_simple("sender", ["docfreq"])
+    set_simple("receiver", ["docfreq"])
     set_simple("week")
     # url/domain/stem/email_domain append normalized docfreq/lexical stats
-    set_simple("url", ["docfreq_z"])
-    set_simple("domain", ["x_lex", "docfreq_z"])
-    set_simple("stem", ["x_lex", "docfreq_z"])
-    set_simple("email_domain", ["x_lex", "docfreq_sender_z", "docfreq_receiver_z"])
+    set_simple("url", ["docfreq"])
+    set_simple("domain", ["x_lex", "docfreq"])
+    set_simple("stem", ["x_lex", "docfreq"])
+    set_simple("email_domain", ["x_lex", "docfreq_sender", "docfreq_receiver"])
+
 
 
 def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
@@ -284,8 +288,13 @@ def build_hetero_graph_from_misp(
 
     _set_node_features_from_ir(data, ir, schema)
     _set_edges_from_ir(data, ir, schema)
+    
+    # Apply standardization
+    data = normalize_graph(data)
+    
     metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
+
 
 
 def save_graph(
