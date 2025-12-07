@@ -1,0 +1,54 @@
+This is a note that displays which features are part of which feature category, 
+making it easier to remove keys from featuresets
+
+time 
+
+{
+    'day', 'month', 'year', 'weekday', 'workday', 
+}
+
+subject
+
+{
+    "subject_length", "subject_whitespace_count", "subject", "subject_avg_idf", "subject_max_idf", "subject_n_terms", 
+}
+
+body
+bag of words currently not included but is instead used in lsa
+
+{
+    "num_urls", "has_urls", "body_word_count",  "num_lines", "avg_word_length", "greeting","body", "lsa_topic_0", "lsa_topic_1", 
+    "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5", "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9", 
+}
+
+attachment
+TREC dataset doesnt have attachments
+
+origin
+
+{
+    "sender_name", "sender_email", 
+}
+
+recipient
+
+{
+    "recipient_name", "recipient_email",
+}
+
+url
+currently has a lot of non-implemented features that seems to include a lot of work
+
+{
+    "num_urls", "num_different_domains", "num_urls_with_ip", "num_short_urls", "has_at_symbol", 
+    "has_non_ascii_chars", "has_extra_http", "avg_subdomain_count", "avg_hyphen_count", 
+    
+    #"has_ev_certificate", 
+    #"has_webhost_domain", 
+    #"num_blacklisted_urls", 
+    #"has_phishtank_domain", 
+    #"has_domain_typos", 
+    #"has_click_here_link", 
+    #"visual_url_mismatch",
+}
+

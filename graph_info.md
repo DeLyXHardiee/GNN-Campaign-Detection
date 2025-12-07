@@ -1,110 +1,71 @@
+# Graph Schema Information
 
-1. **email** — one per spam email
-    
-    - **Attributes**
-        
-        - `x_text`: dense text embedding of `subject + body` (e.g., 384-dim MiniLM)
-            
-        - `ts`: UNIX timestamp (int64)
-            
-        - `n_urls`: count of unique URL domains in the body (int16)
-            
-        - `len_subject`, `len_body`: character counts (int32)
-            
-2. **url_domain** — eTLD+1 extracted from links in the body (your main campaign “glue”)
-    
-    - **Attributes**
-		* `x_lex`: small lexical feature vector (length, #digits, #hyphens, char entropy) (e.g., 8–12 dims)
-            
-        - `docfreq`: #emails that used this domain (int32)
-            
-        - `first_seen`, `last_seen`: timestamps if you compute them (int64)
-            
-3. **url_stem** — **domain + first path segment** (e.g., `brand.co.uk/login`)
-    
-    - **Attributes**
-        
-        - Same as `url_domain` 
-                
-4. **sender_domain** — eTLD+1 of the sender address
-    
-    - **Attributes**
-        
-        - `x_lex`: same style as `url_domain` (length, digits, hyphens, entropy)
-            
-        - `docfreq`: #emails from this domain (int32)
-    
-    - is_freemail is used to avoid creating nodes for freemails.
+This document describes the current heterogeneous graph schema used in the GNN Campaign Detection pipeline.
 
-5. **receiver_domain** - eTLD+1 of the receiver address
-	* **Attributes**
-		* same as sender_domain
-            
+## Node Types
 
-## Edge types
+1. **email** — The central node representing a spam email.
+    - **Features (x)**:
+        - `ts`: UNIX timestamp (float).
+        - `len_body`: Character count of the email body (float).
+        - `n_urls`: Number of unique URLs in the email (float).
+        - `len_subject`: Character count of the subject (float).
+        - `x_text`: TF-IDF vector of `subject + body` (optional, configurable dims).
+    - **Note**: In the PyTorch pipeline, these features are normalized (z-score/minmax) via `core/graph/normalizer.py`.
 
-- `("email", "contains", "url_domain")`
-    
-- `("email", "contains_stem", "url_stem")`
-    
-- `("sender_domain", "sent", "email")`
+2. **sender** — The sender's email address.
+    - **Features (x)**: `[length_of_address]`
+    - **Attributes**: `docfreq` (number of emails with this sender).
 
-- `("receiver_domain", "received", "email")`
+3. **receiver** — The receiver's email address.
+    - **Features (x)**: `[length_of_address]`
+    - **Attributes**: `docfreq` (number of emails with this receiver).
 
-- **Reverse edges** for all of the above (use `ToUndirected()` in PyG once when building)
-    
+4. **week** — Temporal bucket (ISO week string, e.g., "2007-W15").
+    - **Features (x)**: `[index]` (sequential index of the week).
 
-### Edge attributes (nice-to-have)
+5. **url** — A full URL found in the email body.
+    - **Features (x)**: `[path_length]` (length of the URL path/stem).
+    - **Attributes**: `docfreq` (number of emails containing this URL).
 
-- `weight`: e.g., TF-IDF or 1.0 (float32)
-    
-- `ts`: copy the email timestamp onto the `email→artifact` edges (int64)
-    
+6. **domain** — The eTLD+1 extracted from a URL.
+    - **Features (x)**: `[entropy]` (character entropy of the domain string).
+    - **Attributes**:
+        - `x_lex`: Lexical feature vector (length, digits, hyphens, entropy, etc.).
+        - `docfreq`: Number of emails containing URLs with this domain.
 
----
+7. **stem** — The "stem" (path/query) extracted from a URL.
+    - **Features (x)**: `[length]`
+    - **Attributes**:
+        - `x_lex`: Lexical feature vector.
+        - `docfreq`: Number of emails containing URLs with this stem.
 
-# Optional (add later if you ingest MISP or extra fields)
+8. **email_domain** — The domain extracted from a sender or receiver email address.
+    - **Features (x)**: `[length]`
+    - **Attributes**:
+        - `x_lex`: Lexical feature vector.
+        - `docfreq_sender`: Count of sender occurrences.
+        - `docfreq_receiver`: Count of receiver occurrences.
 
-## Extra node types
+## Edge Types
 
-- **attachment_hash** (sha256/md5 of attachments)
-    
-    - attrs: none or rarity (`docfreq`)
-        
-- **ip** (resolved IP of landing hosts)
-    
-    - attrs: ASN id, /24 prefix id (small embeddings), geo (optional)
-        
-- **hostname** (full FQDN if you want domain↔hostname hierarchy)
-    
-    - attrs: subdomain depth, lexical features
-        
-- **header_artifact** (e.g., `message_id`, `x_mailer`, `return_path`)
-    
-    - attrs: hashed embedding
-        
-- **campaign/actor** (MISP galaxy clusters) — for **evaluation** or weak supervision
-    
-    - attrs: one-hot id or small learned embedding
-        
-- **time_bucket** (e.g., day/week buckets) — if you prefer discrete temporal nodes
-    
-    - attrs: bucket index only
-        
+The graph connects emails to their components and components to each other:
 
-## Extra edge types
+- **Direct Email Connections**:
+    - `(email)-[has_sender]->(sender)`
+    - `(email)-[has_receiver]->(receiver)`
+    - `(email)-[in_week]->(week)`
+    - `(email)-[has_url]->(url)`
 
-- `("email","has_attachment","attachment_hash")`
-    
-- `("url_domain","resolves_to","ip")`
-    
-- `("url_stem","in_domain","url_domain")` _(1–N mapping; helps share signal across stems of same domain)_
-    
-- `("email","header","header_artifact")`
-    
-- `("artifact","tagged_with","campaign")` (where _artifact_ ∈ {url_domain, url_stem, attachment_hash, ip})
-    
-- `("email","in_bucket","time_bucket")`
-    
+- **Component Hierarchies**:
+    - `(url)-[has_domain]->(domain)`
+    - `(url)-[has_stem]->(stem)`
+    - `(sender)-[from_domain]->(email_domain)`
+    - `(receiver)-[from_domain]->(email_domain)`
 
----
+## Implementation Details
+
+- **Graph IR**: The graph is assembled into a backend-agnostic Intermediate Representation (IR) in `core/graph/assembler.py`.
+- **PyTorch Geometric**: `core/graph/graph_builder_pytorch.py` converts the IR into a `HeteroData` object and applies normalization.
+- **Memgraph**: `core/graph/graph_builder_memgraph.py` mirrors the IR into a Memgraph database via Bolt.
+

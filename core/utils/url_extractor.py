@@ -11,16 +11,16 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 
-# Regex pattern for matching http/https URLs
+# Regex pattern for matching http/https URLs and www. domains
 URL_PATTERN = re.compile(
-    r'https?://[^\s\'"<>]+',
+    r'(?:https?://|www\.)[^\s\'"<>]+',
     re.IGNORECASE
 )
 
 
 def extract_urls_from_text(text: str) -> List[str]:
     """
-    Extract all HTTP(S) URLs from text using regex.
+    Extract all HTTP(S) and www URLs from text using regex.
     
     Args:
         text: Input text (e.g., email body)
@@ -62,7 +62,12 @@ def parse_url_components(url: str) -> Dict[str, Any]:
         }
     
     try:
-        parsed = urlparse(url)
+        # Handle URLs without scheme (e.g. www.example.com)
+        parsing_url = url
+        if not url.lower().startswith(('http://', 'https://')):
+            parsing_url = 'http://' + url
+            
+        parsed = urlparse(parsing_url)
         
         # Extract domain (netloc)
         domain = parsed.netloc.lower() if parsed.netloc else ""
