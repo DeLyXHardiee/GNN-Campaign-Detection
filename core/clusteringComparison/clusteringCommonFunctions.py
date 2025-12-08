@@ -200,6 +200,12 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
 def load_ground_truth_from_csv(csv_path):
     """
     Load ground truth cluster assignments from pairwise voting CSV.
+    If transitive closure does not hold for votes they will be grouped into clusters regardless.
+    For example
+    A and B voted same_campaign
+    B and C voted same_campaign
+    A and C voted not same_campaign
+    Then A, B, and C will be grouped into the same cluster.
     
     Args:
         csv_path: Path to CSV file with columns: timestamp, uuid, email_a_id, email_b_id, vote, ...
