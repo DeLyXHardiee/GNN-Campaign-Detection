@@ -8,11 +8,12 @@ import json
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import TruncatedSVD
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lsa import get_lsa_features
+from featureNormalization.lsa import get_lsa_features
 from utils.url_extractor import extract_urls_from_text
 
 
@@ -491,6 +492,7 @@ def extract_url_based_features(urls):
     """
     if not urls or not isinstance(urls, list):
         return {
+            "domains": "",
             "num_urls": 0,
             "num_different_domains": 0,
             "num_urls_with_ip": 0,
@@ -579,7 +581,13 @@ def extract_url_based_features(urls):
     avg_subdomains = total_subdomains / len(urls) if urls else 0
     avg_hyphens = total_hyphens / len(urls) if urls else 0
     
+    domainstr = ""
+    for domain in domains: 
+        domainstr = domainstr + domain + " "
+    #print(domainstr)
+
     return {
+        "domains": domainstr.strip(),
         "num_urls": len(urls),
         "num_different_domains": len(domains),
         "num_urls_with_ip": urls_with_ip,
@@ -742,8 +750,8 @@ def parse_misp_event_attributes(event):
 def get_idf_path_for_misp(misp_path):
     """
     Given a MISP JSON path, returns the path for the corresponding subject IDF CSV.
-    Example: '../../data/misp/TREC-07-misp.json' ->
-             '../../data/csv/TREC-07-only-phishing_subject_idf.csv'
+    Example: absolute path to 'data/misp/TREC-07-misp.json' ->
+             absolute path to 'data/csv/TREC-07-only-phishing_subject_idf.csv'
     """
     # Convert MISP path to corresponding CSV IDF path
     dir_name = os.path.dirname(misp_path)
@@ -755,10 +763,10 @@ def get_idf_path_for_misp(misp_path):
     else:
         csv_base = base_name + '-only-phishing'
     
-    # Assume CSV files are in ../csv/ relative to MISP files
-    csv_dir = os.path.join(os.path.dirname(dir_name), 'csv')
-    #return os.path.join(csv_dir, f"{csv_base}_subject_idf.csv")
-    return "../../data/csv/TREC-07-only-phishing_subject_idf.csv"
+    # Get project root (two levels up from this file)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    csv_path = os.path.join(project_root, 'data', 'csv', f"{csv_base}_subject_idf.csv")
+    return csv_path
 
 def get_FS1(misp_path):
     """
@@ -884,22 +892,150 @@ def get_test_set(misp_path):
     return filtered_features
 
 
-if __name__ == "__main__":
-    csv_path = "../../data/csv/TREC-07-only-phishing.csv"
-    misp_path = "../../data/misp/TREC-07-misp.json"
+def _extract_and_save_featureset(args):
+    """
+    Helper function for parallel feature extraction.
+    Extracts a single feature set and saves it to JSON.
     
-    # Extract FS features
-    fs_features = get_FS1(misp_path)
+    Args:
+        args: Tuple of (fs_name, fs_function, misp_path, output_path)
     
-    # Save to JSON file
-    input_dir = os.path.dirname(misp_path)
+    Returns:
+        Tuple of (fs_name, output_path, num_emails, sample_keys, success, error_msg)
+    """
+    fs_name, fs_function, misp_path, output_path = args
+    
+    try:
+        # Extract features
+        fs_features = fs_function(misp_path)
+        
+        # Save to JSON file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(fs_features, f, indent=2, ensure_ascii=False)
+        
+        # Return success info
+        sample_keys = list(fs_features[0].keys()) if fs_features else []
+        return (fs_name, output_path, len(fs_features), sample_keys, True, None)
+    
+    except Exception as e:
+        return (fs_name, output_path, 0, [], False, str(e))
+
+
+def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):    
+    """
+    Run all featureset extractors (FS1 through FS7) and save each to separate JSON files.
+    
+    Args:
+        misp_path: Path to MISP JSON file (default: <project_root>/data/misp/TREC-07-misp.json)
+        parallel: If True, extract feature sets in parallel (default: True)
+        max_workers: Maximum number of parallel workers (default: None = number of CPUs)
+    
+    Output files will be saved to <project_root>/data/featuresets/ with names like:
+        TREC-07-misp-FS1.json
+        TREC-07-misp-FS2.json
+        ...
+        TREC-07-misp-FS7.json
+    """
+    # Get project root (two levels up from this file: core/featureNormalization -> core -> project)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Set default path if not provided
+    if misp_path is None:
+        misp_path = os.path.join(project_root, 'data', 'misp', 'TREC-07-misp.json')
+    
+    # Define all feature extraction functions
+    fs_extractors = {
+        'FS1': get_FS1,
+        'FS2': get_FS2,
+        'FS3': get_FS3,
+        'FS4': get_FS4,
+        'FS5': get_FS5,
+        'FS6': get_FS6,
+        'FS7': get_FS7,
+    }
+
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
-    output_path = f"../../data/featuresets/{input_base}-FS1.json"
     
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(fs_features, f, indent=2, ensure_ascii=False)
+    # Prepare arguments for each feature set extraction
+    extraction_args = []
+    for fs_name, fs_function in fs_extractors.items():
+        output_path = os.path.join(project_root, 'data', 'featuresets', f"{input_base}-{fs_name}.json")
+        extraction_args.append((fs_name, fs_function, misp_path, output_path))
     
-    print(f"Saved FS1 features to: {output_path}")
-    print(f"Total emails processed: {len(fs_features)}")
-    if fs_features:
-        print(f"Sample feature keys: {list(fs_features[0].keys())}")
+    if parallel:
+        # Parallel extraction using ProcessPoolExecutor
+        print(f"\n{'='*80}")
+        print(f"Starting parallel feature extraction ({len(fs_extractors)} feature sets)...")
+        print(f"Max workers: {max_workers or 'auto (CPU count)'}")
+        print(f"{'='*80}")
+        
+        results = []
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_fs = {executor.submit(_extract_and_save_featureset, args): args[0] 
+                           for args in extraction_args}
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_fs):
+                fs_name = future_to_fs[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                    
+                    # Print progress
+                    if result[4]:  # success
+                        print(f"✓ {result[0]} completed ({result[2]} emails)")
+                    else:
+                        print(f"✗ {result[0]} failed: {result[5]}")
+                
+                except Exception as e:
+                    print(f"✗ {fs_name} raised exception: {e}")
+                    results.append((fs_name, "", 0, [], False, str(e)))
+        
+        # Print summary
+        print(f"\n{'='*80}")
+        print("Parallel extraction complete!")
+        print(f"{'='*80}")
+        
+        successful = [r for r in results if r[4]]
+        failed = [r for r in results if not r[4]]
+        
+        if successful:
+            print(f"\nSuccessful extractions ({len(successful)}):")
+            for fs_name, output_path, num_emails, sample_keys, _, _ in successful:
+                print(f"  {fs_name}: {output_path}")
+                print(f"    - Emails: {num_emails}")
+                if sample_keys:
+                    print(f"    - Sample keys: {sample_keys[:5]}...")
+        
+        if failed:
+            print(f"\nFailed extractions ({len(failed)}):")
+            for fs_name, _, _, _, _, error_msg in failed:
+                print(f"  {fs_name}: {error_msg}")
+    
+    else:
+        # Sequential extraction (original implementation)
+        print(f"\n{'='*80}")
+        print(f"Starting sequential feature extraction ({len(fs_extractors)} feature sets)...")
+        print(f"{'='*80}")
+        
+        for args in extraction_args:
+            fs_name, fs_function, misp_path, output_path = args
+            
+            print(f"\n{'='*80}")
+            print(f"Extracting {fs_name}...")
+            print(f"{'='*80}")
+            
+            result = _extract_and_save_featureset(args)
+            
+            if result[4]:  # success
+                print(f"Saved {result[0]} features to: {result[1]}")
+                print(f"Total emails processed: {result[2]}")
+                if result[3]:
+                    print(f"Sample feature keys: {result[3]}")
+            else:
+                print(f"Error extracting {result[0]}: {result[5]}")
+        
+        print(f"\n{'='*80}")
+        print("All feature sets extracted successfully!")
+        print(f"{'='*80}")
