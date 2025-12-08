@@ -89,10 +89,10 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    #run_preprocessing()
-    #run_trec_misp_converter()
+    run_preprocessing()
+    run_trec_misp_converter()
     #run_featureset_extraction()
-    run_featureset_clustering()
+    #run_featureset_clustering()
     #run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()
