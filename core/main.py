@@ -5,6 +5,7 @@ from graph.graph_builder_memgraph import build_memgraph
 from graph.graph_filter import NodeType
 from featureNormalization.featureNormalizationTREC import run_featureset_extraction
 from clusteringComparison.dbScanComparison import dbscan_cluster_all
+from clusteringComparison.meanshiftComparison import meanshift_cluster_all
 
 
 def run_preprocessing():
@@ -65,7 +66,82 @@ def create_feature_sets():
     run_featureset_extraction()
 
 def run_featureset_clustering():
-    dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv="data/groundtruths/pair_votes_lukas.csv")
+    """
+    Run DBSCAN and Mean Shift clustering with grid search over parameters.
+    Tests different parameter combinations to find optimal homogeneity scores.
+    """
+    ground_truth_csv = "data/groundtruths/pair_votes_all.csv"
+    '''
+    # DBSCAN parameter grid
+    eps_values = [0.5, 1, 1.5, 2, 2.5]
+    tfidf_values = [500, 1000, 5000]
+    min_samples = 5  # Keep constant for simplicity
+    
+    print(f"{'='*80}")
+    print(f"DBSCAN Parameter Grid Search")
+    print(f"{'='*80}")
+    print(f"Testing {len(eps_values)} eps values: {eps_values}")
+    print(f"Testing {len(tfidf_values)} TF-IDF features: {tfidf_values}")
+    print(f"Total configurations: {len(eps_values) * len(tfidf_values)}")
+    print(f"{'='*80}\n")
+    
+    # Run DBSCAN clustering for each parameter combination
+    for eps in eps_values:
+        for max_tfidf in tfidf_values:
+            print(f"\n{'='*80}")
+            print(f"Testing: eps={eps}, max_tfidf_features={max_tfidf}, min_samples={min_samples}")
+            print(f"{'='*80}")
+            
+            dbscan_cluster_all(
+                eps=eps, 
+                min_samples=min_samples, 
+                max_tfidf_features=max_tfidf, 
+                ground_truth_csv=ground_truth_csv
+            )
+    
+    print(f"\n{'='*80}")
+    print(f"DBSCAN grid search complete!")
+    print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
+    print(f"{'='*80}\n")
+    '''
+    # Mean Shift parameter grid
+    quantile_values = [0.2, 0.25, 0.3, 0.35, 0.4]
+    tfidf_values_ms = [500, 1000, 5000]
+    n_samples = 5  # Keep constant for simplicity
+    
+    print(f"\n{'='*80}")
+    print(f"Mean Shift Parameter Grid Search")
+    print(f"{'='*80}")
+    print(f"Testing {len(quantile_values)} quantile values: {quantile_values}")
+    print(f"Testing {len(tfidf_values_ms)} TF-IDF features: {tfidf_values_ms}")
+    print(f"Total configurations: {len(quantile_values) * len(tfidf_values_ms)}")
+    print(f"{'='*80}\n")
+    
+    # Run Mean Shift clustering for each parameter combination
+    for quantile in quantile_values:
+        for max_tfidf in tfidf_values_ms:
+            print(f"\n{'='*80}")
+            print(f"Testing: quantile={quantile}, max_tfidf_features={max_tfidf}, n_samples={n_samples}")
+            print(f"{'='*80}")
+            
+            meanshift_cluster_all(
+                quantile=quantile,
+                n_samples=n_samples,
+                max_tfidf_features=max_tfidf,
+                ground_truth_csv=ground_truth_csv
+            )
+    
+    print(f"\n{'='*80}")
+    print(f"Mean Shift grid search complete!")
+    print(f"Results saved to data/fsclusters/meanshift_*_scores.txt")
+    print(f"{'='*80}\n")
+    
+    print(f"\n{'='*80}")
+    print(f"All grid searches complete!")
+    print(f"Review homogeneity scores to find optimal parameters:")
+    print(f"  - DBSCAN: data/fsclusters/dbscan_homogeneity_scores.txt")
+    print(f"  - Mean Shift: data/fsclusters/meanshift_homogeneity_scores.txt")
+    print(f"{'='*80}")
 
 def run_GNN():
     # input PyTorch Geometric graph --> Run GNN model on the graph --> output embeddings
