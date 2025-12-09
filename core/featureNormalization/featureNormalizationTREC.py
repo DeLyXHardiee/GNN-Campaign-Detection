@@ -851,7 +851,7 @@ def get_FS6(misp_path):
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
-                        if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject"
+                        if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject",
                                          "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5",
                                          "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
                         }
