@@ -1,0 +1,46 @@
+FS1: 
+Featureset containing all information
+
+No clusters at low epsilon
+Increased nr of tfidf features produces fewer clusters and worsens homogeneity score, however it increases silhouette score.
+
+Best performance
+H: eps = 2.5, tfidf = 500
+S: eps = 2, tfidf = 5000
+
+FS2:
+Featureset containing nearly all information
+
+Mostly same as above. Silhouette score is not significantly increased by increasing tfidf.
+
+Best performance
+H: eps = 2.5, tfidf = 500
+S: eps = 2, tfidf = 5000
+
+FS3:
+Featureset containing url information and origin
+
+This featureset performs well at low epsilon and is completely destroyed at high epsilon for both evaluation metrics.
+Increased tfidf significantly worsens performance of homogeneity score while only increasing silhouette score minimally.
+
+Best performance
+H: eps = 0.5, tfidf = 500
+S: eps = 0.5, tfidf = 5000
+
+FS4:
+Featureset containing subject, body and body lsa
+
+Increasing epsilon significantly increases homogeneity score until a cutoff between 1.5-2 where it drops. Silhouette score performs best at low epsilon
+
+Best performance
+H: eps = 1.5, tfidf = 5000
+S: eps = 0.5, tfidf = 1000
+
+FS5:
+Featureset containing subject, body, body lsa, sender, receiver and url features
+
+Increasing epsilon significantly increases homogeneity until after 2 where it drops
+
+Best performance
+H: eps = 2.0, tfidf = 1000
+S: eps = 0.5, tfidf = 1000
