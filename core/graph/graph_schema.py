@@ -141,6 +141,14 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
+        # Clusters of email body content (KMeans over body embeddings)
+        "body_cluster": NodeMapping(
+            canonical="body_cluster",
+            pyg="body_cluster",
+            memgraph="BodyCluster",
+            memgraph_id_key="cid",
+            feature_strategy="centroid",
+        ),
     },
     edges={
         # Email -> components
@@ -188,28 +196,52 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_right_label="Url",
             memgraph_right_key="key",
         ),
-        # URL -> components
-        "url_has_domain": EdgeMapping(
-            canonical="url_has_domain",
-            src="url",
+        # Email -> URL components (domain/stem)
+        "has_domain": EdgeMapping(
+            canonical="has_domain",
+            src="email",
             rel_pyg="has_domain",
             dst="domain",
             memgraph_type="HAS_DOMAIN",
-            memgraph_left_label="Url",
-            memgraph_left_key="key",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
             memgraph_right_label="Domain",
             memgraph_right_key="key",
         ),
-        "url_has_stem": EdgeMapping(
-            canonical="url_has_stem",
-            src="url",
+        "has_stem": EdgeMapping(
+            canonical="has_stem",
+            src="email",
             rel_pyg="has_stem",
             dst="stem",
             memgraph_type="HAS_STEM",
-            memgraph_left_label="Url",
-            memgraph_left_key="key",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
             memgraph_right_label="Stem",
             memgraph_right_key="key",
+        ),
+        # Email -> body_cluster (content grouping)
+        "has_body_cluster": EdgeMapping(
+            canonical="has_body_cluster",
+            src="email",
+            rel_pyg="has_body_cluster",
+            dst="body_cluster",
+            memgraph_type="HAS_BODY_CLUSTER",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="BodyCluster",
+            memgraph_right_key="cid",
+        ),
+        # Reverse edge for convenience/undirected use
+        "body_cluster_has_email": EdgeMapping(
+            canonical="body_cluster_has_email",
+            src="body_cluster",
+            rel_pyg="body_cluster_has_email",
+            dst="email",
+            memgraph_type="BODY_CLUSTER_HAS_EMAIL",
+            memgraph_left_label="BodyCluster",
+            memgraph_left_key="cid",
+            memgraph_right_label="Email",
+            memgraph_right_key="eid",
         ),
         # Email address entities -> their domain
         "sender_from_domain": EdgeMapping(

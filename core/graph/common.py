@@ -135,9 +135,10 @@ def extract_all_emails(text: str) -> List[str]:
 
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
-    for ev in misp_events:
+    for idx_ev, ev in enumerate(misp_events):
         event = ev.get("Event", {})
         info = event.get("info", "")
+        email_index = event.get("email_index", idx_ev)
         attrs = event.get("Attribute", []) or []
 
         sender: Optional[str] = None
@@ -176,6 +177,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         normalized.append(
             {
                 "email_info": info,
+                "email_index": email_index,
                 "sender": sender,
                 "receivers": receivers,
                 "subject": subject,

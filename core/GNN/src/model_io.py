@@ -84,11 +84,12 @@ def save_model_checkpoint(
 
 def _build_model_from_checkpoint(checkpoint, device, metadata_override=None):
     config = checkpoint.get("config", {})
-    hidden = config.get("hidden", 128)
-    out_dim = config.get("out_dim", 128)
+    hidden = config.get("hidden", 256)
+    out_dim = config.get("out_dim", 256)
     layers = config.get("layers", 2)
-    dropout = config.get("dropout", 0.1)
+    dropout = config.get("dropout", 0.3)
     score_head = config.get("score_head", "dot")
+    predictor_hidden = config.get("predictor_hidden")
 
     metadata = metadata_override or checkpoint.get("data_metadata")
     if metadata is None:
@@ -101,7 +102,13 @@ def _build_model_from_checkpoint(checkpoint, device, metadata_override=None):
         layers=layers,
         dropout=dropout,
     ).to(device)
-    predictor = MLPredictor(out_dim).to(device) if score_head == "mlp" else DotPredictor().to(device)
+    if score_head == "mlp":
+        pred_state = checkpoint["predictor_state_dict"]
+        # If predictor hidden size not stored, infer from state dict (net.0.weight shape is [hidden, in]).
+        hidden_size = predictor_hidden or pred_state["net.0.weight"].shape[0]
+        predictor = MLPredictor(out_dim, h=hidden_size).to(device)
+    else:
+        predictor = DotPredictor().to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     predictor.load_state_dict(checkpoint["predictor_state_dict"])
     return model, predictor

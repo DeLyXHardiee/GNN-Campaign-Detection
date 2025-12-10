@@ -5,7 +5,7 @@ from sklearn.metrics import roc_auc_score, average_precision_score
 import numpy as np
 
 
-def collect_scores(DEVICE, model, predictor, loaders_test):
+def collect_auroc_ap_scores(DEVICE, model, predictor, loaders_test):
     model.eval(); predictor.eval()
     all_scores = {}
     with torch.no_grad():
