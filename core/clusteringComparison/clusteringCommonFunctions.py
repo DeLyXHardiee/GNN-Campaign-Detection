@@ -5,12 +5,14 @@ Following repo's schema-driven pattern: single source of truth for feature prepr
 
 import json
 import os
+import csv
 import numpy as np
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import homogeneity_score, completeness_score, v_measure_score
 
 
-def preprocess_for_clustering(records, max_tfidf_features=500, text_fields=None, exclude_fields=None):
+def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None):
     """
     Preprocess email records for clustering algorithms (DBSCAN, Mean Shift, etc.).
     Automatically detects numeric and text features, applies TF-IDF to text fields separately.
@@ -136,12 +138,18 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
     Notes:
         - DBSCAN: cluster_id -1 is treated as "noise"
         - Mean Shift: all points assigned to clusters (no noise)
-        - Output saved to same directory as input with _{algorithm}_clusters.json suffix
+        - Output saved to data/fsclusters/ directory with _{algorithm}_clusters.json suffix
     """
-    # Create output path
-    input_dir = os.path.dirname(feature_set_path)
+    # Create output path in fsclusters folder
+    # Get project root (going up from core/clusteringComparison)
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    output_dir = os.path.join(project_root, 'data', 'fsclusters')
+    
+    # Create directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
     input_base = os.path.splitext(os.path.basename(feature_set_path))[0]
-    output_path = os.path.join(input_dir, f"{input_base}_{algorithm_name}_clusters.json")
+    output_path = os.path.join(output_dir, f"{input_base}_{algorithm_name}_clusters.json")
     
     # Create lookup dict for email_index -> record
     record_lookup = {r["email_index"]: r for r in records}
@@ -187,3 +195,128 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
     
     print(f"Saved cluster results to: {output_path}")
     return output_path
+
+
+def load_ground_truth_from_csv(csv_path):
+    """
+    Load ground truth cluster assignments from pairwise voting CSV.
+    If transitive closure does not hold for votes they will be grouped into clusters regardless.
+    For example
+    A and B voted same_campaign
+    B and C voted same_campaign
+    A and C voted not same_campaign
+    Then A, B, and C will be grouped into the same cluster.
+    
+    Args:
+        csv_path: Path to CSV file with columns: timestamp, uuid, email_a_id, email_b_id, vote, ...
+                  Vote can be 'same_campaign' or 'unrelated'
+    
+    Returns:
+        dict: Mapping of email_id (int) -> cluster_id (int)
+              Emails voted as 'same_campaign' get the same cluster_id
+    
+    Notes:
+        - Uses union-find algorithm to group emails into clusters based on votes
+        - Only considers 'same_campaign' votes (unrelated votes are ignored)
+    """
+    # Read pairwise votes
+    pairs_same_campaign = []
+    
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if len(row) < 5:
+                continue
+            
+            try:
+                email_a = int(row[2])
+                email_b = int(row[3])
+                vote = row[4].strip().lower()
+                
+                if vote == 'same_campaign':
+                    pairs_same_campaign.append((email_a, email_b))
+            except (ValueError, IndexError):
+                continue
+    
+    # Build clusters using union-find
+    parent = {}
+    
+    def find(x):
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+    
+    def union(x, y):
+        root_x = find(x)
+        root_y = find(y)
+        if root_x != root_y:
+            parent[root_y] = root_x
+    
+    # Union all pairs marked as same_campaign
+    for email_a, email_b in pairs_same_campaign:
+        union(email_a, email_b)
+    
+    # Assign cluster IDs
+    # Is this correct? The cluster ID's will be random and not correspond to the cluster ID's from the DBSCAN
+    email_to_cluster = {}
+    cluster_id_map = {}
+    next_cluster_id = 0
+    
+    for email_id in parent.keys():
+        root = find(email_id)
+        if root not in cluster_id_map:
+            cluster_id_map[root] = next_cluster_id
+            next_cluster_id += 1
+        email_to_cluster[email_id] = cluster_id_map[root]
+    
+    return email_to_cluster
+
+
+def compute_homogeneity_from_clusters(clusters, ground_truth):
+    """
+    Compute homogeneity, completeness, and V-measure scores.
+    
+    Args:
+        clusters: Dict mapping cluster_id -> list of email_indices (from clustering algorithm)
+        ground_truth: Dict mapping email_id -> true_cluster_id (from ground truth CSV)
+    
+    Returns:
+        dict: {'homogeneity': float, 'completeness': float, 'v_measure': float}
+              All scores range from 0 to 1 (higher is better)
+    
+    Notes:
+        - Only evaluates emails that appear in both clustering results AND ground truth
+        - Homogeneity: Each cluster contains only members of a single class
+        - Completeness: All members of a given class are assigned to the same cluster
+        - V-measure: Harmonic mean of homogeneity and completeness
+    """
+    # Build predicted labels array
+    email_to_predicted_cluster = {}
+    for cluster_id, email_indices in clusters.items():
+        for email_idx in email_indices:
+            email_to_predicted_cluster[email_idx] = cluster_id
+    
+    # Find common emails between predictions and ground truth
+    common_emails = set(email_to_predicted_cluster.keys()) & set(ground_truth.keys())
+    
+    if len(common_emails) < 2:
+        return {'homogeneity': 0.0, 'completeness': 0.0, 'v_measure': 0.0, 'n_samples': len(common_emails)}
+    
+    # Create aligned label arrays
+    common_emails = sorted(common_emails)
+    predicted_labels = [email_to_predicted_cluster[e] for e in common_emails]
+    true_labels = [ground_truth[e] for e in common_emails]
+    
+    # Compute scores
+    homogeneity = homogeneity_score(true_labels, predicted_labels)
+    completeness = completeness_score(true_labels, predicted_labels)
+    v_measure = v_measure_score(true_labels, predicted_labels)
+    
+    return {
+        'homogeneity': homogeneity,
+        'completeness': completeness,
+        'v_measure': v_measure,
+        'n_samples': len(common_emails)
+    }

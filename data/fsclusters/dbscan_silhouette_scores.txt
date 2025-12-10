@@ -1,0 +1,195 @@
+
+================================================================================
+DBSCAN Run - 2025-12-09 13:45:55
+Parameters: eps=0.5, min_samples=5, max_tfidf_features=500
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.9915 (clusters: 739)
+FS4: 0.7375 (clusters: 406)
+FS5: 0.8443 (clusters: 102)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.7274 (clusters: 322)
+
+================================================================================
+DBSCAN Run - 2025-12-09 13:50:18
+Parameters: eps=0.5, min_samples=5, max_tfidf_features=1000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.9925 (clusters: 683)
+FS4: 0.7641 (clusters: 365)
+FS5: 0.8903 (clusters: 60)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.7523 (clusters: 249)
+
+================================================================================
+DBSCAN Run - 2025-12-09 13:57:21
+Parameters: eps=0.5, min_samples=5, max_tfidf_features=5000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.9956 (clusters: 237)
+FS4: 0.7621 (clusters: 287)
+FS5: 0.8516 (clusters: 12)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.8325 (clusters: 146)
+
+================================================================================
+DBSCAN Run - 2025-12-09 14:23:20
+Parameters: eps=1, min_samples=5, max_tfidf_features=500
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.0316 (clusters: 149)
+FS4: 0.4232 (clusters: 508)
+FS5: 0.5810 (clusters: 233)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.4488 (clusters: 493)
+
+================================================================================
+DBSCAN Run - 2025-12-09 14:27:35
+Parameters: eps=1, min_samples=5, max_tfidf_features=1000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.0320 (clusters: 187)
+FS4: 0.4667 (clusters: 513)
+FS5: 0.6369 (clusters: 137)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.5047 (clusters: 398)
+
+================================================================================
+DBSCAN Run - 2025-12-09 14:34:39
+Parameters: eps=1, min_samples=5, max_tfidf_features=5000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: N/A (only 0 cluster(s) found)
+FS3: 0.0776 (clusters: 196)
+FS4: 0.4980 (clusters: 513)
+FS5: 0.7723 (clusters: 29)
+FS6: N/A (only 0 cluster(s) found)
+FS7: 0.6137 (clusters: 190)
+
+================================================================================
+DBSCAN Run - 2025-12-09 15:01:06
+Parameters: eps=1.5, min_samples=5, max_tfidf_features=500
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: 0.4283 (clusters: 84)
+FS3: 0.3571 (clusters: 8)
+FS4: 0.1871 (clusters: 298)
+FS5: 0.2540 (clusters: 327)
+FS6: 0.3400 (clusters: 181)
+FS7: 0.1986 (clusters: 444)
+
+================================================================================
+DBSCAN Run - 2025-12-09 15:05:41
+Parameters: eps=1.5, min_samples=5, max_tfidf_features=1000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: 0.4693 (clusters: 50)
+FS3: 0.3205 (clusters: 11)
+FS4: 0.2215 (clusters: 380)
+FS5: 0.3003 (clusters: 292)
+FS6: 0.3630 (clusters: 120)
+FS7: 0.2159 (clusters: 466)
+
+================================================================================
+DBSCAN Run - 2025-12-09 15:13:30
+Parameters: eps=1.5, min_samples=5, max_tfidf_features=5000
+================================================================================
+
+FS1: N/A (only 0 cluster(s) found)
+FS2: 0.5247 (clusters: 19)
+FS3: 0.2493 (clusters: 30)
+FS4: 0.2944 (clusters: 470)
+FS5: 0.3125 (clusters: 141)
+FS6: 0.4332 (clusters: 44)
+FS7: 0.2716 (clusters: 455)
+
+================================================================================
+DBSCAN Run - 2025-12-09 15:47:58
+Parameters: eps=2, min_samples=5, max_tfidf_features=500
+================================================================================
+
+FS1: 0.3648 (clusters: 26)
+FS2: 0.2972 (clusters: 315)
+FS3: 0.6809 (clusters: 2)
+FS4: -0.1778 (clusters: 46)
+FS5: 0.1241 (clusters: 211)
+FS6: 0.1689 (clusters: 528)
+FS7: -0.0298 (clusters: 166)
+
+================================================================================
+DBSCAN Run - 2025-12-09 15:53:25
+Parameters: eps=2, min_samples=5, max_tfidf_features=1000
+================================================================================
+
+FS1: 0.3857 (clusters: 13)
+FS2: 0.2977 (clusters: 233)
+FS3: 0.6675 (clusters: 2)
+FS4: -0.1614 (clusters: 67)
+FS5: 0.1518 (clusters: 253)
+FS6: 0.2059 (clusters: 442)
+FS7: -0.0031 (clusters: 199)
+
+================================================================================
+DBSCAN Run - 2025-12-09 16:04:26
+Parameters: eps=2, min_samples=5, max_tfidf_features=5000
+================================================================================
+
+FS1: 0.8200 (clusters: 2)
+FS2: 0.3712 (clusters: 109)
+FS3: 0.3039 (clusters: 4)
+FS4: -0.0547 (clusters: 113)
+FS5: 0.2013 (clusters: 319)
+FS6: 0.2637 (clusters: 235)
+FS7: 0.1027 (clusters: 453)
+
+================================================================================
+DBSCAN Run - 2025-12-09 16:41:01
+Parameters: eps=2.5, min_samples=5, max_tfidf_features=500
+================================================================================
+
+FS1: 0.2251 (clusters: 178)
+FS2: 0.1851 (clusters: 616)
+FS3: N/A (only 1 cluster(s) found)
+FS4: 0.1450 (clusters: 12)
+FS5: -0.1037 (clusters: 65)
+FS6: -0.1373 (clusters: 161)
+FS7: -0.1435 (clusters: 65)
+
+================================================================================
+DBSCAN Run - 2025-12-09 16:47:58
+Parameters: eps=2.5, min_samples=5, max_tfidf_features=1000
+================================================================================
+
+FS1: 0.2538 (clusters: 128)
+FS2: 0.1872 (clusters: 558)
+FS3: N/A (only 1 cluster(s) found)
+FS4: 0.0674 (clusters: 12)
+FS5: -0.0913 (clusters: 102)
+FS6: -0.1778 (clusters: 216)
+FS7: -0.1565 (clusters: 76)
+
+================================================================================
+DBSCAN Run - 2025-12-09 16:57:43
+Parameters: eps=2.5, min_samples=5, max_tfidf_features=5000
+================================================================================
+
+FS1: 0.3583 (clusters: 44)
+FS2: 0.1989 (clusters: 374)
+FS3: N/A (only 1 cluster(s) found)
+FS4: -0.0763 (clusters: 14)
+FS5: 0.0834 (clusters: 213)
+FS6: 0.0004 (clusters: 519)
+FS7: -0.1313 (clusters: 111)
