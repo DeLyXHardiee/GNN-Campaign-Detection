@@ -13,10 +13,11 @@ def csv_to_misp(csv_path, misp_json_path):
     df = pd.read_csv(csv_path)
     
     # Filter rows where label == 1
-    df = df[df.get("label", 0) == 1]
+    df = df[df.get("label", 0) == 1].reset_index(drop=False)
+    df.rename(columns={"index": "orig_csv_index"}, inplace=True)
     
     misp_events = []
-    for idx, row in df.iterrows():
+    for idx, row in df.reset_index(drop=True).iterrows():
         body = row.get("body", "")
         
         # Extract URLs from the email body
@@ -70,8 +71,9 @@ def csv_to_misp(csv_path, misp_json_path):
         
         event = {
             "Event": {
-                "info": f"TREC-07 Email {idx}",
-                "email_index": idx,
+                "info": f"TREC-07 Email {idx}",  # idx = position in filtered CSV (0..N-1)
+                "email_index": int(idx),         # propagate this as the canonical email id
+                "orig_csv_index": int(row.get("orig_csv_index", idx)),  # original row before filtering (for reference)
                 "Attribute": attributes
             }
         }
@@ -90,4 +92,3 @@ def csv_to_misp(csv_path, misp_json_path):
 
     with open(misp_json_path, "w", encoding="utf-8") as f:
         json.dump(misp_events, f, indent=2, ensure_ascii=False)
-

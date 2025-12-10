@@ -122,6 +122,8 @@ def _collect_edges_and_email_attrs(
     receiver_to_idx: Dict[str, int],
     week_to_idx: Dict[str, int],
     url_to_idx: Dict[str, int],
+    domain_to_idx: Dict[str, int],
+    stem_to_idx: Dict[str, int],
     email_domain_to_idx: Dict[str, int],
 ) -> Tuple[
     Dict[str, List[int]],
@@ -140,6 +142,10 @@ def _collect_edges_and_email_attrs(
         "in_week_dst": [],
         "has_url_src": [],
         "has_url_dst": [],
+        "has_domain_src": [],
+        "has_domain_dst": [],
+        "has_stem_src": [],
+        "has_stem_dst": [],
     }
 
     # Email meta and raw attributes
@@ -173,6 +179,7 @@ def _collect_edges_and_email_attrs(
         email_meta.append({
             "info": em.get("email_info", ""),
             "index": email_idx,
+            "email_index": em.get("email_index", email_idx),
             "date": em.get("date", ""),
         })
 
@@ -189,9 +196,15 @@ def _collect_edges_and_email_attrs(
             if d:
                 domains.add(d)
                 domain_email_sets.setdefault(d, set()).add(email_idx)
+                if d in domain_to_idx:
+                    edges_idx["has_domain_src"].append(email_idx)
+                    edges_idx["has_domain_dst"].append(domain_to_idx[d])
             s = comp.get("stem", "")
             if s:
                 stem_email_sets.setdefault(s, set()).add(email_idx)
+                if s in stem_to_idx:
+                    edges_idx["has_stem_src"].append(email_idx)
+                    edges_idx["has_stem_dst"].append(stem_to_idx[s])
 
         email_attrs_raw["n_urls"].append(int(len(domains)))
         email_attrs_raw["len_subject"].append(int(len(subj)))
@@ -238,28 +251,6 @@ def _collect_edges_and_email_attrs(
     }
 
     return edges_idx, email_meta, email_attrs_raw, docfreq_maps
-
-
-def _build_url_component_edges(
-    url_components: Dict[str, Tuple[str, str]],
-    url_to_idx: Dict[str, int],
-    domain_to_idx: Dict[str, int],
-    stem_to_idx: Dict[str, int],
-) -> Tuple[List[int], List[int], List[int], List[int]]:
-    """Create url->domain and url->stem edge index lists."""
-    url_to_domain_src: List[int] = []
-    url_to_domain_dst: List[int] = []
-    url_to_stem_src: List[int] = []
-    url_to_stem_dst: List[int] = []
-    for url, (domain, stem) in url_components.items():
-        u_idx = url_to_idx[url]
-        if domain and domain in domain_to_idx:
-            url_to_domain_src.append(u_idx)
-            url_to_domain_dst.append(domain_to_idx[domain])
-        if stem and stem in stem_to_idx:
-            url_to_stem_src.append(u_idx)
-            url_to_stem_dst.append(stem_to_idx[stem])
-    return url_to_domain_src, url_to_domain_dst, url_to_stem_src, url_to_stem_dst
 
 
 def _connect_email_entities_to_domains(
@@ -505,8 +496,6 @@ def _assemble_nodes(
 
 def _assemble_edges(
     edges_idx: Dict[str, List[int]],
-    url_dom_src: List[int], url_dom_dst: List[int],
-    url_stem_src: List[int], url_stem_dst: List[int],
     snd_dom_src: List[int], snd_dom_dst: List[int],
     rcv_dom_src: List[int], rcv_dom_dst: List[int],
 ) -> Dict[str, Tuple[List[int], List[int]]]:
@@ -516,8 +505,8 @@ def _assemble_edges(
         "has_receiver": (edges_idx["has_receiver_src"], edges_idx["has_receiver_dst"]),
         "in_week": (edges_idx["in_week_src"], edges_idx["in_week_dst"]),
         "has_url": (edges_idx["has_url_src"], edges_idx["has_url_dst"]),
-        "url_has_domain": (url_dom_src, url_dom_dst),
-        "url_has_stem": (url_stem_src, url_stem_dst),
+        "has_domain": (edges_idx["has_domain_src"], edges_idx["has_domain_dst"]),
+        "has_stem": (edges_idx["has_stem_src"], edges_idx["has_stem_dst"]),
         "sender_from_domain": (snd_dom_src, snd_dom_dst),
         "receiver_from_domain": (rcv_dom_src, rcv_dom_dst),
     }
@@ -692,13 +681,13 @@ def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
     # Define hierarchy of collapses (Parent, Child, Edge)
     # Order matters slightly for efficiency, but loop handles dependencies.
     collapse_specs = [
-        ("url", "domain", "url_has_domain"),
-        ("url", "stem", "url_has_stem"),
         ("sender", "email_domain", "sender_from_domain"),
         ("receiver", "email_domain", "receiver_from_domain"),
         ("email", "sender", "has_sender"),
         ("email", "receiver", "has_receiver"),
         ("email", "url", "has_url"),
+        ("email", "domain", "has_domain"),
+        ("email", "stem", "has_stem"),
     ]
     
     while True:
@@ -743,11 +732,9 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         receiver_to_idx,
         week_to_idx,
         url_to_idx,
+        domain_to_idx,
+        stem_to_idx,
         email_domain_to_idx,
-    )
-
-    url_dom_src, url_dom_dst, url_stem_src, url_stem_dst = _build_url_component_edges(
-        url_components, url_to_idx, domain_to_idx, stem_to_idx
     )
 
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
@@ -806,8 +793,6 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
 
     edges = _assemble_edges(
         edges_idx,
-        url_dom_src, url_dom_dst,
-        url_stem_src, url_stem_dst,
         snd_dom_src, snd_dom_dst,
         rcv_dom_src, rcv_dom_dst,
     )

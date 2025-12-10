@@ -138,6 +138,7 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         email_rows.append(
             {
                 "eid": int(eid),
+                "email_index": em.get("email_index", int(eid)),
                 "date": em.get("date", ""),
                 "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
                 "n_urls": int(get_attr("n_urls")[eid]),
@@ -203,21 +204,8 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     add_email_edge_rows("has_receiver", "receiver", E["has_receiver"].memgraph_type)
     add_email_edge_rows("in_week", "week", E["in_week"].memgraph_type)
     add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
-
-    def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
-        if edge_key not in ir.edges:
-            return
-        rows = out[mem_type]
-        src, dst = ir.edges[edge_key]
-        left_node = ir.nodes.get(left_node_key)
-        right_node = ir.nodes.get(right_node_key)
-        left_meta = (left_node and left_node.index_to_string) or []
-        right_meta = (right_node and right_node.index_to_string) or []
-        for l, r in zip(src, dst):
-            rows.append({"l": left_meta[l], "r": right_meta[r]})
-
-    add_string_edge_rows("url_has_domain", "url", "domain", E["url_has_domain"].memgraph_type)
-    add_string_edge_rows("url_has_stem", "url", "stem", E["url_has_stem"].memgraph_type)
+    add_email_edge_rows("has_domain", "domain", E["has_domain"].memgraph_type)
+    add_email_edge_rows("has_stem", "stem", E["has_stem"].memgraph_type)
     add_string_edge_rows("sender_from_domain", "sender", "email_domain", E["sender_from_domain"].memgraph_type)
     add_string_edge_rows("receiver_from_domain", "receiver", "email_domain", E["receiver_from_domain"].memgraph_type)
 
@@ -288,8 +276,8 @@ def build_memgraph(
             "has_receiver",
             "in_week",
             "has_url",
-            "url_has_domain",
-            "url_has_stem",
+            "has_domain",
+            "has_stem",
             "sender_from_domain",
             "receiver_from_domain",
         ]:
