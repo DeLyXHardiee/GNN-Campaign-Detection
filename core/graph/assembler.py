@@ -333,6 +333,7 @@ def _compute_node_attributes_and_features(
             url_path_lens.append(float(len(comp.get("stem", "/"))))
     url_x = [[float(url_path_lens[i])] for i in range(len(url_path_lens))]
     url_docfreq: List[int] = [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]
+    url_x_lex: List[List[float]] = [compute_lexical_features(u) for u in url_meta]
 
     # Domain attrs
     domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
@@ -415,6 +416,7 @@ def _compute_node_attributes_and_features(
         "sender": {"docfreq": sender_docfreq},
         "receiver": {"docfreq": receiver_docfreq},
         "url": {
+            "x_lex": url_x_lex,
             "docfreq": url_docfreq,
         },
         "domain": {
