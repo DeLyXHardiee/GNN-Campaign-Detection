@@ -169,7 +169,7 @@ if __name__ == "__main__":
     run_trec_misp_converter()
     #run_featureset_extraction()
     #run_featureset_clustering()
-    #run_graph_creation(to_memgraph=True)
+    run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
