@@ -11,13 +11,11 @@ def normalize_graph(data):
 
         x = data[ntype].x
 
-        # 1) ensure float32
         if x.dtype != torch.float32:
             x = x.float()
 
-        # 2) standardize features: zero mean, unit variance per feature dim
         mu = x.mean(dim=0)
-        sigma = x.std(dim=0).clamp_min(1e-6)  # avoid division by zero
+        sigma = x.std(dim=0).clamp_min(1e-6)
 
         data[ntype].x = (x - mu) / sigma
     
