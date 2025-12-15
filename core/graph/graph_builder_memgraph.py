@@ -1,37 +1,3 @@
-"""
-Build and store a Memgraph-compatible graph from MISP JSON events.
-
-- Mirrors the heterogeneous schema used in graph_builder_pytorch, but as labeled nodes & relationships.
-- Connects to Memgraph over Bolt using the Neo4j Python driver (works with Memgraph's openCypher).
-- Deduplicates component nodes (Sender, Receiver, Week, Url, Domain, Stem, EmailDomain).
-- Stores a lightweight set of properties for each node for inspection/filters.
-
-Node labels and key properties:
-- Email { eid: int, date: str, ts: int, ts_minmax: float, n_urls: int, len_body: int, len_body_z: float, len_subject: int, len_subject_z: float, x_text_subject_dim: int, x_text_body_dim: int }
-- Sender { key: str }
-- Receiver { key: str }
-- Week { key: str }
-- Url { key: str }
-- Domain { key: str }
-- Stem { key: str }
-- EmailDomain { key: str }
-
-Relationship types:
-- (Email)-[:HAS_SENDER]->(Sender)
-- (Email)-[:HAS_RECEIVER]->(Receiver)
-- (Email)-[:IN_WEEK]->(Week)
-- (Email)-[:HAS_URL]->(Url)
-- (Url)-[:HAS_DOMAIN]->(Domain)
-- (Url)-[:HAS_STEM]->(Stem)
-- (Sender)-[:FROM_DOMAIN]->(EmailDomain)
-- (Receiver)-[:FROM_DOMAIN]->(EmailDomain)
-
-Usage:
-    from core.graph.graph_builder_memgraph import build_memgraph
-    build_memgraph(misp_json_path="data/misp/trec07_misp.json")
-
-Memgraph connection defaults to bolt://localhost:7687 without auth. Override via args.
-"""
 from __future__ import annotations
 
 import json
@@ -43,8 +9,8 @@ from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir
 
 try:
-    from neo4j import GraphDatabase  # type: ignore
-except Exception as e:  # pragma: no cover
+    from neo4j import GraphDatabase 
+except Exception as e: 
     raise ImportError(
         "The 'neo4j' Python driver is required for Memgraph connectivity. Install with: pip install neo4j"
     ) from e
@@ -54,17 +20,10 @@ def _load_misp_json(path: str) -> List[dict]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
-def _ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
-
 def _with_tx(session, cypher: str, parameters: Optional[Dict[str, Any]] = None) -> None:
     session.run(cypher, parameters or {})
 
-
 def _create_indexes(session, schema: GraphSchema) -> None:
-    # Use Memgraph's supported index syntax. Some versions don't support IF NOT EXISTS.
     N = schema.nodes
     index_statements = [
         f"CREATE INDEX ON :{N['email'].memgraph}({N['email'].memgraph_id_key})",
@@ -79,7 +38,7 @@ def _create_indexes(session, schema: GraphSchema) -> None:
     for stmt in index_statements:
         try:
             _with_tx(session, stmt)
-        except Exception as e:  # Ignore "already exists" style errors across versions
+        except Exception as e: 
             msg = str(e).lower()
             if "exist" in msg or "already" in msg:
                 continue
@@ -89,14 +48,9 @@ def _create_indexes(session, schema: GraphSchema) -> None:
 def _clear_graph(session) -> None:
     _with_tx(session, "MATCH (n) DETACH DELETE n")
 
-
-# Legacy _prepare_entities removed in favor of shared assembler (Graph IR)
-
-
 def _batch_create_nodes(session, label: str, rows: List[Dict[str, Any]]) -> None:
     if not rows:
         return
-    # Use UNWIND + MERGE to insert in batch
     cypher = f"""
     UNWIND $rows AS row
     MERGE (n:{label} {{ {','.join([f'{k}: row.{k}' for k in rows[0].keys()])} }})
@@ -119,11 +73,9 @@ def _batch_create_edges(session, rel: str, rows: List[Dict[str, Any]],
 
 
 def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[Dict[str, Any]]]:
-    """Convert Graph IR nodes and attributes into Memgraph-ready node property rows per label."""
     N = schema.nodes
     out: Dict[str, List[Dict[str, Any]]] = {}
 
-    # Emails
     email_rows: List[Dict[str, Any]] = []
     email_node = ir.nodes.get("email")
     email_meta = (email_node and email_node.index_to_meta) or []
@@ -164,7 +116,6 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
                     if arr and i < len(arr):
                         row[k] = arr[i] if not isinstance(arr[i], bool) else int(arr[i])
             if attrs:
-                # Support known scalar attrs
                 for k in ("docfreq", "len_subject", "docfreq_sender", "docfreq_receiver"):
                     vals = attrs.get(k)
                     if vals is not None and i < len(vals):
@@ -185,7 +136,6 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
 
 
 def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[Dict[str, Any]]]:
-    """Convert Graph IR edges into Memgraph-ready edge rows per relationship type."""
     N = schema.nodes
     E = schema.edges
     out: Dict[str, List[Dict[str, Any]]] = {e.memgraph_type: [] for e in E.values()}
@@ -199,6 +149,20 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         right_meta = (right_node and right_node.index_to_string) or []
         for l, r in zip(src, dst):
             rows.append({"l": int(l), "r": right_meta[r]})
+
+    def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
+        if edge_key not in ir.edges:
+            return
+        
+        rows = out[mem_type]
+        src, dst = ir.edges[edge_key]
+        left_node = ir.nodes.get(left_node_key)
+        right_node = ir.nodes.get(right_node_key)
+        left_meta = (left_node and left_node.index_to_string) or []
+        right_meta = (right_node and right_node.index_to_string) or []
+
+        for l, r in zip(src, dst):
+            rows.append({"l": left_meta[l], "r": right_meta[r]})
 
     add_email_edge_rows("has_sender", "sender", E["has_sender"].memgraph_type)
     add_email_edge_rows("has_receiver", "receiver", E["has_receiver"].memgraph_type)
@@ -224,15 +188,11 @@ def build_memgraph(
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType]] = None,
 ) -> Dict[str, Any]:
-    """
-    Build the Memgraph graph and store it via Bolt.
 
-    Returns a summary dict with counts.
-    """
     if misp_events is None and misp_json_path is None:
         raise ValueError("Provide either misp_events or misp_json_path")
     if misp_events is None:
-        misp_events = _load_misp_json(misp_json_path)  # type: ignore[arg-type]
+        misp_events = _load_misp_json(misp_json_path)
 
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
@@ -245,19 +205,16 @@ def build_memgraph(
     node_rows_by_label = _prepare_node_rows_from_ir(ir, schema)
     edge_rows_by_type = _prepare_edge_rows_from_ir(ir, schema)
 
-    # Connect and write to Memgraph
     driver = GraphDatabase.driver(mg_uri, auth=(mg_user, mg_password) if mg_user or mg_password else None)
-    with driver.session(database=None) as session:  # Memgraph ignores database name
+    with driver.session(database=None) as session:  
         if clear:
             _clear_graph(session)
         if create_indexes:
             _create_indexes(session, schema)
 
-        # Create nodes (batched)
         for label, rows in node_rows_by_label.items():
             _batch_create_nodes(session, label, rows)
 
-        # Create edges (batched)
         def add_edges(edge_key: str):
             e = E[edge_key]
             rows = edge_rows_by_type.get(e.memgraph_type, [])

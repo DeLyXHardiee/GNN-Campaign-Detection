@@ -16,7 +16,6 @@ from datetime import datetime
 
 
 def load_graph_metadata(meta_path: str) -> Dict[str, Any]:
-    """Load graph metadata from JSON file."""
     with open(meta_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -34,7 +33,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
 
         graph = torch.load(graph_path, weights_only=False)
 
-        # Infer counts per node type (avoid relying on num_nodes which can be None)
         node_types = list(getattr(graph, "node_types", []))
         if not node_types:
             return None
@@ -51,7 +49,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
                 inferred_counts[src_t] = max(inferred_counts[src_t], src_max + 1)
             if dst_max >= 0:
                 inferred_counts[dst_t] = max(inferred_counts[dst_t], dst_max + 1)
-        # Also consider feature matrices if present
         for nt in node_types:
             try:
                 if "x" in graph[nt]:
@@ -59,7 +56,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
             except Exception:
                 pass
 
-        # Build offsets and totals
         offsets: Dict[str, int] = {}
         off = 0
         for nt in node_types:
@@ -69,7 +65,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
         if total == 0:
             return None
 
-        # Build undirected adjacency and degrees
         adj: List[List[int]] = [[] for _ in range(total)]
         deg = [0] * total
         for src_t, rel, dst_t in getattr(graph, "edge_types", []):
@@ -90,7 +85,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
                     deg[s_g] += 1
                     deg[d_g] += 1
 
-        # Compute components and track membership
         visited = [False] * total
         comp_id = [-1] * total
         comp_sizes: List[int] = []
@@ -98,7 +92,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
         for nid in range(total):
             if visited[nid]:
                 continue
-            # BFS even for isolated nodes
             from collections import deque
             q = deque([nid])
             visited[nid] = True
@@ -115,13 +108,11 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
             comp_sizes.append(size)
             current_id += 1
 
-        # Identify largest component
         if not comp_sizes:
             return None
         largest_c = max(range(len(comp_sizes)), key=lambda i: comp_sizes[i])
         largest_size = comp_sizes[largest_c]
 
-        # Within largest component, pick node with max degree
         best_global = None
         best_deg = -1
         for gid in range(total):
@@ -145,7 +136,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
                 best_local = best_global - base
                 break
 
-        # Lookup human-readable label if available
         label: Optional[str] = None
         nm = metadata.get("node_maps", {}).get(best_type, {})
         idx2str = nm.get("index_to_string")
@@ -188,25 +178,17 @@ def _md_graph_overview(metadata: Dict[str, Any]) -> str:
 
 
 def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
-    """
-    Get the top N most frequently referenced URLs.
-    
-    Returns list of (url, count) tuples sorted by count descending.
-    """
     node_maps = metadata.get("node_maps", {})
     email_meta = node_maps.get("email", {}).get("index_to_meta", [])
     edge_counts_dict = metadata.get("edge_counts", {})
     
-    # Check if we have URL edges
     has_url_edges = edge_counts_dict.get("email->url:has_url", 0) > 0
     
     if not has_url_edges:
         return []
     
     # We need to count URL references from the graph structure
-    # For simplicity, we'll use the url node mapping and assume frequency correlates with index
-    # In a real implementation, we'd load the actual graph to count edge references
-    
+    # For simplicity, we use the url node mapping and assume frequency correlates with index
     url_strings = node_maps.get("url", {}).get("index_to_string", [])
     
     # Return URLs with their indices (as a proxy for frequency for now)
@@ -220,7 +202,6 @@ def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, in
 
 
 def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
-    """Top receivers by number of incoming emails using edge counts."""
     try:
         import torch
         graph = torch.load(graph_path, weights_only=False)
@@ -238,33 +219,18 @@ def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_
 
 
 def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
-    """
-    Count URL references by loading the actual graph and analyzing edge_index.
-    
-    Args:
-        graph_path: Path to the .pt graph file
-        metadata: Graph metadata dict
-        top_n: Number of top URLs to return
-    
-    Returns:
-        List of (url, count) tuples sorted by count descending
-    """
     try:
         import torch
         
-        # Load the graph with weights_only=False for PyTorch 2.6+ compatibility
         graph = torch.load(graph_path, weights_only=False)
         
-        # Get URL node strings
         url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
         
         if not url_strings:
             return []
         
-        # Count how many emails reference each URL
         url_counts = Counter()
         
-        # Check if the edge type exists
         if ("email", "has_url", "url") in graph.edge_types:
             edge_index = graph["email", "has_url", "url"].edge_index
             
@@ -275,7 +241,6 @@ def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], t
                 if 0 <= url_idx < len(url_strings):
                     url_counts[url_strings[url_idx]] += 1
         
-        # Return top N
         return url_counts.most_common(top_n)
         
     except ImportError:
@@ -300,7 +265,6 @@ def _md_top_list(title: str, pairs: List[Tuple[str, int]], unit: str) -> str:
 
 
 def get_top_stems_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
-    """Top stems by URL references."""
     try:
         import torch
         graph = torch.load(graph_path, weights_only=False)
@@ -352,17 +316,6 @@ def _md_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str]) -
     
 
 def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = None, sample_size: int = 5) -> str:
-    """
-    Generate a Markdown table with random samples of node features for each node type.
-
-    Args:
-        meta_path: Path to metadata JSON file
-        graph_path: Optional path to .pt graph file
-        sample_size: Number of random samples per node type
-
-    Returns:
-        Markdown string with feature samples
-    """
     import random
 
     metadata = load_graph_metadata(meta_path)
@@ -383,13 +336,10 @@ def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = N
                 continue
             samples_md.append(f"### Node Type: {node_type} (Total Nodes: {count})")
             samples_md.append("")
-            # Get random indices
             indices = random.sample(range(count), min(sample_size, count))
-            # Prepare table header
             header = ["Index"] + [f"Feat_{i}" for i in range(shape[1])] if len(shape) > 1 else ["Index", "Feature"]
             samples_md.append("| " + " | ".join(header) + " |")
             samples_md.append("|" + " --- |" * len(header))
-            # Fetch features
             for idx in indices:
                 feat_values = []
                 if graph and node_type in graph.node_types:
@@ -418,29 +368,18 @@ def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = N
 
 
 def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
-    """
-    Complete graph analysis with all metrics and write a Markdown report.
-
-    Args:
-        meta_path: Path to metadata JSON file
-        graph_path: Optional path to .pt graph file for detailed analysis
-    """
     metadata = load_graph_metadata(meta_path)
 
-    # Build markdown report
     sections: List[str] = []
     sections.append(f"# Graph Analysis Report\n\nGenerated: {datetime.utcnow().isoformat()}Z\n")
     sections.append(_md_graph_overview(metadata))
 
-    # Top entities (robust to filtering)
-    # URLs
     urls = count_url_references_from_graph(graph_path, metadata, 5) if graph_path else []
     if not urls:
         url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
         urls = [(u, 0) for u in url_strings[:5]]
     sections.append(_md_top_list("Top URLs", urls, "emails"))
 
-    # Domains
     try:
         import torch
         dom_pairs: List[Tuple[str,int]] = []
@@ -458,14 +397,12 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
         dom_pairs = []
     sections.append(_md_top_list("Top Domains", dom_pairs, "URLs"))
 
-    # Stems
     stem_pairs = get_top_stems_from_graph(graph_path, metadata, 5) if graph_path else []
     if not stem_pairs:
         stem_strings = metadata.get("node_maps", {}).get("stem", {}).get("index_to_string", [])
         stem_pairs = [(s, 0) for s in stem_strings[:5]]
     sections.append(_md_top_list("Top Stems", stem_pairs, "URLs"))
 
-    # Senders
     send_pairs: List[Tuple[str,int]] = []
     if graph_path:
         try:
@@ -483,24 +420,20 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
         send_pairs = [(s, 0) for s in sender_strings[:5]]
     sections.append(_md_top_list("Top Senders", send_pairs, "emails"))
 
-    # Receivers
     recv_pairs = get_top_receivers_from_graph(graph_path, metadata, 5) if graph_path else []
     if not recv_pairs:
         receiver_strings = metadata.get("node_maps", {}).get("receiver", {}).get("index_to_string", [])
         recv_pairs = [(r, 0) for r in receiver_strings[:5]]
     sections.append(_md_top_list("Top Receivers", recv_pairs, "emails"))
 
-    # Week distribution
     sections.append(_md_week_distribution(metadata, graph_path))
 
-    # Connected components
     comp_md_lines = ["## Connected Components", ""]
     if graph_path:
         try:
             import torch
             graph = torch.load(graph_path, weights_only=False)
 
-            # Infer node counts from edges and features
             node_types = list(graph.node_types)
             inferred_counts: Dict[str, int] = {nt: 0 for nt in node_types}
             for (src_t, rel, dst_t) in getattr(graph, "edge_types", []):
@@ -516,7 +449,6 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
                     inferred_counts[src_t] = max(inferred_counts[src_t], src_max + 1)
                 if dst_max >= 0:
                     inferred_counts[dst_t] = max(inferred_counts[dst_t], dst_max + 1)
-            # Also consider feature matrices if present
             for nt in node_types:
                 try:
                     if "x" in graph[nt]:
@@ -585,7 +517,6 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     comp_md_lines.append("")
     sections.append("\n".join(comp_md_lines))
 
-    # Max-degree node in largest component
     maxdeg_md = ["## Max-Degree Node in Largest Component", ""]
     info = get_max_degree_node_in_largest_component(graph_path, metadata) if graph_path else None
     if info is None:
@@ -609,7 +540,6 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
         samples_md.append(sample_data)
     sections.append("\n".join(samples_md))
 
-    # Write report
     out_dir = os.path.join("results")
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(meta_path))[0] or "graph"
@@ -624,7 +554,6 @@ if __name__ == "__main__":
     import sys
     import os
     
-    # Default paths
     default_meta = os.path.join("../results", "TREC-07-misp_hetero.meta.json")
     default_graph = os.path.join("../results", "TREC-07-misp_hetero.pt")
     
