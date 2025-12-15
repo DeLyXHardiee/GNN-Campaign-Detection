@@ -3,6 +3,9 @@
 *.json
 core/GNN/data
 core/GNN/notebooks/data
+data/csv
+core/results
+core/GNN/models
 
 
 # Ignore Python cache files
