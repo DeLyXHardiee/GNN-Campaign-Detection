@@ -11,7 +11,6 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 
-# Regex pattern for matching http/https URLs and www. domains
 URL_PATTERN = re.compile(
     r'(?:https?://|www\.)[^\s\'"<>]+',
     re.IGNORECASE
@@ -19,20 +18,10 @@ URL_PATTERN = re.compile(
 
 
 def extract_urls_from_text(text: str) -> List[str]:
-    """
-    Extract all HTTP(S) and www URLs from text using regex.
-    
-    Args:
-        text: Input text (e.g., email body)
-    
-    Returns:
-        List of URL strings found in the text
-    """
     if not text:
         return []
     
     urls = URL_PATTERN.findall(text)
-    # Clean up common trailing punctuation that gets captured
     cleaned = []
     for url in urls:
         # Remove trailing punctuation
@@ -44,15 +33,6 @@ def extract_urls_from_text(text: str) -> List[str]:
 
 
 def parse_url_components(url: str) -> Dict[str, Any]:
-    """
-    Parse a URL into its components.
-    
-    Returns a dict with:
-    - full_url: normalized full URL
-    - domain: domain name (e.g., "example.com")
-    - stem: path + params + query (e.g., "/path?query=1")
-    - scheme: http or https
-    """
     if not url:
         return {
             "full_url": "",
@@ -62,17 +42,14 @@ def parse_url_components(url: str) -> Dict[str, Any]:
         }
     
     try:
-        # Handle URLs without scheme (e.g. www.example.com)
         parsing_url = url
         if not url.lower().startswith(('http://', 'https://')):
             parsing_url = 'http://' + url
             
         parsed = urlparse(parsing_url)
         
-        # Extract domain (netloc)
         domain = parsed.netloc.lower() if parsed.netloc else ""
         
-        # Extract stem: path + params + query + fragment
         stem_parts = []
         if parsed.path:
             stem_parts.append(parsed.path)
@@ -85,7 +62,6 @@ def parse_url_components(url: str) -> Dict[str, Any]:
         
         stem = "".join(stem_parts) if stem_parts else "/"
         
-        # Reconstruct normalized URL
         normalized = urlunparse((
             parsed.scheme.lower(),
             domain,
@@ -102,7 +78,6 @@ def parse_url_components(url: str) -> Dict[str, Any]:
             "scheme": parsed.scheme.lower() if parsed.scheme else "",
         }
     except Exception:
-        # If parsing fails, return the original URL with empty components
         return {
             "full_url": url,
             "domain": "",
@@ -112,29 +87,11 @@ def parse_url_components(url: str) -> Dict[str, Any]:
 
 
 def extract_and_parse_urls(text: str) -> List[Dict[str, Any]]:
-    """
-    Extract URLs from text and parse each into components.
-    
-    Args:
-        text: Input text
-    
-    Returns:
-        List of dicts, each containing parsed URL components
-    """
     urls = extract_urls_from_text(text)
     return [parse_url_components(url) for url in urls]
 
 
 def deduplicate_urls(url_list: List[str]) -> List[str]:
-    """
-    Remove duplicate URLs while preserving order.
-    
-    Args:
-        url_list: List of URL strings
-    
-    Returns:
-        Deduplicated list of URLs
-    """
     seen = set()
     result = []
     for url in url_list:

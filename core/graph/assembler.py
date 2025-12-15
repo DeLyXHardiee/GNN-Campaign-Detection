@@ -25,12 +25,6 @@ from .common import (
     is_freemail_domain,
 )
 
-
-# ----------------------------------------------------------------------------
-# Graph IR data structures
-# ----------------------------------------------------------------------------
-
-
 @dataclass
 class NodeIR:
     index: Dict[str, int]
@@ -148,7 +142,6 @@ def _collect_edges_and_email_attrs(
         "has_stem_dst": [],
     }
 
-    # Email meta and raw attributes
     email_meta: List[Dict[str, Any]] = []
     email_attrs_raw: Dict[str, List[int]] = {
         "ts": [],
@@ -157,11 +150,6 @@ def _collect_edges_and_email_attrs(
         "len_body": [],
     }
 
-    # Per-node sets for docfreq/statistics
-    docfreq_sets: Dict[str, Set[int]] = {
-        "domain": set(),  # tracked per domain value via map below
-        "stem": set(),
-    }
     # String-keyed maps to sets
     domain_email_sets: Dict[str, Set[int]] = {}
     stem_email_sets: Dict[str, Set[int]] = {}
@@ -183,7 +171,6 @@ def _collect_edges_and_email_attrs(
             "date": em.get("date", ""),
         })
 
-        # Raw attributes
         ts_val = to_unix_ts(em.get("date", ""))
         email_attrs_raw["ts"].append(ts_val)
 
@@ -210,7 +197,6 @@ def _collect_edges_and_email_attrs(
         email_attrs_raw["len_subject"].append(int(len(subj)))
         email_attrs_raw["len_body"].append(int(len(body)))
 
-        # Edges from email to components
         if em.get("sender") and em["sender"] in sender_to_idx:
             edges_idx["has_sender_src"].append(email_idx)
             edges_idx["has_sender_dst"].append(sender_to_idx[em["sender"]])
@@ -239,7 +225,6 @@ def _collect_edges_and_email_attrs(
                 edges_idx["has_url_dst"].append(url_to_idx[u])
                 url_email_sets.setdefault(u, set()).add(email_idx)
 
-    # Return also the docfreq maps used downstream
     docfreq_maps: Dict[str, Dict[str, Set[int]]] = {
         "domain_email_sets": domain_email_sets,
         "stem_email_sets": stem_email_sets,
@@ -258,7 +243,7 @@ def _connect_email_entities_to_domains(
     receiver_to_idx: Dict[str, int],
     email_domain_to_idx: Dict[str, int],
 ) -> Tuple[List[int], List[int], List[int], List[int]]:
-    """Create edges from sender/receiver nodes to their email domain nodes."""
+
     sender_src: List[int] = []
     sender_dst: List[int] = []
     receiver_src: List[int] = []
@@ -296,8 +281,6 @@ def _compute_node_attributes_and_features(
     int,
     int,
 ]:
-    """Compute per-node x features and attributes, plus text vectors."""
-    # Ordered metadata lists
     sender_meta = _ordered_keys(sender_to_idx)
     receiver_meta = _ordered_keys(receiver_to_idx)
     week_meta = _ordered_keys(week_to_idx)
@@ -306,7 +289,6 @@ def _compute_node_attributes_and_features(
     stem_meta = _ordered_keys(stem_to_idx)
     email_domain_meta = _ordered_keys(email_domain_to_idx)
 
-    # Base numeric x for simple nodes
     sender_len = [float(len(s)) for s in sender_meta]
     sender_x = [[sender_len[i]] for i in range(len(sender_len))]
 
@@ -322,7 +304,6 @@ def _compute_node_attributes_and_features(
     email_domain_len = [float(len(d)) for d in email_domain_meta]
     email_domain_x = [[email_domain_len[i]] for i in range(len(email_domain_len))]
 
-    # URL x: path length
     url_path_lens: List[float] = []
     for u in url_meta:
         if u in url_components:
@@ -335,26 +316,21 @@ def _compute_node_attributes_and_features(
     url_docfreq: List[int] = [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]
     url_x_lex: List[List[float]] = [compute_lexical_features(u) for u in url_meta]
 
-    # Domain attrs
     domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
     domain_entropies: List[float] = [v[7] if len(v) > 7 else 0.0 for v in domain_x_lex]
     domain_x = [[float(domain_entropies[i])] for i in range(len(domain_entropies))]
     domain_docfreq: List[int] = [len(docfreq_maps["domain_email_sets"].get(d, set())) for d in domain_meta]
 
-    # Stem attrs
     stem_x_lex: List[List[float]] = [compute_lexical_features(s) for s in stem_meta]
     stem_docfreq: List[int] = [len(docfreq_maps["stem_email_sets"].get(s, set())) for s in stem_meta]
 
-    # Email domain attrs
     email_domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in email_domain_meta]
     email_domain_docfreq_sender: List[int] = [len(docfreq_maps["email_domain_sender_sets"].get(d, set())) for d in email_domain_meta]
     email_domain_docfreq_receiver: List[int] = [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in email_domain_meta]
 
-    # Sender/Receiver docfreqs
     sender_docfreq: List[int] = [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]
     receiver_docfreq: List[int] = [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]
 
-    # Text vectorization (TF-IDF)
     TEXT_SUBJ_MAX_FEATS = 128
     TEXT_BODY_MAX_FEATS = 256
     subj_vecs: List[List[float]] = []
@@ -412,7 +388,6 @@ def _compute_node_attributes_and_features(
         "email_domain": email_domain_meta,
     }
     node_attrs: Dict[str, Dict[str, List[Any]]] = {
-        # Keep raw counts in attrs for metadata/debugging; features consume *_z keys
         "sender": {"docfreq": sender_docfreq},
         "receiver": {"docfreq": receiver_docfreq},
         "url": {
@@ -477,7 +452,6 @@ def _assemble_nodes(
     email_meta: List[Dict[str, Any]],
     email_x: List[List[float]],
 ) -> Dict[str, NodeIR]:
-    """Create the nodes dict for GraphIR from parts."""
     return {
         "email": NodeIR(index={}, x=email_x, index_to_meta=email_meta),
         "sender": NodeIR(index=indices["sender"], x=node_x["sender"], index_to_string=node_meta["sender"],
@@ -501,7 +475,6 @@ def _assemble_edges(
     snd_dom_src: List[int], snd_dom_dst: List[int],
     rcv_dom_src: List[int], rcv_dom_dst: List[int],
 ) -> Dict[str, Tuple[List[int], List[int]]]:
-    """Create the edges dict for GraphIR from parts."""
     return {
         "has_sender": (edges_idx["has_sender_src"], edges_idx["has_sender_dst"]),
         "has_receiver": (edges_idx["has_receiver_src"], edges_idx["has_receiver_dst"]),
@@ -522,7 +495,6 @@ def _assemble_email_attrs(
     subj_vecs: List[List[float]],
     body_vecs: List[List[float]],
 ) -> Dict[str, Any]:
-    """Create the email attributes dict, including optional text vectors and dims."""
     n_emails = len(email_meta) or 0
     x_text: List[List[float]] = []
     if subj_dim > 0 or body_dim > 0:
@@ -573,10 +545,6 @@ def _compute_degrees(ir: GraphIR, schema: GraphSchema, node_type: str) -> List[i
 
 
 def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_type: str, edge_name: str) -> bool:
-    """
-    Attempt to collapse child nodes into parent nodes via edge_name.
-    Returns True if any nodes were collapsed.
-    """
     if parent_type not in ir.nodes or child_type not in ir.nodes or edge_name not in ir.edges:
         return False
         
@@ -584,11 +552,8 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
     child_node = ir.nodes[child_type]
     src_indices, dst_indices = ir.edges[edge_name]
     
-    # 1. Compute degrees of children considering ALL edges
     degrees = _compute_degrees(ir, schema, child_type)
     
-    # 2. Identify collapsible children (degree 1 and connected via this edge)
-    # Since degree is 1, and it is connected via this edge (as dst), this edge is the ONLY connection.
     collapsible_children = set()
     parent_to_collapsed_children = {} 
     
@@ -602,10 +567,8 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
     if not collapsible_children:
         return False
         
-    # 3. Aggregate features
     child_dim = len(child_node.x[0]) if child_node.x else 0
     if child_dim > 0:
-        # Extend all parents
         for i in range(len(parent_node.x)):
             if i in parent_to_collapsed_children:
                 agg = [0.0] * child_dim
@@ -615,10 +578,8 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
                         agg[k] += c_feat[k]
                 parent_node.x[i].extend(agg)
             else:
-                # Pad with zeros
                 parent_node.x[i].extend([0.0] * child_dim)
                 
-    # 4. Remove collapsed children and reindex
     old_to_new = {}
     new_x = []
     new_index_to_string = []
@@ -651,7 +612,6 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
     child_node.index_to_string = new_index_to_string
     child_node.attrs = new_attrs
     
-    # 5. Update edges
     for ename, (esrc, edst) in ir.edges.items():
         edef = schema.edges.get(ename)
         if not edef: continue
