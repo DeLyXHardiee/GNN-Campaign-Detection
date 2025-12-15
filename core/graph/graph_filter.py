@@ -32,20 +32,16 @@ def filter_graph_ir(ir: GraphIR, *, exclude_nodes: Set[str], schema: GraphSchema
     if not exclude_nodes:
         return ir
 
-    # Remove nodes
     new_nodes = {k: v for k, v in ir.nodes.items() if k not in exclude_nodes}
 
-    # Remove edges where src or dst refers to an excluded node type
     new_edges = {}
     for ek, (src_idx, dst_idx) in ir.edges.items():
         try:
             e = schema.edge(ek)
         except KeyError:
-            # Unknown edge key; pass through only if both types still present
             continue
         if e.src in exclude_nodes or e.dst in exclude_nodes:
             continue
         new_edges[ek] = (src_idx, dst_idx)
 
-    # Keep email_attrs as-is; it aligns by email indices which remain intact
     return replace(ir, nodes=new_nodes, edges=new_edges)

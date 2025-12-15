@@ -10,14 +10,13 @@ from datetime import timezone
 import math
 
 
-# Prefer importing the local project utility; try both package-relative and top-level forms
-try:  # First try absolute within project package
-    from core.utils.url_extractor import parse_url_components  # type: ignore
+try:  
+    from core.utils.url_extractor import parse_url_components  
 except Exception:
-    try:  # Fallback: when running with cwd at project root
-        from utils.url_extractor import parse_url_components  # type: ignore
-    except Exception:  # pragma: no cover
-        def parse_url_components(url: str) -> Dict[str, Any]:  # type: ignore
+    try:  
+        from utils.url_extractor import parse_url_components  
+    except Exception:  
+        def parse_url_components(url: str) -> Dict[str, Any]: 
             return {"full_url": url, "domain": "", "stem": "", "scheme": ""}
 
 
@@ -61,7 +60,6 @@ def extract_week_key(date_str: str) -> Optional[str]:
 
 
 def to_unix_ts(date_str: str) -> int:
-    """Parse date string into UNIX timestamp seconds (UTC). Returns 0 if parsing fails."""
     if not date_str or not date_str.strip():
         return 0
     try:
@@ -75,7 +73,6 @@ def to_unix_ts(date_str: str) -> int:
         ]:
             try:
                 dt = datetime.strptime(date_str.strip(), fmt)
-                # If naive, treat as UTC
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 return int(dt.timestamp())
@@ -113,7 +110,6 @@ def extract_all_emails(text: str) -> List[str]:
     if not text:
         return []
     import re
-    # Basic RFC-like regex; pragmatic for our data
     pattern = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
     matches = pattern.findall(text)
     out: List[str] = []
@@ -123,7 +119,6 @@ def extract_all_emails(text: str) -> List[str]:
         if nm and nm not in seen:
             seen.add(nm)
             out.append(nm)
-    # Fallback: split by common delimiters if regex found nothing
     if not out:
         for part in re.split(r"[,;]", text):
             nm = normalize_email_address(part)
@@ -135,9 +130,10 @@ def extract_all_emails(text: str) -> List[str]:
 
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
-    for ev in misp_events:
+    for idx_ev, ev in enumerate(misp_events):
         event = ev.get("Event", {})
         info = event.get("info", "")
+        email_index = event.get("email_index", idx_ev)
         attrs = event.get("Attribute", []) or []
 
         sender: Optional[str] = None
@@ -146,6 +142,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         subject = ""
         body = ""
         urls: List[str] = []
+        url_set: Set[str] = set()
         date = ""
 
         for attr in attrs:
@@ -153,7 +150,6 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             raw_val = (attr or {}).get("value", "")
             val = to_str(raw_val)
             if a_type == "email-src":
-                # Some datasets may pack sender in angle brackets or include extras; grab the first address
                 addrs = extract_all_emails(val)
                 sender = addrs[0] if addrs else (normalize_email_address(val) if val.strip() else None)
             elif a_type in ("email-dst", "email-cc", "email-bcc"):
@@ -168,7 +164,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             elif a_type == "email-body":
                 body = val
             elif a_type == "url":
-                if val.strip():
+                if val.strip() and val not in url_set:
+                    url_set.add(val)
                     urls.append(val)
             elif a_type == "email-date":
                 date = val
@@ -176,6 +173,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         normalized.append(
             {
                 "email_info": info,
+                "email_index": email_index,
                 "sender": sender,
                 "receivers": receivers,
                 "subject": subject,

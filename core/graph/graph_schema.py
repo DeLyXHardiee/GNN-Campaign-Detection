@@ -6,8 +6,6 @@ This module is the single source of truth for:
 - Canonical relationship types and their labels in each backend
 - Minimal node property conventions used by the Memgraph builder
 - Lightweight feature strategies used by the PyTorch builder
-
-Extend or modify this schema to evolve the graph without duplicating changes.
 """
 from __future__ import annotations
 
@@ -19,7 +17,7 @@ from typing import Dict, List, Tuple
 class NodeMapping:
     """Mapping for a canonical node type to backend-specific labels and conventions.
 
-    canonical: internal canonical name (stable across backends)
+    canonical: internal canonical name
     pyg: node type label used in HeteroData for PyG
     memgraph: node label used in Memgraph
     memgraph_id_key: property used as a stable key when merging nodes in Memgraph
@@ -77,10 +75,8 @@ class GraphSchema:
         return [(self.nodes[e.src].pyg, e.rel_pyg, self.nodes[e.dst].pyg) for e in self.edges.values()]
 
 
-# Default schema used by the project
 DEFAULT_SCHEMA = GraphSchema(
     nodes={
-        # Central hub per email
         "email": NodeMapping(
             canonical="email",
             pyg="email",
@@ -88,7 +84,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="eid",
             feature_strategy="body_len",
         ),
-        # People and addresses
         "sender": NodeMapping(
             canonical="sender",
             pyg="sender",
@@ -103,7 +98,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
-        # Temporal bucket
         "week": NodeMapping(
             canonical="week",
             pyg="week",
@@ -111,7 +105,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="index",
         ),
-        # Content/URLs (subject removed; now an email feature)
         "url": NodeMapping(
             canonical="url",
             pyg="url",
@@ -133,7 +126,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
-        # Domain extracted from email addresses
         "email_domain": NodeMapping(
             canonical="email_domain",
             pyg="email_domain",
@@ -141,9 +133,15 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
+        "body_cluster": NodeMapping(
+            canonical="body_cluster",
+            pyg="body_cluster",
+            memgraph="BodyCluster",
+            memgraph_id_key="cid",
+            feature_strategy="centroid",
+        ),
     },
     edges={
-        # Email -> components
         "has_sender": EdgeMapping(
             canonical="has_sender",
             src="email",
@@ -188,30 +186,51 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_right_label="Url",
             memgraph_right_key="key",
         ),
-        # URL -> components
-        "url_has_domain": EdgeMapping(
-            canonical="url_has_domain",
-            src="url",
+        "has_domain": EdgeMapping(
+            canonical="has_domain",
+            src="email",
             rel_pyg="has_domain",
             dst="domain",
             memgraph_type="HAS_DOMAIN",
-            memgraph_left_label="Url",
-            memgraph_left_key="key",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
             memgraph_right_label="Domain",
             memgraph_right_key="key",
         ),
-        "url_has_stem": EdgeMapping(
-            canonical="url_has_stem",
-            src="url",
+        "has_stem": EdgeMapping(
+            canonical="has_stem",
+            src="email",
             rel_pyg="has_stem",
             dst="stem",
             memgraph_type="HAS_STEM",
-            memgraph_left_label="Url",
-            memgraph_left_key="key",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
             memgraph_right_label="Stem",
             memgraph_right_key="key",
         ),
-        # Email address entities -> their domain
+        "has_body_cluster": EdgeMapping(
+            canonical="has_body_cluster",
+            src="email",
+            rel_pyg="has_body_cluster",
+            dst="body_cluster",
+            memgraph_type="HAS_BODY_CLUSTER",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="BodyCluster",
+            memgraph_right_key="cid",
+        ),
+        # Reverse edge for convenience/undirected use
+        "body_cluster_has_email": EdgeMapping(
+            canonical="body_cluster_has_email",
+            src="body_cluster",
+            rel_pyg="body_cluster_has_email",
+            dst="email",
+            memgraph_type="BODY_CLUSTER_HAS_EMAIL",
+            memgraph_left_label="BodyCluster",
+            memgraph_left_key="cid",
+            memgraph_right_label="Email",
+            memgraph_right_key="eid",
+        ),
         "sender_from_domain": EdgeMapping(
             canonical="sender_from_domain",
             src="sender",

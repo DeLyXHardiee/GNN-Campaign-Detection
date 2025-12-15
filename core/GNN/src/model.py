@@ -1,11 +1,12 @@
 import torch
 from torch import nn
 from torch_geometric.nn import SAGEConv, to_hetero
+import torch.nn.functional as F
 # -----------------------------
 # Hetero GraphSAGE via to_hetero
 # -----------------------------
 class SAGEBackbone(nn.Module):
-    def __init__(self, hidden=128, out=128, layers=2, dropout=0.1):
+    def __init__(self, hidden=256, out=256, layers=2, dropout=0.1):
         super().__init__()
         self.layers = nn.ModuleList()
         # first layer (in channels unknown -> -1)
@@ -25,7 +26,9 @@ class SAGEBackbone(nn.Module):
             if i < len(self.layers) - 1:
                 h = torch.relu(h)
                 h = self.dropout(h)
+        h = F.normalize(h, p=2, dim=-1)  # 🔥 Normalize final output
         return h
+
 
 class HeteroSAGE(nn.Module):
     def __init__(self, metadata, hidden=128, out=128, layers=2, dropout=0.1):
@@ -50,5 +53,7 @@ class MLPredictor(nn.Module):
         )
     def forward(self, src, dst):
         return self.net(torch.cat([src, dst], dim=-1)).squeeze(-1)
+
+
     
 
