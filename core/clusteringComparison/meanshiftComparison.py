@@ -16,22 +16,6 @@ from clusteringCommonFunctions import (
 )
 
 def cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_components=None):
-    """
-    Perform Mean Shift clustering on email records.
-    Follows repo's schema-driven pattern with outlier-robust preprocessing.
-    
-    Args:
-        records: List of email feature dictionaries
-        bandwidth: Bandwidth parameter for Mean Shift
-        n_samples: Number of samples for bandwidth estimation (default 500)
-        max_tfidf_features: Maximum TF-IDF features per text field
-        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
-    
-    Returns:
-        clusters: Dict mapping cluster_id -> list of email_indices
-        labels: Array of cluster labels for each email
-        X: Feature matrix (for silhouette score computation)
-    """
     idxs = [r["email_index"] for r in records]
 
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
@@ -60,20 +44,6 @@ def cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_compone
 
 
 def compute_silhouette_score(X, labels):
-    """
-    Compute silhouette score for clustering results.
-    
-    Args:
-        X: Feature matrix (n_samples, n_features)
-        labels: Cluster labels for each sample
-    
-    Returns:
-        silhouette_avg: Average silhouette score (float) or None if not computable
-    
-    Notes:
-        - Requires at least 2 clusters
-        - Returns None if score cannot be computed
-    """
     n_clusters = len(set(labels))
     
     if n_clusters >= 2 and len(labels) > 0:
@@ -84,16 +54,6 @@ def compute_silhouette_score(X, labels):
 
 
 def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
-    """
-    Run Mean Shift clustering on all feature sets with automatic metrics computation.
-    
-    Args:
-        quantile: quantile parameter for Mean Shift
-        n_samples: Number of samples for quantile estimation
-        max_tfidf_features: Maximum TF-IDF features per text field
-        ground_truth_csv: Optional path to ground truth CSV for homogeneity computation
-        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
-    """
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
     

@@ -14,35 +14,13 @@ from sklearn.metrics import homogeneity_score, completeness_score, v_measure_sco
 
 
 def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None, n_components=None):
-    """
-    Preprocess email records for clustering algorithms (DBSCAN, Mean Shift, etc.).
-    Automatically detects numeric and text features, applies TF-IDF to text fields separately.
-    
-    Args:
-        records: List of email feature dictionaries (can have varying schemas)
-        max_tfidf_features: int - maximum number of TF-IDF features per text field
-        text_fields: list of str - specific text field names to vectorize (auto-detect if None)
-        exclude_fields: list of str - fields to exclude from feature extraction
-        n_components: int - number of SVD components for dimensionality reduction (None = no reduction)
-    
-    Returns:
-        X: numpy array of shape (n_samples, n_features) - feature matrix
-        feature_names: list of feature names corresponding to columns
-    
-    Notes:
-        - Auto-detects numeric fields (int, float) and text fields (str)
-        - Applies TF-IDF separately to each text field for better granularity
-        - Optional SVD dimensionality reduction before scaling
-        - Returns standardized features using RobustScaler (robust to outliers)
-        - Compatible with sklearn clustering algorithms
-    """
+
     if not records:
         raise ValueError("Empty records list")
     
     if exclude_fields is None:
         exclude_fields = ['email_index']
     
-    # determine field types
     sample_record = records[0]
     numeric_fields = []
     detected_text_fields = []
@@ -64,7 +42,6 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
     print(f"Detected {len(numeric_fields)} numeric fields: {numeric_fields[:5]}...")
     print(f"Using {len(text_fields)} text fields for TF-IDF: {text_fields}")
     
-    # numeric features
     X_numeric = []
     for record in records:
         features = []
@@ -103,7 +80,7 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
         except Exception as e:
             print(f"  Error processing '{text_field}': {e}")
     
-    # Combine all features
+    # combine
     X = np.hstack(feature_parts)
     
     if n_components is not None and n_components < X.shape[1]:
@@ -124,24 +101,6 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
 
 
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
-    """
-    Save cluster results to JSON file with full record details.
-    Common function for DBSCAN, Mean Shift, and other clustering algorithms.
-    
-    Args:
-        clusters: Dict mapping cluster_id -> list of email_indices
-        records: List of email feature dictionaries
-        feature_set_path: Path to input feature set JSON
-        algorithm_name: Name of clustering algorithm (e.g., "dbscan", "meanshift")
-    
-    Returns:
-        output_path: Path to saved JSON file
-    
-    Notes:
-        - DBSCAN: cluster_id -1 is treated as "noise"
-        - Mean Shift: all points assigned to clusters (no noise)
-        - Output saved to data/fsclusters/ directory with _{algorithm}_clusters.json suffix
-    """
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     output_dir = os.path.join(project_root, 'data', 'fsclusters')
     os.makedirs(output_dir, exist_ok=True)
@@ -190,8 +149,7 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
 
 def load_ground_truth_from_csv(path):
     """
-    Reads campaigns.csv and returns a dict mapping:
-        email_id (int) -> true_cluster_id (row index)
+        email_id (int) -> true_cluster_id
     """
     df = pd.read_csv(path)
 
@@ -208,23 +166,6 @@ def load_ground_truth_from_csv(path):
 
 
 def compute_homogeneity_from_clusters(clusters, ground_truth):
-    """
-    Compute homogeneity, completeness, and V-measure scores.
-    
-    Args:
-        clusters: Dict mapping cluster_id -> list of email_indices (from clustering algorithm)
-        ground_truth: Dict mapping email_id -> true_cluster_id (from ground truth CSV)
-    
-    Returns:
-        dict: {'homogeneity': float, 'completeness': float, 'v_measure': float}
-              All scores range from 0 to 1 (higher is better)
-    
-    Notes:
-        - Only evaluates emails that appear in both clustering results AND ground truth
-        - Homogeneity: Each cluster contains only members of a single class
-        - Completeness: All members of a given class are assigned to the same cluster
-        - V-measure: Harmonic mean of homogeneity and completeness
-    """
     email_to_predicted_cluster = {}
     for cluster_id, email_indices in clusters.items():
         for email_idx in email_indices:

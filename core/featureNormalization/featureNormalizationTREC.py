@@ -67,13 +67,6 @@ def extract_subject_features(subject, idf_dict):
     return dict
 
 def get_term_frequency_information(subject, idf_dict=None):
-    """
-    Returns a dictionary with:
-      - average idf of subject terms
-      - highest idf among subject terms
-      - number of terms in the subject
-    If idf_dict is not provided, uses term frequency (count) as a fallback.
-    """
     if not isinstance(subject, str):
         subject = ""
     terms = subject.lower().split()
@@ -97,10 +90,6 @@ def get_term_frequency_information(subject, idf_dict=None):
     }
 
 def load_idf_dict(csv_path):
-    """
-    Load IDF values from a CSV file into a dictionary.
-    Assumes columns: term,idf
-    """
     idf_dict = {}
     with open(csv_path, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
@@ -121,36 +110,8 @@ def get_term_frequency(subject):
     terms = subject.lower().split()
     
     return dict(Counter(terms))
-    
-def save_term_frequencies(subjects, output_path):
-    """Compute and save term frequencies as JSON objects (subjects)"""
-    email_frequencies = []
-    
-    for idx, subject in enumerate(subjects):
-        if not isinstance(subject, str):
-            subject = ""
-            
-        # Simple word splitting to keep all words
-        words = subject.lower().split()
-        
-        # Get word frequencies for this subject
-        word_freq = dict(Counter(words))
-        
-        if word_freq:
-            email_frequencies.append({
-                "email_id": idx,
-                "subject": subject,  # store original subject for reference
-                "frequencies": word_freq
-            })
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(email_frequencies, f, indent=2, ensure_ascii=False)
-    
-    print(f"Saved subject term frequencies to: {output_path}")
-    
-
+ 
 def get_idf(subjects, output_path, max_features=2000):
-    """Compute and save IDF values for subject terms to a separate CSV"""
     vectorizer = TfidfVectorizer(max_features=max_features) 
     vectorizer.fit(subjects) 
     
@@ -168,14 +129,10 @@ def get_idf(subjects, output_path, max_features=2000):
 
 
 def get_idf_path(csv_path):
-    """
-    Given a csv_path, returns the path for the corresponding subject IDF CSV.
-    Example: '../../data/csv/TREC-07-only-phishing.csv' ->
-             '../../data/csv/TREC-07-only-phishing_subject_idf.csv'
-    """
     dir_name = os.path.dirname(csv_path)
     base, ext = os.path.splitext(os.path.basename(csv_path))
     return os.path.join(dir_name, f"{base}_subject_idf{ext}")
+
 
 '''
 This feature category was derived from the plain text part and
@@ -201,11 +158,6 @@ email address).
 This function extracts the body based features, however since the TREC data is much simpler
 the amount of features has been reduced.
 There are no HTML tags or attachments in the TREC data. 
-#TODO
-It currently also does not do LSA on the body text.
-Bag of word should probably be reduced to some summary statistics instead of full vector
-or flattened to a single feature somehow, as otherwise the feature vector gets too impactful
-and reduces clustering performance.
 
 '''
 
@@ -235,7 +187,6 @@ def extract_body_based_features(body):
     }
 
 def compute_body_bow(body):
-    """Compute and return bag-of-words (term frequencies) for a single email body"""
     if not isinstance(body, str):
         body = ""
     
@@ -245,7 +196,6 @@ def compute_body_bow(body):
     return word_freq
 
 def compute_and_save_body_bow(bodies, output_path):
-    """Compute and save bag-of-words (term frequencies) for each email body as JSON objects"""
     email_bows = []
     
     for idx, body in enumerate(bodies):
@@ -267,10 +217,6 @@ def compute_and_save_body_bow(bodies, output_path):
     print(f"Saved body bag-of-words to: {output_path}")
 
 def extract_greeting_features(body):
-    """
-    Simplified greeting extractor returning a single key 'greeting'.
-    Examples: {'greeting': 'hi, name'}, {'greeting': 'hello, email'}, {'greeting': None}
-    """
     if not isinstance(body, str) or not body.strip():
         return {"greeting": ""}
 
@@ -343,12 +289,6 @@ The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
 def extract_origin_based_features(sender):
-    """
-    Extract sender name and email from two possible formats:
-    1. email@domain.com -> name is 'email'
-    2. Name <email@domain.com> -> name is 'Name'
-    Removes surrounding quotes from names (e.g., "name lastname" -> name lastname)
-    """
     if not isinstance(sender, str) or not sender.strip():
         return {"sender_name": "", "sender_email": ""}
     
@@ -379,11 +319,6 @@ No idea what recipient counts means.
 '''
 
 def extract_recipient_based_features(recipient):
-    """
-    Extract recipient name and email from two possible formats:
-    1. email@domain.com -> name is 'email'
-    2. Name <email@domain.com> -> name is 'Name'
-    """
     if not isinstance(recipient, str) or not recipient.strip():
         return {"recipient_name": "", "recipient_email": ""}
     
@@ -438,16 +373,6 @@ This function currently extracts the following URL features:
 '''
 
 def extract_url_based_features(urls):
-    """
-    Extract URL-based features for phishing detection.
-    
-    Features include:
-    - Domain and hostname information
-    - Subdomain and hyphen counts
-    - Binary features (EV cert, @symbol, non-ASCII, IP address, etc.)
-    - URL counts (short URLs, blacklisted, different domains)
-    - Hyperlink properties
-    """
     if not urls or not isinstance(urls, list):
         return {
             "domains": "",
@@ -554,16 +479,6 @@ def extract_url_based_features(urls):
     }
 
 def extract_features(misp_path, features):
-    """
-    Extract baseline features for specified types from MISP JSON format.
-    
-    Args:
-        misp_path: Path to the MISP JSON file
-        features: List of feature types to extract (e.g., ["time", "subject", "body", "origin", "receiver", "urls"])
-    
-    Returns:
-        List of feature dictionaries, one per event
-    """
     with open(misp_path, 'r', encoding='utf-8') as f:
         misp_data = json.load(f)
     events = []
@@ -591,8 +506,6 @@ def extract_features(misp_path, features):
         lsa_features_list = get_lsa_features(bodies)
 
     features_list = []
-    
-    print("extracting features from MISP events...")
 
     for event_idx, event in enumerate(events):
         feat = {'email_index': event_idx}
@@ -641,17 +554,9 @@ def extract_features(misp_path, features):
         
         features_list.append(feat)
 
-    print("returning extracted features...")
-
     return features_list
 
 def parse_misp_event_attributes(event):
-    """
-    Parse MISP event attributes into normalized email field dictionary.
-    
-    Returns:
-        Dict with keys: subject, body, sender, receiver, date, etc.
-    """
     email_fields = {
         'subject': '',
         'body': '',
@@ -678,11 +583,6 @@ def parse_misp_event_attributes(event):
     return email_fields
 
 def get_idf_path_for_misp(misp_path):
-    """
-    Given a MISP JSON path, returns the path for the corresponding subject IDF CSV.
-    Example: absolute path to 'data/misp/TREC-07-misp.json' ->
-             absolute path to 'data/csv/TREC-07-only-phishing_subject_idf.csv'
-    """
     dir_name = os.path.dirname(misp_path)
     base_name = os.path.splitext(os.path.basename(misp_path))[0]
     
@@ -696,16 +596,10 @@ def get_idf_path_for_misp(misp_path):
     return csv_path
 
 def get_FS1(misp_path):
-    """
-    Extract FS1 features: time, subject, body, origin, receiver, url
-    """
     features_list = extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls"])
     return features_list
 
 def get_FS2(misp_path):
-    """
-    Extract FS2 features: time, subject, body, url, origin
-    """
     features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin"])
 
     filtered_features = []
@@ -717,9 +611,6 @@ def get_FS2(misp_path):
     return filtered_features
 
 def get_FS3(misp_path):
-    """
-    Extract FS3 features: url, origin
-    """
     features_list = extract_features(misp_path, ["urls", "body", "origin"])
     filtered_features = []
     for feat in features_list:
@@ -733,9 +624,6 @@ def get_FS3(misp_path):
     return filtered_features
 
 def get_FS4(misp_path):
-    """
-    Extract FS4 features: subject, body
-    """
     features_list = extract_features(misp_path, ["subject", "body"])
     filtered_features = []
     for feat in features_list:
@@ -748,9 +636,6 @@ def get_FS4(misp_path):
     return filtered_features
 
 def get_FS5(misp_path):
-    """
-    Extract FS5 features: subject, body, receiver, origin, url
-    """
     features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls"])
     
     filtered_features = []
@@ -767,10 +652,6 @@ def get_FS5(misp_path):
 
 #Maybe should not include some of the body features, unsure based on description
 def get_FS6(misp_path):
-    """
-    Extract FS6 features: subject (length + spaces),
-    date, body, origin (sender_name only), and URL features.
-    """
     features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls"])
     
     filtered_features = []
@@ -785,13 +666,8 @@ def get_FS6(misp_path):
     return filtered_features
 
 def get_FS7(misp_path):
-    """
-    Extract FS7 features: subject, body, origin (sender_name only), and urls.
-    Excludes subject/body term frequencies and only includes sender_name from origin.
-    """
     features_list = extract_features(misp_path, ["subject", "body", "origin", "urls"])
     
-    # Filter out unwanted keys from each feature dictionary
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
@@ -802,10 +678,6 @@ def get_FS7(misp_path):
     return filtered_features
 
 def get_test_set(misp_path):
-    """
-    Extract features: origin, receiver, url, and subject (without term frequency).
-    Excludes subject term frequencies and only includes sender_name from origin.
-    """
     features_list = extract_features(misp_path, ["subject", "origin", "receiver", "urls"])
     
     filtered_features = []
@@ -817,16 +689,6 @@ def get_test_set(misp_path):
 
 
 def _extract_and_save_featureset(args):
-    """
-    Helper function for parallel feature extraction.
-    Extracts a single feature set and saves it to JSON.
-    
-    Args:
-        args: Tuple of (fs_name, fs_function, misp_path, output_path)
-    
-    Returns:
-        Tuple of (fs_name, output_path, num_emails, sample_keys, success, error_msg)
-    """
     fs_name, fs_function, misp_path, output_path = args
     
     try:
@@ -842,21 +704,7 @@ def _extract_and_save_featureset(args):
         return (fs_name, output_path, 0, [], False, str(e))
 
 
-def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):    
-    """
-    Run all featureset extractors (FS1 through FS7) and save each to separate JSON files.
-    
-    Args:
-        misp_path: Path to MISP JSON file (default: <project_root>/data/misp/TREC-07-misp.json)
-        parallel: If True, extract feature sets in parallel (default: True)
-        max_workers: Maximum number of parallel workers (default: None = number of CPUs)
-    
-    Output files will be saved to <project_root>/data/featuresets/ with names like:
-        TREC-07-misp-FS1.json
-        TREC-07-misp-FS2.json
-        ...
-        TREC-07-misp-FS7.json
-    """
+def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
     if misp_path is None:
