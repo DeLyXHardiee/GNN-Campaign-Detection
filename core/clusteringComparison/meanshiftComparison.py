@@ -16,16 +16,17 @@ from clusteringCommonFunctions import (
     compute_homogeneity_from_clusters
 )
 
-def cluster_with_ids(records, quantile, n_samples, max_tfidf_features):
+def cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_components=None):
     """
     Perform Mean Shift clustering on email records.
     Follows repo's schema-driven pattern with outlier-robust preprocessing.
     
     Args:
         records: List of email feature dictionaries
-        quantile: Bandwidth estimation quantile (0.2-0.35, default 0.3)
+        bandwidth: Bandwidth parameter for Mean Shift
         n_samples: Number of samples for bandwidth estimation (default 500)
         max_tfidf_features: Maximum TF-IDF features per text field
+        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
     
     Returns:
         clusters: Dict mapping cluster_id -> list of email_indices
@@ -36,11 +37,23 @@ def cluster_with_ids(records, quantile, n_samples, max_tfidf_features):
     idxs = [r["email_index"] for r in records]
 
     # Preprocess with outlier clipping (following "small numeric features" principle)
-    X, feature_names = preprocess_for_clustering(records, max_tfidf_features)
+    X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
 
-    # Estimate bandwidth
+    # Diagnostic: Check feature statistics
+    print(f"Feature matrix shape: {X.shape}")
+    print(f"Feature range: [{X.min():.4f}, {X.max():.4f}]")
+    print(f"Feature mean: {X.mean():.4f}, std: {X.std():.4f}")
+    
+    # Use provided bandwidth
     bandwidth = estimate_bandwidth(X, quantile=quantile, n_samples=min(n_samples, len(X)))
-    print(f"Estimated bandwidth: {bandwidth:.4f}")
+    print(f"Using bandwidth: {bandwidth:.6f}")
+    
+    # Handle zero bandwidth (data too similar after scaling)
+    if bandwidth <= 0.0001:
+        print(f"WARNING: Bandwidth too small ({bandwidth:.6f}), using manual bandwidth")
+        # Use a fraction of the feature space range or standard deviation
+        bandwidth = max(X.std() * 0.5, 0.1)
+        print(f"Using manual bandwidth: {bandwidth:.4f}")
 
     # Run Mean Shift
     ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
@@ -79,15 +92,16 @@ def compute_silhouette_score(X, labels):
         return None
 
 
-def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, ground_truth_csv=None):
+def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
     """
     Run Mean Shift clustering on all feature sets with automatic metrics computation.
     
     Args:
-        quantile: Bandwidth estimation quantile (0.2-0.35)
-        n_samples: Number of samples for bandwidth estimation
+        quantile: quantile parameter for Mean Shift
+        n_samples: Number of samples for quantile estimation
         max_tfidf_features: Maximum TF-IDF features per text field
         ground_truth_csv: Optional path to ground truth CSV for homogeneity computation
+        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
     """
     # Get project root (two levels up from this file: core/clusteringComparison -> core -> project)
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -118,7 +132,7 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
     
     print(f"{'='*80}")
     print(f"Starting Mean Shift clustering on {len(feature_sets)} feature sets...")
-    print(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}")
+    print(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}")
     print(f"{'='*80}")
     
     # Open output files in append mode
@@ -127,7 +141,7 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sil_f.write("\n" + "="*80 + "\n")
         sil_f.write(f"Mean Shift Run - {timestamp}\n")
-        sil_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}\n")
+        sil_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
         sil_f.write("="*80 + "\n\n")
         
         # Open homogeneity file if ground truth is available
@@ -136,7 +150,7 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
             hom_f = open(homogeneity_file, 'a', encoding='utf-8')
             hom_f.write("\n" + "="*80 + "\n")
             hom_f.write(f"Mean Shift Run - {timestamp}\n")
-            hom_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}\n")
+            hom_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
             hom_f.write("="*80 + "\n\n")
     
         for fs_name in feature_sets:
@@ -159,7 +173,7 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
             print(f"Loaded {len(records)} records")
             
             # Run clustering
-            clusters, labels, X = cluster_with_ids(records, quantile, n_samples, max_tfidf_features)
+            clusters, labels, X = cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_components)
             
             # Compute silhouette score
             silhouette_avg = compute_silhouette_score(X, labels)
@@ -209,13 +223,3 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
     if homogeneity_file:
         print(f"Homogeneity scores saved to: {homogeneity_file}")
     print(f"{'='*80}")
-
-# --- MAIN EXECUTION ---
-if __name__ == "__main__":
-    # Run Mean Shift clustering on all feature sets with ground truth evaluation
-    meanshift_cluster_all(
-        quantile=0.3,
-        n_samples=500,
-        max_tfidf_features=500,
-        ground_truth_csv="data/groundtruths/pair_votes_all.csv"
-    )

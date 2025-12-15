@@ -1,0 +1,117 @@
+
+================================================================================
+Mean Shift Run - 2025-12-12 06:33:35
+Parameters: quantile=0.2, n_samples=500, max_tfidf_features=500, n_components=None
+================================================================================
+
+FS1: 0.3508 (clusters: 23)
+FS2: 0.3710 (clusters: 24)
+FS3: 0.3899 (clusters: 14)
+FS4: 0.3879 (clusters: 8)
+FS5: 0.2812 (clusters: 7)
+FS6: 0.3109 (clusters: 46)
+FS7: 0.3183 (clusters: 26)
+
+================================================================================
+Mean Shift Run - 2025-12-12 06:56:20
+Parameters: quantile=0.2, n_samples=500, max_tfidf_features=1000, n_components=None
+================================================================================
+
+FS1: 0.3933 (clusters: 23)
+FS2: 0.4145 (clusters: 26)
+FS3: 0.3445 (clusters: 17)
+FS4: 0.4072 (clusters: 8)
+FS5: 0.3050 (clusters: 5)
+FS6: 0.3090 (clusters: 43)
+FS7: 0.3233 (clusters: 24)
+
+================================================================================
+Mean Shift Run - 2025-12-12 07:45:25
+Parameters: quantile=0.2, n_samples=500, max_tfidf_features=5000, n_components=None
+================================================================================
+
+FS1: 0.4175 (clusters: 24)
+FS2: 0.4392 (clusters: 25)
+FS3: 0.2483 (clusters: 10)
+FS4: 0.4108 (clusters: 7)
+FS5: 0.2996 (clusters: 5)
+FS6: 0.3375 (clusters: 44)
+FS7: 0.3186 (clusters: 26)
+
+================================================================================
+Mean Shift Run - 2025-12-12 09:19:48
+Parameters: quantile=0.25, n_samples=500, max_tfidf_features=500, n_components=None
+================================================================================
+
+FS1: 0.4275 (clusters: 21)
+FS2: 0.4444 (clusters: 23)
+FS3: 0.3904 (clusters: 11)
+FS4: 0.3558 (clusters: 7)
+FS5: 0.3000 (clusters: 6)
+FS6: 0.3442 (clusters: 43)
+FS7: 0.3265 (clusters: 26)
+
+================================================================================
+Mean Shift Run - 2025-12-12 09:42:34
+Parameters: quantile=0.25, n_samples=500, max_tfidf_features=1000, n_components=None
+================================================================================
+
+FS1: 0.4250 (clusters: 21)
+FS2: 0.4147 (clusters: 24)
+FS3: 0.2650 (clusters: 8)
+FS4: 0.3587 (clusters: 7)
+FS5: 0.3197 (clusters: 4)
+FS6: 0.3465 (clusters: 44)
+FS7: 0.3114 (clusters: 24)
+
+================================================================================
+Mean Shift Run - 2025-12-12 10:26:32
+Parameters: quantile=0.25, n_samples=500, max_tfidf_features=5000, n_components=None
+================================================================================
+
+FS1: 0.4176 (clusters: 22)
+FS2: 0.4189 (clusters: 25)
+FS3: 0.2936 (clusters: 9)
+FS4: 0.3630 (clusters: 6)
+FS5: 0.3146 (clusters: 4)
+FS6: 0.3427 (clusters: 44)
+FS7: 0.3067 (clusters: 24)
+
+================================================================================
+Mean Shift Run - 2025-12-12 11:59:33
+Parameters: quantile=0.3, n_samples=500, max_tfidf_features=500, n_components=None
+================================================================================
+
+FS1: 0.4275 (clusters: 22)
+FS2: 0.4249 (clusters: 24)
+FS3: 0.2822 (clusters: 8)
+FS4: 0.3349 (clusters: 6)
+FS5: 0.3016 (clusters: 4)
+FS6: 0.3688 (clusters: 41)
+FS7: 0.3139 (clusters: 24)
+
+================================================================================
+Mean Shift Run - 2025-12-12 12:21:43
+Parameters: quantile=0.3, n_samples=500, max_tfidf_features=1000, n_components=None
+================================================================================
+
+FS1: 0.4250 (clusters: 21)
+FS2: 0.4460 (clusters: 23)
+FS3: 0.3246 (clusters: 8)
+FS4: 0.3430 (clusters: 5)
+FS5: 0.3069 (clusters: 3)
+FS6: 0.3470 (clusters: 43)
+FS7: 0.3111 (clusters: 24)
+
+================================================================================
+Mean Shift Run - 2025-12-12 12:41:37
+Parameters: quantile=0.3, n_samples=500, max_tfidf_features=5000, n_components=None
+================================================================================
+
+FS1: 0.4220 (clusters: 21)
+FS2: 0.4189 (clusters: 25)
+FS3: 0.3219 (clusters: 8)
+FS4: 0.3424 (clusters: 5)
+FS5: 0.3003 (clusters: 3)
+FS6: 0.3739 (clusters: 39)
+FS7: 0.3058 (clusters: 26)

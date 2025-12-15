@@ -12,12 +12,12 @@ from clusteringComparison.clusteringCommonFunctions import (
     compute_homogeneity_from_clusters
 )
 
-def cluster_with_ids(records, eps, min_samples,max_tfidf_features):
+def cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components=None):
     # Extract IDs
     idxs = [r["email_index"] for r in records]
 
     # Preprocess to numeric features (common function)
-    X, feature_names = preprocess_for_clustering(records,max_tfidf_features)
+    X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
 
     # Run DBSCAN with configurable parameters
     labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
@@ -57,7 +57,17 @@ def compute_silhouette_score(X, labels):
     else:
         return None
 
-def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None):
+def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
+    """
+    Run DBSCAN clustering on all feature sets.
+    
+    Args:
+        eps: DBSCAN epsilon parameter
+        min_samples: DBSCAN minimum samples parameter
+        max_tfidf_features: Maximum TF-IDF features per text field
+        ground_truth_csv: Path to ground truth CSV for evaluation
+        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
+    """
     # Get project root (two levels up from this file: core/clusteringComparison -> core -> project)
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
@@ -84,10 +94,11 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
     
     # Define all feature sets to cluster
     feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    #feature_sets = ['FS4']
     
     print(f"{'='*80}")
     print(f"Starting DBSCAN clustering on {len(feature_sets)} feature sets...")
-    print(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}")
+    print(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}")
     print(f"{'='*80}")
     
     # Open output files in append mode
@@ -96,7 +107,7 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sil_f.write("\n" + "="*80 + "\n")
         sil_f.write(f"DBSCAN Run - {timestamp}\n")
-        sil_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}\n")
+        sil_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
         sil_f.write("="*80 + "\n\n")
         
         # Open homogeneity file if ground truth is available
@@ -105,7 +116,7 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             hom_f = open(homogeneity_file, 'a', encoding='utf-8')
             hom_f.write("\n" + "="*80 + "\n")
             hom_f.write(f"DBSCAN Run - {timestamp}\n")
-            hom_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}\n")
+            hom_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
             hom_f.write("="*80 + "\n\n")
     
         for fs_name in feature_sets:
@@ -128,7 +139,7 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             print(f"Loaded {len(records)} records")
             
             # Run clustering
-            clusters, labels, X = cluster_with_ids(records, eps, min_samples,max_tfidf_features)
+            clusters, labels, X = cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components)
             
             # Compute silhouette score
             silhouette_avg = compute_silhouette_score(X, labels)
@@ -165,6 +176,8 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             for cluster_id in sorted(clusters.keys()):
                 cluster_name = "noise" if cluster_id == -1 else f"cluster_{cluster_id}"
                 print(f"  {cluster_name}: {len(clusters[cluster_id])} emails")
+                if cluster_id > 5:
+                    break
             
             print(f"✓ {fs_name} clustering complete")
         
