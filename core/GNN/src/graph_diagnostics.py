@@ -4,13 +4,12 @@ import torch
 from torch_geometric.data import HeteroData
 
 
-def _summarize_degrees(deg: torch.Tensor, multi_threshold: int) -> Dict[str, float]:
-    """Return degree bucket counts for a 1D degree tensor."""
+def _summarize_degrees(deg: torch.Tensor, multi_threshold: int):
     total = deg.numel()
     deg0 = int((deg == 0).sum())
     deg1 = int((deg == 1).sum())
     deg_multi = int((deg >= multi_threshold).sum())
-    pct = lambda x: (x / total * 100.0) if total else 0.0  # noqa: E731
+    pct = lambda x: (x / total * 100.0) if total else 0.0
     return {
         "total_nodes": total,
         "deg0": deg0,
@@ -22,15 +21,7 @@ def _summarize_degrees(deg: torch.Tensor, multi_threshold: int) -> Dict[str, flo
 
 
 def summarize_relation_connectivity(
-    data: HeteroData, multi_threshold: int = 2
-) -> Tuple[List[Dict[str, object]], Dict[str, Dict[str, float]]]:
-    """
-    For each relation, bucket nodes by degree (0, 1, >= multi_threshold).
-
-    Returns:
-        relation_rows: list of dicts with per-edge-type stats
-        overall_node_stats: dict mapping node type -> degree bucket counts across all relations
-    """
+    data: HeteroData, multi_threshold: int = 2):
     relation_rows: List[Dict[str, object]] = []
 
     for edge_type in data.edge_types:
@@ -52,8 +43,6 @@ def summarize_relation_connectivity(
                 "dst_counts": _summarize_degrees(dst_deg, multi_threshold),
             }
         )
-
-    # Aggregate degrees across all relations for each node type
     node_degrees = {
         ntype: torch.zeros(data[ntype].num_nodes, dtype=torch.long)
         for ntype in data.node_types
@@ -73,10 +62,7 @@ def summarize_relation_connectivity(
     return relation_rows, overall_node_stats
 
 
-def print_connectivity_report(data: HeteroData, multi_threshold: int = 2) -> None:
-    """
-    Convenience wrapper to print per-relation connectivity stats to stdout.
-    """
+def print_connectivity_report(data: HeteroData, multi_threshold: int = 2):
     relation_rows, overall_node_stats = summarize_relation_connectivity(
         data, multi_threshold=multi_threshold
     )
