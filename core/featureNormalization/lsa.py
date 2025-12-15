@@ -19,13 +19,10 @@ def compute_body_lsa(body, lsa_model, vectorizer):
     if not isinstance(body, str):
         body = ""
     
-    # Transform body to TF-IDF vector
     tfidf_vec = vectorizer.transform([body])
     
-    # Apply LSA transformation
     topic_vec = lsa_model.transform(tfidf_vec)[0]
     
-    # Convert to dictionary with named features
     lsa_features = {f"lsa_topic_{i}": round(float(val), 4) for i, val in enumerate(topic_vec)}
     
     return lsa_features
@@ -38,7 +35,6 @@ def get_lsa_features(bodies):
     
     print(f"Fitting LSA model on {len(bodies)} email bodies...")
     
-    # Fit LSA model once on entire corpus
     vectorizer = TfidfVectorizer(
         max_features=1000, 
         stop_words='english', 
@@ -55,7 +51,6 @@ def get_lsa_features(bodies):
     lsa_features_list = []
     
     for body in bodies:
-        # Compute LSA topic vector for this email body
         lsa_features = compute_body_lsa(body, lsa_model, vectorizer)
         lsa_features_list.append(lsa_features)
 

@@ -14,7 +14,6 @@ def filter_months(df, months=6):
     
     df['temp_ts'] = pd.to_datetime(df['date'], errors='coerce', utc=True)
     
-    # Drop rows where date could not be parsed
     df = df.dropna(subset=['temp_ts'])
     
     df['month_year'] = df['temp_ts'].dt.to_period('M')
@@ -34,7 +33,6 @@ def filter_months(df, months=6):
          
     monthly_counts = monthly_counts.reindex(full_range, fill_value=0)
 
-    # Find best window using rolling sum
     rolling_sums = monthly_counts.rolling(window=months).sum()
     
     best_end_period = rolling_sums.idxmax()

@@ -13,16 +13,12 @@ from clusteringComparison.clusteringCommonFunctions import (
 )
 
 def cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components=None):
-    # Extract IDs
     idxs = [r["email_index"] for r in records]
 
-    # Preprocess to numeric features (common function)
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
 
-    # Run DBSCAN with configurable parameters
     labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
 
-    # Build cluster → ID list map
     clusters = defaultdict(list)
     
     for record_id, label in zip(idxs, labels):
@@ -47,7 +43,6 @@ def compute_silhouette_score(X, labels):
         - Requires at least 2 clusters
         - Returns None if score cannot be computed
     """
-    # Exclude noise points (label = -1)
     non_noise_mask = labels != -1
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     
@@ -68,15 +63,12 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
         ground_truth_csv: Path to ground truth CSV for evaluation
         n_components: Number of SVD components for dimensionality reduction (None = no reduction)
     """
-    # Get project root (two levels up from this file: core/clusteringComparison -> core -> project)
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
     
-    # Create output directory for results
     results_dir = os.path.join(project_root, 'data', 'fsclusters')
     os.makedirs(results_dir, exist_ok=True)
     
-    # Load ground truth if provided
     ground_truth = None
     if ground_truth_csv:
         if not os.path.isabs(ground_truth_csv):
@@ -88,29 +80,23 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
         else:
             print(f"Warning: Ground truth file not found: {ground_truth_csv}")
     
-    # Create output files (append mode to preserve history)
     silhouette_file = os.path.join(results_dir, 'dbscan_silhouette_scores.txt')
     homogeneity_file = os.path.join(results_dir, 'dbscan_homogeneity_scores.txt') if ground_truth else None
     
-    # Define all feature sets to cluster
     feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
-    #feature_sets = ['FS4']
     
     print(f"{'='*80}")
     print(f"Starting DBSCAN clustering on {len(feature_sets)} feature sets...")
     print(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}")
     print(f"{'='*80}")
     
-    # Open output files in append mode
     with open(silhouette_file, 'a', encoding='utf-8') as sil_f:
-        # Write run header with timestamp and parameters
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sil_f.write("\n" + "="*80 + "\n")
         sil_f.write(f"DBSCAN Run - {timestamp}\n")
         sil_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
         sil_f.write("="*80 + "\n\n")
         
-        # Open homogeneity file if ground truth is available
         hom_f = None
         if homogeneity_file:
             hom_f = open(homogeneity_file, 'a', encoding='utf-8')
@@ -122,7 +108,6 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
         for fs_name in feature_sets:
             feature_set_path = os.path.join(featuresets_dir, f"TREC-07-misp-{fs_name}.json")
             
-            # Check if file exists
             if not os.path.exists(feature_set_path):
                 print(f"\n✗ Skipping {fs_name}: File not found at {feature_set_path}")
                 sil_f.write(f"{fs_name}: SKIPPED (file not found)\n")
@@ -132,16 +117,13 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             print(f"Clustering {fs_name}...")
             print(f"{'='*80}")
             
-            # Load records
             with open(feature_set_path, 'r', encoding='utf-8') as f:
                 records = json.load(f)
             
             print(f"Loaded {len(records)} records")
             
-            # Run clustering
             clusters, labels, X = cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components)
             
-            # Compute silhouette score
             silhouette_avg = compute_silhouette_score(X, labels)
             n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
             
@@ -156,7 +138,6 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
                     print(f"Silhouette Score: N/A (all points are noise)")
                     sil_f.write(f"{fs_name}: N/A (all points are noise)\n")
             
-            # Compute homogeneity score if ground truth available
             if ground_truth and hom_f:
                 homogeneity_scores = compute_homogeneity_from_clusters(clusters, ground_truth)
                 print(f"Homogeneity: {homogeneity_scores['homogeneity']:.4f}, "
@@ -168,10 +149,8 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
                            f"V={homogeneity_scores['v_measure']:.4f} "
                            f"(n={homogeneity_scores['n_samples']}, clusters={n_clusters})\n")
             
-            # Save clusters to JSON file
             output_path = save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan")
             
-            # Print summary
             print(f"\nCluster Summary for {fs_name}:")
             for cluster_id in sorted(clusters.keys()):
                 cluster_name = "noise" if cluster_id == -1 else f"cluster_{cluster_id}"
@@ -181,7 +160,6 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             
             print(f"✓ {fs_name} clustering complete")
         
-        # Close homogeneity file if opened
         if hom_f:
             hom_f.close()
     

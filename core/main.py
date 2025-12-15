@@ -62,7 +62,6 @@ def run_graph_creation(misp_json_path="../data/misp/TREC-07-misp.json", *, to_me
     return graph
 
 def create_feature_sets():
-    # run all of the get_FS functions from feaureNormalizationTrec.py to create feature sets
     run_featureset_extraction()
 
 def run_featureset_clustering():
@@ -72,7 +71,6 @@ def run_featureset_clustering():
     """
     ground_truth_csv = "data/groundtruths/campaigns.csv"
     
-    # DBSCAN parameter grid
     eps_values = [0.5, 1, 1.5, 2, 2.5]
     tfidf_values = [500,1000,5000]
     min_samples = 5
@@ -90,7 +88,6 @@ def run_featureset_clustering():
     print(f"Total configurations: {len(eps_values) * len(tfidf_values)}")
     print(f"{'='*80}\n")
     
-    # Run DBSCAN clustering for each parameter combination
     for eps in eps_values:
         for max_tfidf in tfidf_values:
             print(f"\n{'='*80}")
@@ -110,11 +107,10 @@ def run_featureset_clustering():
     print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
     print(f"{'='*80}\n")
     
-    # Mean Shift parameter grid
     quantile_values = [0.2,0.25,0.3]
     tfidf_values_ms = [500,1000,5000]
     #n_components = 200
-    n_samples = 500  # Keep constant for simplicity
+    n_samples = 500 
     
     print(f"\n{'='*80}")
     print(f"Mean Shift Parameter Grid Search")
@@ -124,7 +120,6 @@ def run_featureset_clustering():
     print(f"Total configurations: {len(quantile_values) * len(tfidf_values_ms)}")
     print(f"{'='*80}\n")
     
-    # Run Mean Shift clustering for each parameter combination
     for quantile in quantile_values:
         for max_tfidf in tfidf_values_ms:
             print(f"\n{'='*80}")
