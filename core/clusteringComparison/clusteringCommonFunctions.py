@@ -5,14 +5,15 @@ Following repo's schema-driven pattern: single source of truth for feature prepr
 
 import json
 import os
-import csv
+import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import homogeneity_score, completeness_score, v_measure_score
 
 
-def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None):
+def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None, n_components=None):
     """
     Preprocess email records for clustering algorithms (DBSCAN, Mean Shift, etc.).
     Automatically detects numeric and text features, applies TF-IDF to text fields separately.
@@ -22,6 +23,7 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
         max_tfidf_features: int - maximum number of TF-IDF features per text field
         text_fields: list of str - specific text field names to vectorize (auto-detect if None)
         exclude_fields: list of str - fields to exclude from feature extraction
+        n_components: int - number of SVD components for dimensionality reduction (None = no reduction)
     
     Returns:
         X: numpy array of shape (n_samples, n_features) - feature matrix
@@ -30,6 +32,7 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
     Notes:
         - Auto-detects numeric fields (int, float) and text fields (str)
         - Applies TF-IDF separately to each text field for better granularity
+        - Optional SVD dimensionality reduction before scaling
         - Returns standardized features using RobustScaler (robust to outliers)
         - Compatible with sklearn clustering algorithms
     """
@@ -112,7 +115,20 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
     # Combine all features
     X = np.hstack(feature_parts)
     
-    print(f"\nTotal features: {X.shape[1]} ({len(numeric_fields)} numeric + {X.shape[1] - len(numeric_fields)} TF-IDF)")
+    #print(f"\nTotal features before reduction: {X.shape[1]} ({len(numeric_fields)} numeric + {X.shape[1] - len(numeric_fields)} TF-IDF)")
+    
+    # Apply SVD dimensionality reduction if requested
+    if n_components is not None and n_components < X.shape[1]:
+        print(f"Applying SVD dimensionality reduction: {X.shape[1]} -> {n_components} components")
+        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        X = svd.fit_transform(X)
+        
+        # Update feature names to reflect SVD components
+        feature_names = [f"svd_component_{i}" for i in range(n_components)]
+        
+        explained_variance = svd.explained_variance_ratio_.sum()
+        print(f"  Explained variance ratio: {explained_variance:.4f} ({explained_variance*100:.2f}%)")
+        print(f"  Reduced to {X.shape[1]} features")
     
     # Standardize features using RobustScaler (robust to outliers in phishing data)
     scaler = RobustScaler()
@@ -196,82 +212,24 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
     print(f"Saved cluster results to: {output_path}")
     return output_path
 
+def load_ground_truth_from_csv(path):
+    """
+    Reads campaigns.csv and returns a dict mapping:
+        email_id (int) -> true_cluster_id (row index)
+    """
+    df = pd.read_csv(path)
 
-def load_ground_truth_from_csv(csv_path):
-    """
-    Load ground truth cluster assignments from pairwise voting CSV.
-    If transitive closure does not hold for votes they will be grouped into clusters regardless.
-    For example
-    A and B voted same_campaign
-    B and C voted same_campaign
-    A and C voted not same_campaign
-    Then A, B, and C will be grouped into the same cluster.
-    
-    Args:
-        csv_path: Path to CSV file with columns: timestamp, uuid, email_a_id, email_b_id, vote, ...
-                  Vote can be 'same_campaign' or 'unrelated'
-    
-    Returns:
-        dict: Mapping of email_id (int) -> cluster_id (int)
-              Emails voted as 'same_campaign' get the same cluster_id
-    
-    Notes:
-        - Uses union-find algorithm to group emails into clusters based on votes
-        - Only considers 'same_campaign' votes (unrelated votes are ignored)
-    """
-    # Read pairwise votes
-    pairs_same_campaign = []
-    
-    with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if len(row) < 5:
-                continue
-            
-            try:
-                email_a = int(row[2])
-                email_b = int(row[3])
-                vote = row[4].strip().lower()
-                
-                if vote == 'same_campaign':
-                    pairs_same_campaign.append((email_a, email_b))
-            except (ValueError, IndexError):
-                continue
-    
-    # Build clusters using union-find
-    parent = {}
-    
-    def find(x):
-        if x not in parent:
-            parent[x] = x
-        if parent[x] != x:
-            parent[x] = find(parent[x])
-        return parent[x]
-    
-    def union(x, y):
-        root_x = find(x)
-        root_y = find(y)
-        if root_x != root_y:
-            parent[root_y] = root_x
-    
-    # Union all pairs marked as same_campaign
-    for email_a, email_b in pairs_same_campaign:
-        union(email_a, email_b)
-    
-    # Assign cluster IDs
-    # Is this correct? The cluster ID's will be random and not correspond to the cluster ID's from the DBSCAN
-    email_to_cluster = {}
-    cluster_id_map = {}
-    next_cluster_id = 0
-    
-    for email_id in parent.keys():
-        root = find(email_id)
-        if root not in cluster_id_map:
-            cluster_id_map[root] = next_cluster_id
-            next_cluster_id += 1
-        email_to_cluster[email_id] = cluster_id_map[root]
-    
-    return email_to_cluster
+    mapping = {}
+    for idx, row in df.iterrows():
+        email_ids = str(row["email_ids"]).split(",")
+        for e in email_ids:
+            e = e.strip()
+            if e:
+                mapping[int(e)] = idx
+
+    #print(mapping)
+    return mapping
+
 
 
 def compute_homogeneity_from_clusters(clusters, ground_truth):

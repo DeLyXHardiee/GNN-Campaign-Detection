@@ -70,12 +70,17 @@ def run_featureset_clustering():
     Run DBSCAN and Mean Shift clustering with grid search over parameters.
     Tests different parameter combinations to find optimal homogeneity scores.
     """
-    ground_truth_csv = "data/groundtruths/pair_votes_all.csv"
-    '''
+    ground_truth_csv = "data/groundtruths/campaigns.csv"
+    
     # DBSCAN parameter grid
     eps_values = [0.5, 1, 1.5, 2, 2.5]
-    tfidf_values = [500, 1000, 5000]
-    min_samples = 5  # Keep constant for simplicity
+    tfidf_values = [500,1000,5000]
+    min_samples = 5
+    n_components = 200
+    
+    #eps_values = [1.5]
+    #tfidf_values = [5000]
+    #min_samples = 2
     
     print(f"{'='*80}")
     print(f"DBSCAN Parameter Grid Search")
@@ -96,6 +101,7 @@ def run_featureset_clustering():
                 eps=eps, 
                 min_samples=min_samples, 
                 max_tfidf_features=max_tfidf, 
+                #n_components=n_components,
                 ground_truth_csv=ground_truth_csv
             )
     
@@ -103,16 +109,17 @@ def run_featureset_clustering():
     print(f"DBSCAN grid search complete!")
     print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
     print(f"{'='*80}\n")
-    '''
+    
     # Mean Shift parameter grid
-    quantile_values = [0.2, 0.25, 0.3, 0.35, 0.4]
-    tfidf_values_ms = [500, 1000, 5000]
-    n_samples = 5  # Keep constant for simplicity
+    quantile_values = [0.2,0.25,0.3]
+    tfidf_values_ms = [500,1000,5000]
+    #n_components = 200
+    n_samples = 500  # Keep constant for simplicity
     
     print(f"\n{'='*80}")
     print(f"Mean Shift Parameter Grid Search")
     print(f"{'='*80}")
-    print(f"Testing {len(quantile_values)} quantile values: {quantile_values}")
+    print(f"Testing {len(quantile_values)} bandwidth values: {quantile_values}")
     print(f"Testing {len(tfidf_values_ms)} TF-IDF features: {tfidf_values_ms}")
     print(f"Total configurations: {len(quantile_values) * len(tfidf_values_ms)}")
     print(f"{'='*80}\n")
@@ -128,6 +135,7 @@ def run_featureset_clustering():
                 quantile=quantile,
                 n_samples=n_samples,
                 max_tfidf_features=max_tfidf,
+                #n_components=n_components,
                 ground_truth_csv=ground_truth_csv
             )
     
@@ -165,10 +173,10 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    run_preprocessing()
-    run_trec_misp_converter()
+    #run_preprocessing()
+    #run_trec_misp_converter()
     #run_featureset_extraction()
-    #run_featureset_clustering()
+    run_featureset_clustering()
     #run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()

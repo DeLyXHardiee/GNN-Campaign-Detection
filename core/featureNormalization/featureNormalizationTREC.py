@@ -805,8 +805,6 @@ def get_FS3(misp_path):
     
     return filtered_features
 
-"num_urls", "has_urls", 
-
 def get_FS4(misp_path):
     """
     Extract FS4 features: subject, body
