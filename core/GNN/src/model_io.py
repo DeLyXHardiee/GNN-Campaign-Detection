@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 
-from .model import HeteroSAGE, DotPredictor, MLPredictor
+from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 from .loaders import make_link_loaders
 
 
@@ -104,9 +104,13 @@ def _build_model_from_checkpoint(checkpoint, device, metadata_override=None):
     ).to(device)
     if score_head == "mlp":
         pred_state = checkpoint["predictor_state_dict"]
-        # If predictor hidden size not stored, infer from state dict (net.0.weight shape is [hidden, in]).
         hidden_size = predictor_hidden or pred_state["net.0.weight"].shape[0]
         predictor = MLPredictor(out_dim, h=hidden_size).to(device)
+    elif score_head == "distmult":
+        sup_edge_types = checkpoint.get("sup_edge_types")
+        if sup_edge_types is None:
+            raise ValueError("Checkpoint missing sup_edge_types needed for DistMultPredictor.")
+        predictor = DistMultPredictor(dim=out_dim, edge_types=sup_edge_types).to(device)
     else:
         predictor = DotPredictor().to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -134,7 +138,6 @@ def load_full_run(data, device=None, filename="best_model.pt"):
     """
     data_cpu = data.to('cpu')
     device = select_device(device)
-    # Use checkpoint-stored metadata to avoid mismatches with the current data object.
     model, predictor, checkpoint = load_model_checkpoint(device=device, metadata=None, filename=filename)
 
     train_pos = checkpoint.get("train_pos")

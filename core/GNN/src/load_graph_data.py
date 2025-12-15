@@ -7,7 +7,7 @@ def load_imdb(root: str = "data/IMDB"):
     """
     Loads the PyG IMDB heterogeneous graph and returns the single HeteroData object.
     """
-    root = str(Path(root))  # normalize
+    root = str(Path(root))
     dataset = IMDB(root=root)
     return dataset[0]
 
@@ -16,7 +16,7 @@ def load_hetero_pt(path: str = "../../results/TREC-07-misp_hetero.pt"):
     Load a saved HeteroData object from a .pt file.
     """
     path = str(Path(path).expanduser())
-    data = torch.load(path, map_location="cpu")   # or your DEVICE
+    data = torch.load(path, map_location="cpu")
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
     return data
