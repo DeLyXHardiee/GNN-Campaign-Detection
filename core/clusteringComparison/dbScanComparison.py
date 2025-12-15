@@ -28,21 +28,6 @@ def cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components
 
 
 def compute_silhouette_score(X, labels):
-    """
-    Compute silhouette score for clustering results.
-    
-    Args:
-        X: Feature matrix (n_samples, n_features)
-        labels: Cluster labels for each sample
-    
-    Returns:
-        silhouette_avg: Average silhouette score (float) or None if not computable
-    
-    Notes:
-        - Excludes noise points (label = -1) for DBSCAN
-        - Requires at least 2 clusters
-        - Returns None if score cannot be computed
-    """
     non_noise_mask = labels != -1
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     
@@ -53,16 +38,6 @@ def compute_silhouette_score(X, labels):
         return None
 
 def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
-    """
-    Run DBSCAN clustering on all feature sets.
-    
-    Args:
-        eps: DBSCAN epsilon parameter
-        min_samples: DBSCAN minimum samples parameter
-        max_tfidf_features: Maximum TF-IDF features per text field
-        ground_truth_csv: Path to ground truth CSV for evaluation
-        n_components: Number of SVD components for dimensionality reduction (None = no reduction)
-    """
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
     
