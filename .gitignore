@@ -3,7 +3,7 @@
 *.json
 core/GNN/data
 core/GNN/notebooks/data
-data/csv
+data/*
 core/results
 core/GNN/models
 
