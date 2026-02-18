@@ -96,7 +96,8 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
 
 
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # compute repository root so outputs go to repo-level `data/fsclusters`
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     output_dir = os.path.join(project_root, 'data', 'fsclusters')
     os.makedirs(output_dir, exist_ok=True)
     

@@ -6,15 +6,16 @@ from graph.graph_filter import NodeType
 from feature_set_extraction.feature_set_extraction import run_featureset_extraction
 from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
 from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
-
+from preprocessing.utils.filter_csv import filter_phishing_emails
 
 def run_preprocessing():
     """
     Run preprocessing steps to filter and prepare data.
     Currently removes non-phishing emails from TREC-07 dataset.
     """
-    from preprocessing.utils.filter_csv import filter_phishing_emails
-    
+
+    #If you place this outside of the function, it will run on import
+
     input_csv = "../data/csv/TREC-07.csv"
     output_csv = "../data/csv/TREC-07-only-phishing-6m.csv"
     
@@ -71,8 +72,8 @@ def run_featureset_clustering():
     """
     ground_truth_csv = "data/groundtruths/campaigns.csv"
     
-    eps_values = [0.5, 1, 1.5, 2, 2.5]
-    tfidf_values = [500,1000,5000]
+    eps_values = [2]#[0.5, 1, 1.5, 2, 2.5]
+    tfidf_values = [500]#[500,1000,5000]
     min_samples = 5
     n_components = 200
     
@@ -107,8 +108,8 @@ def run_featureset_clustering():
     print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
     print(f"{'='*80}\n")
     
-    quantile_values = [0.2,0.25,0.3]
-    tfidf_values_ms = [500,1000,5000]
+    quantile_values = [0.2]#[0.2,0.25,0.3]
+    tfidf_values_ms = [500]#[500,1000,5000]
     #n_components = 200
     n_samples = 500 
     
@@ -168,8 +169,8 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    run_preprocessing()
-    run_trec_misp_converter()
+    #run_preprocessing()
+    #run_trec_misp_converter()
     run_featureset_extraction()
     #run_featureset_clustering()
     #run_graph_creation(to_memgraph=True)

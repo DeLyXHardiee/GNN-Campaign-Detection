@@ -70,4 +70,4 @@ def filter_phishing_emails(csv_path, months=6):
     df_phishing.to_csv(output_path, index=False)
     print(f"Saved filtered dataset to: {output_path}")
 
-filter_phishing_emails("../data/csv/TREC-07.csv")
+#filter_phishing_emails("../data/csv/TREC-07.csv")
