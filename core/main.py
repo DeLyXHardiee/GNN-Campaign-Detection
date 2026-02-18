@@ -1,11 +1,11 @@
 import json
-from misp.trec_to_misp import csv_to_misp
+from preprocessing.misp.trec_to_misp import csv_to_misp
 from graph.graph_builder_pytorch import build_graph
 from graph.graph_builder_memgraph import build_memgraph
 from graph.graph_filter import NodeType
-from featureNormalization.featureNormalizationTREC import run_featureset_extraction
-from clusteringComparison.dbScanComparison import dbscan_cluster_all
-from clusteringComparison.meanshiftComparison import meanshift_cluster_all
+from feature_set_extraction.feature_set_extraction import run_featureset_extraction
+from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
+from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
 
 
 def run_preprocessing():
@@ -13,7 +13,7 @@ def run_preprocessing():
     Run preprocessing steps to filter and prepare data.
     Currently removes non-phishing emails from TREC-07 dataset.
     """
-    from utils.filter_csv import filter_phishing_emails
+    from preprocessing.utils.filter_csv import filter_phishing_emails
     
     input_csv = "../data/csv/TREC-07.csv"
     output_csv = "../data/csv/TREC-07-only-phishing-6m.csv"
@@ -168,11 +168,11 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    #run_preprocessing()
-    #run_trec_misp_converter()
-    #run_featureset_extraction()
+    run_preprocessing()
+    run_trec_misp_converter()
+    run_featureset_extraction()
     #run_featureset_clustering()
-    run_graph_creation(to_memgraph=True)
+    #run_graph_creation(to_memgraph=True)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
