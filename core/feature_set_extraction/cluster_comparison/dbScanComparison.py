@@ -4,7 +4,7 @@ from datetime import datetime
 from sklearn.cluster import DBSCAN
 from sklearn.metrics import silhouette_score
 from collections import defaultdict
-from clusteringComparison.clusteringCommonFunctions import (
+from cluster_comparison.clusteringCommonFunctions import (
     preprocess_for_clustering, 
     save_clusters_to_json,
     load_ground_truth_from_csv,

@@ -8,16 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
 import math
+import sys
 
+sys.path.append('../preprocessing/utils')
 
-try:  
-    from core.utils.url_extractor import parse_url_components  
-except Exception:
-    try:  
-        from utils.url_extractor import parse_url_components  
-    except Exception:  
-        def parse_url_components(url: str) -> Dict[str, Any]: 
-            return {"full_url": url, "domain": "", "stem": "", "scheme": ""}
+from preprocessing.utils.url_extractor import parse_url_components
 
 
 def to_str(val: Any) -> str:
