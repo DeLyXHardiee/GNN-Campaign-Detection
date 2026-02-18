@@ -1,16 +1,12 @@
 from email.utils import parsedate_to_datetime
 import pandas as pd
 import os
-import sys
 import csv
 from collections import Counter
 import json
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append('../preprocessing/utils')
 
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
@@ -694,7 +690,11 @@ def _extract_and_save_featureset(args):
     
     try:
         fs_features = fs_function(misp_path)
-        
+        # ensure output directory exists (worker processes may run before directory created)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(fs_features, f, indent=2, ensure_ascii=False)
         

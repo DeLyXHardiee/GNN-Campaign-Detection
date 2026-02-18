@@ -52,7 +52,8 @@ def compute_silhouette_score(X, labels):
 
 
 def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # compute repository root so `data/` refers to repo-level `data/`, not `core/data/`
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
     
     results_dir = os.path.join(project_root, 'data', 'fsclusters')

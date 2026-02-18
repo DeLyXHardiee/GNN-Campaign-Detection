@@ -37,7 +37,8 @@ def compute_silhouette_score(X, labels):
         return None
 
 def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # compute repository root so `data/` refers to repo-level `data/`, not `core/data/`
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
     
     results_dir = os.path.join(project_root, 'data', 'fsclusters')
@@ -57,7 +58,7 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
     silhouette_file = os.path.join(results_dir, 'dbscan_silhouette_scores.txt')
     homogeneity_file = os.path.join(results_dir, 'dbscan_homogeneity_scores.txt') if ground_truth else None
     
-    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    feature_sets = ['FS1', 'FS2', ]#'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
     
     print(f"{'='*80}")
     print(f"Starting DBSCAN clustering on {len(feature_sets)} feature sets...")
