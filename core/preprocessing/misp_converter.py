@@ -7,10 +7,24 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 
+def _clean_text(value: Any) -> str:
+    text = "" if value is None else str(value)
+    # Replace invalid Unicode surrogate code points to avoid JSON encoding failures.
+    return text.encode("utf-8", errors="replace").decode("utf-8").strip()
+
+
+def _sanitize_structure(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {(_clean_text(k) if isinstance(k, str) else k): _sanitize_structure(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_structure(v) for v in value]
+    if isinstance(value, str):
+        return _clean_text(value)
+    return value
+
+
 def _add_attr(attributes: List[Dict[str, Any]], attr_type: str, value: Any, category: str, relation: str = "") -> None:
-    text = "" if value is None else str(value).strip()
-    if not text:
-        return
+    text = _clean_text(value)
 
     attr: Dict[str, Any] = {
         "type": attr_type,
@@ -34,6 +48,8 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
         _add_attr(attributes, "email-subject", incident.get("subject", ""), "Payload delivery")
         _add_attr(attributes, "email-date", incident.get("date_sent", ""), "Payload delivery")
         _add_attr(attributes, "email-body", incident.get("email_body", ""), "Payload delivery")
+        _add_attr(attributes, "text", incident.get("subject", ""), "External analysis", "subject")
+        _add_attr(attributes, "text", incident.get("date_sent", ""), "External analysis", "date_sent")
 
         for field in [
             "category",
@@ -84,6 +100,7 @@ def write_misp_events_securely(misp_events: List[Dict[str, Any]], output_path: s
 
     temp_path: str | None = None
     try:
+        sanitized_events = _sanitize_structure(misp_events)
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -92,7 +109,7 @@ def write_misp_events_securely(misp_events: List[Dict[str, Any]], output_path: s
             suffix=".tmp",
         ) as tmp:
             temp_path = tmp.name
-            json.dump(misp_events, tmp, indent=2, ensure_ascii=False)
+            json.dump(sanitized_events, tmp, indent=2, ensure_ascii=False)
             tmp.flush()
             os.fsync(tmp.fileno())
 
