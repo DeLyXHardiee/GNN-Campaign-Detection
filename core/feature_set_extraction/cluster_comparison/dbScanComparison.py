@@ -8,8 +8,9 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
     preprocess_for_clustering, 
     save_clusters_to_json,
     load_ground_truth_from_csv,
-    compute_homogeneity_from_clusters
 )
+
+from clustering.clusteringMetrics import compute_silhouette_score, compute_homogeneity_from_clusters
 
 def cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components=None):
     idxs = [r["email_index"] for r in records]
@@ -37,17 +38,17 @@ def compute_silhouette_score(X, labels):
         return None
 
 def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
-    # compute repository root so `data/` refers to repo-level `data/`, not `core/data/`
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    featuresets_dir = os.path.join(project_root, 'data', 'featuresets')
+    # read feature sets from package-local output/featuresets inside core/feature_set_extraction
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    featuresets_dir = os.path.join(package_dir, 'output', 'featuresets')
     
-    results_dir = os.path.join(project_root, 'data', 'fsclusters')
+    results_dir = os.path.join(package_dir, 'output', 'fsclusters', 'results')
     os.makedirs(results_dir, exist_ok=True)
     
     ground_truth = None
     if ground_truth_csv:
         if not os.path.isabs(ground_truth_csv):
-            ground_truth_csv = os.path.join(project_root, ground_truth_csv)
+            ground_truth_csv = os.path.join(package_dir, ground_truth_csv)
         if os.path.exists(ground_truth_csv):
             print(f"Loading ground truth from: {ground_truth_csv}")
             ground_truth = load_ground_truth_from_csv(ground_truth_csv)
