@@ -6,8 +6,8 @@ from collections import Counter
 import json
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
+from feature_set_extraction.tfidf_utils import build_vectorizer, save_idf_csv, precompute_subject_idf
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
 
@@ -44,6 +44,16 @@ def extract_time_features(date_str):
         return data
     except:
         return {}
+
+'''
+This feature category is extracted
+
+from the email SUBJECT header. It covers number of char-
+acters [39], number of white spaces, and the vector of Term
+Frequency - Inverse Document Frequency (TF-IDF) values
+of all words in the subject.
+
+'''
 
 
 def extract_subject_features(subject, idf_dict):
@@ -98,37 +108,12 @@ def load_idf_dict(csv_path):
                 idf = 0.0
             idf_dict[term] = idf
     return idf_dict
-
-def get_term_frequency(subject):
-    
-    if not isinstance(subject, str):
-        subject = ""
-        
-    terms = subject.lower().split()
-    
-    return dict(Counter(terms))
  
 def get_idf(subjects, output_path, max_features=2000):
-    vectorizer = TfidfVectorizer(max_features=max_features) 
-    vectorizer.fit(subjects) 
-    
-    terms = vectorizer.get_feature_names_out()
-    idfs = vectorizer.idf_
-    
-    idf_df = pd.DataFrame({
-        'term': terms,
-        'idf': idfs
-    }).sort_values('idf', ascending=False)
-    
-    idf_df.to_csv(output_path, index=False)
+    vectorizer = build_vectorizer(subjects, max_features=max_features)
+    save_idf_csv(output_path, vectorizer)
     print(f"Saved IDF values to: {output_path}")
     return vectorizer
-
-
-def get_idf_path(csv_path):
-    dir_name = os.path.dirname(csv_path)
-    base, ext = os.path.splitext(os.path.basename(csv_path))
-    return os.path.join(dir_name, f"{base}_subject_idf{ext}")
 
 
 '''
@@ -170,7 +155,7 @@ def extract_body_based_features(body):
 
     greeting_features = extract_greeting_features(body)
 
-    bow = compute_body_bow(body)
+    #bow = compute_body_bow(body)
 
     return {
         "num_urls": len(extracted_urls),
@@ -192,26 +177,6 @@ def compute_body_bow(body):
     
     return word_freq
 
-def compute_and_save_body_bow(bodies, output_path):
-    email_bows = []
-    
-    for idx, body in enumerate(bodies):
-        if not isinstance(body, str):
-            body = ""
-        
-        words = re.findall(r"\w+", body.lower())
-        word_freq = dict(Counter(words))
-        
-        if word_freq:
-            email_bows.append({
-                "email_id": idx,
-                "frequencies": word_freq
-            })
-    
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(email_bows, f, indent=2, ensure_ascii=False)
-    
-    print(f"Saved body bag-of-words to: {output_path}")
 
 def extract_greeting_features(body):
     if not isinstance(body, str) or not body.strip():
@@ -475,6 +440,14 @@ def extract_url_based_features(urls):
         #"visual_url_mismatch": 0   # Would need hyperlink/display text comparison
     }
 
+
+'''
+
+Main extraction program
+
+'''
+
+
 def extract_features(misp_path, features):
     with open(misp_path, 'r', encoding='utf-8') as f:
         misp_data = json.load(f)
@@ -710,6 +683,15 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     
     if misp_path is None:
         misp_path = os.path.join(project_root, 'data', 'misp', 'TREC-07-misp.json')
+
+    # Ensure subject IDF CSV exists before any worker processes start.
+    # This avoids multiple processes attempting to write the same idf file
+    # concurrently on Windows which can cause Access Denied errors.
+    try:
+        precompute_subject_idf(misp_path)
+    except Exception:
+        # If precomputation fails, fall back to existing behavior in workers.
+        pass
     
     fs_extractors = {
         'FS1': get_FS1,
@@ -724,8 +706,9 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
     
     extraction_args = []
+    package_dir = os.path.dirname(os.path.abspath(__file__))
     for fs_name, fs_function in fs_extractors.items():
-        output_path = os.path.join(project_root, 'data', 'featuresets', f"{input_base}-{fs_name}.json")
+        output_path = os.path.join(package_dir, 'output', 'featuresets', f"{input_base}-{fs_name}.json")
         extraction_args.append((fs_name, fs_function, misp_path, output_path))
     
     if parallel:

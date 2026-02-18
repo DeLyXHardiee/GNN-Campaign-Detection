@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
-from sklearn.metrics import homogeneity_score, completeness_score, v_measure_score
 
 
 def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None, n_components=None):
@@ -96,9 +95,9 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
 
 
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
-    # compute repository root so outputs go to repo-level `data/fsclusters`
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    output_dir = os.path.join(project_root, 'data', 'fsclusters')
+    # write cluster outputs to package-local `core/feature_set_extraction/output/fsclusters`
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_dir = os.path.join(package_dir, 'output', 'fsclusters')
     os.makedirs(output_dir, exist_ok=True)
     
     input_base = os.path.splitext(os.path.basename(feature_set_path))[0]
@@ -158,32 +157,3 @@ def load_ground_truth_from_csv(path):
                 mapping[int(e)] = idx
 
     return mapping
-
-
-
-def compute_homogeneity_from_clusters(clusters, ground_truth):
-    email_to_predicted_cluster = {}
-    for cluster_id, email_indices in clusters.items():
-        for email_idx in email_indices:
-            email_to_predicted_cluster[email_idx] = cluster_id
-    
-
-    common_emails = set(email_to_predicted_cluster.keys()) & set(ground_truth.keys())
-    
-    if len(common_emails) < 2:
-        return {'homogeneity': 0.0, 'completeness': 0.0, 'v_measure': 0.0, 'n_samples': len(common_emails)}
-    
-    common_emails = sorted(common_emails)
-    predicted_labels = [email_to_predicted_cluster[e] for e in common_emails]
-    true_labels = [ground_truth[e] for e in common_emails]
-    
-    homogeneity = homogeneity_score(true_labels, predicted_labels)
-    completeness = completeness_score(true_labels, predicted_labels)
-    v_measure = v_measure_score(true_labels, predicted_labels)
-    
-    return {
-        'homogeneity': homogeneity,
-        'completeness': completeness,
-        'v_measure': v_measure,
-        'n_samples': len(common_emails)
-    }
