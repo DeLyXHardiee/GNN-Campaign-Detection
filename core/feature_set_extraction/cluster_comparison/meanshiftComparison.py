@@ -1,14 +1,12 @@
 import json
 import os
-import sys
 import numpy as np
 from datetime import datetime
 from collections import defaultdict
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import silhouette_score
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from clusteringCommonFunctions import (
+from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
     preprocess_for_clustering, 
     save_clusters_to_json,
     load_ground_truth_from_csv,
