@@ -28,3 +28,6 @@ venv/
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+# Ignore cursorignore file
+.cursorignore
