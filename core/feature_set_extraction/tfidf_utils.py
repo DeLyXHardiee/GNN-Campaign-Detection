@@ -101,7 +101,7 @@ def precompute_subject_idf(misp_path):
         attrs = event.get('Attribute', [])
         subj = ''
         for a in attrs:
-            if a.get('type') == 'email-subject':
+            if a.get('type') in ('email-subject', 'subject'):
                 subj = a.get('value', '')
                 break
         subjects.append(subj if isinstance(subj, str) else "")
