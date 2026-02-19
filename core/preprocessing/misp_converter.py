@@ -24,11 +24,15 @@ def _sanitize_structure(value: Any) -> Any:
 
 
 def _add_attr(attributes: List[Dict[str, Any]], attr_type: str, value: Any) -> None:
-    text = _clean_text(value)
+    normalized: Any
+    if isinstance(value, (list, dict)):
+        normalized = _sanitize_structure(value)
+    else:
+        normalized = _clean_text(value)
 
     attr: Dict[str, Any] = {
         "type": attr_type,
-        "value": text,
+        "value": normalized,
     }
     attributes.append(attr)
 
@@ -46,6 +50,8 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
         _add_attr(attributes, "date", incident.get("date_sent", ""))
         _add_attr(attributes, "body", incident.get("email_body", ""))
         _add_attr(attributes, "html", incident.get("email_html", ""))
+        _add_attr(attributes, "css", incident.get("email_css", ""))
+        _add_attr(attributes, "attachments", incident.get("email_attachments", []))
         _add_attr(attributes, "date_sent", incident.get("date_sent", ""))
 
         for field in [

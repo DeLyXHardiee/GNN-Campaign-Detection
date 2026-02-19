@@ -50,16 +50,27 @@ class _HTMLToTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self._parts: List[str] = []
+        self._ignore_depth = 0
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, str | None]]) -> None:
-        if tag.lower() in {"br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}:
+        lowered = tag.lower()
+        if lowered in {"style", "script"}:
+            self._ignore_depth += 1
+            return
+        if lowered in {"br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}:
             self._parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() in {"p", "div", "li", "tr"}:
+        lowered = tag.lower()
+        if lowered in {"style", "script"} and self._ignore_depth > 0:
+            self._ignore_depth -= 1
+            return
+        if lowered in {"p", "div", "li", "tr"}:
             self._parts.append("\n")
 
     def handle_data(self, data: str) -> None:
+        if self._ignore_depth > 0:
+            return
         if data:
             self._parts.append(data)
 
@@ -77,10 +88,31 @@ def _html_to_text(html_text: str) -> str:
     return _defang_url_like_text(text)
 
 
-def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
-    """Return (plain_body_text, html_body_text) without top-level headers."""
+def _extract_css_from_html(html_text: str) -> str:
+    css_parts: List[str] = []
+    for match in re.finditer(r"(?is)<style\b[^>]*>(.*?)</style>", html_text):
+        css_value = (match.group(1) or "").strip()
+        if css_value:
+            css_parts.append(css_value)
+
+    for match in re.finditer(r'(?is)\sstyle\s*=\s*"([^"]*)"', html_text):
+        css_value = (match.group(1) or "").strip()
+        if css_value:
+            css_parts.append(css_value)
+    for match in re.finditer(r"(?is)\sstyle\s*=\s*'([^']*)'", html_text):
+        css_value = (match.group(1) or "").strip()
+        if css_value:
+            css_parts.append(css_value)
+
+    if not css_parts:
+        return ""
+    return _defang_url_like_text("\n\n".join(css_parts))
+
+
+def extract_body_html_css_without_headers(raw_bytes: bytes) -> Tuple[str, str, str]:
+    """Return (plain_body_text, html_body_text, css_text) without top-level headers."""
     if not raw_bytes:
-        return "", ""
+        return "", "", ""
 
     try:
         message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
@@ -115,6 +147,7 @@ def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
                     plain_parts.append(_defang_url_like_text(text))
 
         html_text = "\n\n".join(html_parts).strip()
+        css_text = _extract_css_from_html(html_text) if html_text else ""
         if plain_parts:
             body_text = "\n\n".join(plain_parts).strip()
         elif html_text:
@@ -122,7 +155,7 @@ def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
         else:
             body_text = ""
 
-        return body_text, html_text
+        return body_text, html_text, css_text
     except Exception:
         pass
 
@@ -130,14 +163,24 @@ def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
     looks_like_html = bool(re.search(r"<\s*html|<\s*body|<\s*[a-zA-Z][^>]*>", raw_body, flags=re.IGNORECASE))
     if looks_like_html:
         html_text = _defang_url_like_text(raw_body)
-        return _html_to_text(html_text), html_text
-    return _defang_url_like_text(raw_body), ""
+        return _html_to_text(html_text), html_text, _extract_css_from_html(html_text)
+    return _defang_url_like_text(raw_body), "", ""
+
+
+def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
+    # Backward-compatible helper used by older call sites.
+    body_text, html_text, _ = extract_body_html_css_without_headers(raw_bytes)
+    return body_text, html_text
 
 
 def extract_body_without_headers(raw_bytes: bytes) -> str:
     # Backward-compatible helper used by older call sites.
-    body_text, _ = extract_body_and_html_without_headers(raw_bytes)
+    body_text, _, _ = extract_body_html_css_without_headers(raw_bytes)
     return body_text
 
 
-__all__ = ["extract_body_and_html_without_headers", "extract_body_without_headers"]
+__all__ = [
+    "extract_body_html_css_without_headers",
+    "extract_body_and_html_without_headers",
+    "extract_body_without_headers",
+]

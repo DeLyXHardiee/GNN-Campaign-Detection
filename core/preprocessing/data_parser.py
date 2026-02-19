@@ -8,7 +8,8 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from preprocessing.body_parser import extract_body_and_html_without_headers
+from preprocessing.body_parser import extract_body_html_css_without_headers
+from preprocessing.attachment_parser import extract_attachment_hashes_from_email
 
 try:
     import mailparser  # type: ignore
@@ -188,22 +189,23 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
     return _extract_selected_headers(normalized)
 
 
-def _parse_body_and_headers_with_mailparser(raw_bytes: bytes) -> Tuple[str, str, Dict[str, str]]:
+def _parse_body_and_headers_with_mailparser(raw_bytes: bytes) -> Tuple[str, str, str, List[str], Dict[str, str]]:
     if not raw_bytes:
-        return "", "", {field: "" for field in HEADER_FIELDS}
+        return "", "", "", [], {field: "" for field in HEADER_FIELDS}
 
-    body_text, html_text = extract_body_and_html_without_headers(raw_bytes)
+    body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
+    attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
     if mailparser is None:
-        return body_text, html_text, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_text, css_text, attachment_hashes, {field: "" for field in HEADER_FIELDS}
 
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
         headers = _extract_headers_from_mailparser(parsed_mail)
-        return body_text, html_text, headers
+        return body_text, html_text, css_text, attachment_hashes, headers
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_text, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_text, css_text, attachment_hashes, {field: "" for field in HEADER_FIELDS}
 
 
 def _configure_mailparser_logging() -> None:
@@ -293,12 +295,14 @@ def parse_incidents_with_email_bodies(
 
             body_text = ""
             html_text = ""
+            css_text = ""
+            attachment_hashes: List[str] = []
             parser_headers = {field: "" for field in HEADER_FIELDS}
             if external_id:
                 body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id)
                 if body_file is not None:
                     raw_body_bytes = _read_body_file_bytes(body_file)
-                    body_text, html_text, parser_headers = _parse_body_and_headers_with_mailparser(raw_body_bytes)
+                    body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(raw_body_bytes)
 
             headers_from_properties = _extract_selected_headers(_try_parse_mapping(properties.get("emailHeaders")))
             headers_raw = _normalize_scalar(row.get("emailHeaders"))
@@ -313,6 +317,8 @@ def parse_incidents_with_email_bodies(
                 "external_id": external_id,
                 "email_body": body_text,
                 "email_html": html_text,
+                "email_css": css_text,
+                "email_attachments": attachment_hashes,
                 "email_headers": selected_headers,
             }
 
