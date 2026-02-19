@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import html
 from email import policy
 from email.parser import BytesParser
+from html.parser import HTMLParser
+import html
 import re
-from typing import List
+from typing import List, Tuple
 
 
 def _decode_payload(raw_payload: bytes | str | None, charset: str | None) -> str:
@@ -45,22 +46,46 @@ def _defang_url_like_text(text: str) -> str:
     return out
 
 
-def _inert_html_text(html_text: str) -> str:
-    # Render HTML as inert text so no elements/links are clickable.
-    return _defang_url_like_text(html.escape(html_text, quote=False))
+class _HTMLToTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._parts: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, str | None]]) -> None:
+        if tag.lower() in {"br", "p", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in {"p", "div", "li", "tr"}:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if data:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        text = "".join(self._parts)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
 
 
-def extract_body_without_headers(raw_bytes: bytes) -> str:
-    """Return message body text without top-level headers.
+def _html_to_text(html_text: str) -> str:
+    parser = _HTMLToTextParser()
+    parser.feed(html_text)
+    parser.close()
+    text = html.unescape(parser.get_text())
+    return _defang_url_like_text(text)
 
-    Includes both plain and HTML parts when available.
-    """
+
+def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
+    """Return (plain_body_text, html_body_text) without top-level headers."""
     if not raw_bytes:
-        return ""
+        return "", ""
 
     try:
         message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
-        parts: List[str] = []
+        plain_parts: List[str] = []
+        html_parts: List[str] = []
 
         if message.is_multipart():
             for part in message.walk():
@@ -74,29 +99,45 @@ def extract_body_without_headers(raw_bytes: bytes) -> str:
                     continue
                 payload = part.get_payload(decode=True)
                 text = _decode_payload(payload, part.get_content_charset()).strip()
-                if content_type == "text/html" and text:
-                    text = _inert_html_text(text)
-                elif content_type == "text/plain" and text:
-                    text = _defang_url_like_text(text)
                 if text:
-                    parts.append(text)
+                    if content_type == "text/plain":
+                        plain_parts.append(_defang_url_like_text(text))
+                    elif content_type == "text/html":
+                        html_parts.append(_defang_url_like_text(text))
         else:
             content_type = (message.get_content_type() or "").lower()
             payload = message.get_payload(decode=True)
             text = _decode_payload(payload, message.get_content_charset()).strip()
-            if content_type == "text/html" and text:
-                text = _inert_html_text(text)
-            elif text:
-                text = _defang_url_like_text(text)
             if text:
-                parts.append(text)
+                if content_type == "text/html":
+                    html_parts.append(_defang_url_like_text(text))
+                else:
+                    plain_parts.append(_defang_url_like_text(text))
 
-        if parts:
-            return "\n\n".join(parts).strip()
+        html_text = "\n\n".join(html_parts).strip()
+        if plain_parts:
+            body_text = "\n\n".join(plain_parts).strip()
+        elif html_text:
+            body_text = _html_to_text(html_text)
+        else:
+            body_text = ""
+
+        return body_text, html_text
     except Exception:
         pass
 
-    return _inert_html_text(_extract_after_header_block(raw_bytes))
+    raw_body = _extract_after_header_block(raw_bytes)
+    looks_like_html = bool(re.search(r"<\s*html|<\s*body|<\s*[a-zA-Z][^>]*>", raw_body, flags=re.IGNORECASE))
+    if looks_like_html:
+        html_text = _defang_url_like_text(raw_body)
+        return _html_to_text(html_text), html_text
+    return _defang_url_like_text(raw_body), ""
 
 
-__all__ = ["extract_body_without_headers"]
+def extract_body_without_headers(raw_bytes: bytes) -> str:
+    # Backward-compatible helper used by older call sites.
+    body_text, _ = extract_body_and_html_without_headers(raw_bytes)
+    return body_text
+
+
+__all__ = ["extract_body_and_html_without_headers", "extract_body_without_headers"]
