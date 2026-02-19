@@ -75,6 +75,8 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
             "DKIM-Signature",
             "List-Unsubscribe",
             "Authentication-Results",
+            "X-Forefront-Antispam-Report",
+            "X-MS-Exchange-Organization-SCL",
         ]:
             _add_attr(
                 attributes,

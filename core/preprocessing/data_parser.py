@@ -43,6 +43,8 @@ HEADER_FIELDS = [
     "DKIM-Signature",
     "List-Unsubscribe",
     "Authentication-Results",
+    "X-Forefront-Antispam-Report",
+    "X-MS-Exchange-Organization-SCL",
 ]
 
 
