@@ -8,6 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+from preprocessing.body_parser import extract_body_without_headers
 
 try:
     import mailparser  # type: ignore
@@ -187,35 +188,22 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
     return _extract_selected_headers(normalized)
 
 
-def _extract_body_from_mailparser(parsed_mail: Any, raw_bytes: bytes) -> str:
-    text_plain = getattr(parsed_mail, "text_plain", None)
-    if isinstance(text_plain, list):
-        joined = "\n\n".join(_normalize_scalar(part) for part in text_plain if _normalize_scalar(part))
-        if joined:
-            return joined
-
-    body = _normalize_scalar(getattr(parsed_mail, "body", ""))
-    if body:
-        return body
-
-    return _decode_email_body(raw_bytes)
-
-
 def _parse_body_and_headers_with_mailparser(raw_bytes: bytes) -> Tuple[str, Dict[str, str]]:
     if not raw_bytes:
         return "", {field: "" for field in HEADER_FIELDS}
+
+    body_text = extract_body_without_headers(raw_bytes)
     if mailparser is None:
-        return _decode_email_body(raw_bytes), {field: "" for field in HEADER_FIELDS}
+        return body_text, {field: "" for field in HEADER_FIELDS}
 
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
-        body_text = _extract_body_from_mailparser(parsed_mail, raw_bytes)
         headers = _extract_headers_from_mailparser(parsed_mail)
         return body_text, headers
     except Exception:
-        # Fail-closed: keep passive text fallback and empty selected headers.
-        return _decode_email_body(raw_bytes), {field: "" for field in HEADER_FIELDS}
+        # Keep body extracted from raw RFC email; fail closed on headers only.
+        return body_text, {field: "" for field in HEADER_FIELDS}
 
 
 def _configure_mailparser_logging() -> None:
@@ -270,7 +258,11 @@ def _get_value_from_row_or_properties(row: Dict[str, Any], properties: Dict[str,
     return row.get(key, "")
 
 
-def parse_incidents_with_email_bodies(incidents_csv_path: str, bodies_dir: str) -> List[Dict[str, Any]]:
+def parse_incidents_with_email_bodies(
+    incidents_csv_path: str,
+    bodies_dir: str,
+    limit: int | None = None,
+) -> List[Dict[str, Any]]:
     incidents_path = Path(incidents_csv_path)
     body_folder = Path(bodies_dir)
 
@@ -289,6 +281,9 @@ def parse_incidents_with_email_bodies(incidents_csv_path: str, bodies_dir: str) 
             break
         except OverflowError:
             max_csv_field_size = max_csv_field_size // 10
+
+    if limit is not None and limit <= 0:
+        return []
 
     with incidents_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as csv_file:
         reader = csv.DictReader(csv_file)
@@ -336,6 +331,9 @@ def parse_incidents_with_email_bodies(incidents_csv_path: str, bodies_dir: str) 
                     incident[field] = _normalize_scalar(raw_val)
 
             parsed_incidents.append(incident)
+
+            if limit is not None and len(parsed_incidents) >= limit:
+                break
 
     return parsed_incidents
 
