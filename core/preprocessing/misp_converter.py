@@ -23,16 +23,13 @@ def _sanitize_structure(value: Any) -> Any:
     return value
 
 
-def _add_attr(attributes: List[Dict[str, Any]], attr_type: str, value: Any, category: str, relation: str = "") -> None:
+def _add_attr(attributes: List[Dict[str, Any]], attr_type: str, value: Any) -> None:
     text = _clean_text(value)
 
     attr: Dict[str, Any] = {
         "type": attr_type,
         "value": text,
-        "category": category,
     }
-    if relation:
-        attr["object_relation"] = relation
     attributes.append(attr)
 
 
@@ -43,13 +40,12 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
         headers = incident.get("email_headers", {}) or {}
         attributes: List[Dict[str, Any]] = []
 
-        _add_attr(attributes, "email-src", headers.get("From", ""), "Payload delivery")
-        _add_attr(attributes, "email-dst", headers.get("To", ""), "Payload delivery")
-        _add_attr(attributes, "email-subject", incident.get("subject", ""), "Payload delivery")
-        _add_attr(attributes, "email-date", incident.get("date_sent", ""), "Payload delivery")
-        _add_attr(attributes, "email-body", incident.get("email_body", ""), "Payload delivery")
-        _add_attr(attributes, "text", incident.get("subject", ""), "External analysis", "subject")
-        _add_attr(attributes, "text", incident.get("date_sent", ""), "External analysis", "date_sent")
+        _add_attr(attributes, "from", headers.get("From", ""))
+        _add_attr(attributes, "to", headers.get("To", ""))
+        _add_attr(attributes, "subject", incident.get("subject", ""))
+        _add_attr(attributes, "date", incident.get("date_sent", ""))
+        _add_attr(attributes, "body", incident.get("email_body", ""))
+        _add_attr(attributes, "date_sent", incident.get("date_sent", ""))
 
         for field in [
             "category",
@@ -62,7 +58,7 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
             "body_has_unsubscribe_link",
             "domain_is_common_webprovided",
         ]:
-            _add_attr(attributes, "text", incident.get(field, ""), "External analysis", field)
+            _add_attr(attributes, field, incident.get(field, ""))
 
         for header_key in [
             "Received",
@@ -75,10 +71,8 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
         ]:
             _add_attr(
                 attributes,
-                "text",
-                headers.get(header_key, ""),
-                "External analysis",
                 f"header_{header_key}",
+                headers.get(header_key, ""),
             )
 
         event = {

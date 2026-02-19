@@ -144,25 +144,25 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             a_type = (attr or {}).get("type", "")
             raw_val = (attr or {}).get("value", "")
             val = to_str(raw_val)
-            if a_type == "email-src":
+            if a_type in ("email-src", "from"):
                 addrs = extract_all_emails(val)
                 sender = addrs[0] if addrs else (normalize_email_address(val) if val.strip() else None)
-            elif a_type in ("email-dst", "email-cc", "email-bcc"):
+            elif a_type in ("email-dst", "email-cc", "email-bcc", "to"):
                 if val.strip():
                     addrs = extract_all_emails(val)
                     for addr in addrs:
                         if addr not in receiver_set:
                             receiver_set.add(addr)
                             receivers.append(addr)
-            elif a_type == "email-subject":
+            elif a_type in ("email-subject", "subject"):
                 subject = val
-            elif a_type == "email-body":
+            elif a_type in ("email-body", "body"):
                 body = val
             elif a_type == "url":
                 if val.strip() and val not in url_set:
                     url_set.add(val)
                     urls.append(val)
-            elif a_type == "email-date":
+            elif a_type in ("email-date", "date"):
                 date = val
 
         normalized.append(
