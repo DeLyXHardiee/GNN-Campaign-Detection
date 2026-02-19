@@ -40,12 +40,13 @@ HEADER_FIELDS = [
     "Return-Path",
     "Content-Type",
     "Received-SPF",
-    "DKIM-Signature",
     "List-Unsubscribe",
     "Authentication-Results",
     "X-Forefront-Antispam-Report",
     "X-MS-Exchange-Organization-SCL",
 ]
+
+_FOREFRONT_ALLOWED_KEYS = {"CIP", "CTRY", "LANG", "SCL", "SFV", "CAT", "BCL", "PCL"}
 
 
 def _normalize_scalar(value: Any) -> str:
@@ -120,8 +121,42 @@ def _extract_selected_headers(headers: Dict[str, Any]) -> Dict[str, str]:
     lower_map = {str(k).strip().lower(): _normalize_scalar(v) for k, v in headers.items()}
     selected: Dict[str, str] = {}
     for field in HEADER_FIELDS:
-        selected[field] = lower_map.get(field.lower(), "")
+        value = lower_map.get(field.lower(), "")
+        if field == "X-Forefront-Antispam-Report":
+            value = _filter_forefront_antispam_report(value)
+        selected[field] = value
     return selected
+
+
+def _filter_forefront_antispam_report(value: str) -> str:
+    text = _normalize_scalar(value)
+    if not text:
+        return ""
+
+    kept_parts: List[str] = []
+    for raw_part in text.split(";"):
+        part = raw_part.strip()
+        if not part:
+            continue
+
+        separator = ":"
+        if ":" in part:
+            key, raw_val = part.split(":", 1)
+            separator = ":"
+        elif "=" in part:
+            key, raw_val = part.split("=", 1)
+            separator = "="
+        else:
+            continue
+
+        normalized_key = _normalize_scalar(key).upper()
+        if normalized_key not in _FOREFRONT_ALLOWED_KEYS:
+            continue
+
+        normalized_val = _normalize_scalar(raw_val)
+        kept_parts.append(f"{normalized_key}{separator}{normalized_val}")
+
+    return "; ".join(kept_parts)
 
 
 def _decode_email_body(raw_bytes: bytes) -> str:
@@ -174,8 +209,6 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
         collected["Content-Type"] = getattr(parsed_mail, "content_type", "")
     if "Received-SPF" not in collected:
         collected["Received-SPF"] = getattr(parsed_mail, "received_spf", "")
-    if "DKIM-Signature" not in collected:
-        collected["DKIM-Signature"] = getattr(parsed_mail, "dkim_signature", "")
     if "List-Unsubscribe" not in collected:
         collected["List-Unsubscribe"] = getattr(parsed_mail, "list_unsubscribe", "")
     if "Authentication-Results" not in collected:
