@@ -4,7 +4,7 @@ from preprocessing.data_parser import parse_incidents_with_email_bodies
 from preprocessing.misp_converter import incidents_to_misp_file
 
 
-def run_preprocessing():
+def run_preprocessing(limit: int | None = None):
     """
     Parse incident metadata and email body files, then convert to MISP JSON.
     """
@@ -14,7 +14,11 @@ def run_preprocessing():
     misp_json_path = project_root / "data" / "misp" / "incidents-20260211-misp.json"
 
     print(f"Parsing incidents from {incidents_csv_path}...")
-    incidents = parse_incidents_with_email_bodies(str(incidents_csv_path), str(bodies_dir))
+    incidents = parse_incidents_with_email_bodies(
+        str(incidents_csv_path),
+        str(bodies_dir),
+        limit=limit,
+    )
     print(f"Parsed {len(incidents)} incidents with matched email body content.")
 
     print(f"Converting incidents to MISP and writing secure output at {misp_json_path}...")
@@ -170,8 +174,8 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing()
-    create_feature_sets()
+    misp_path = run_preprocessing(limit=100)
+    # create_feature_sets()
     #run_featureset_clustering()
     #run_graph_creation(misp_path, to_memgraph=True)
     # run_GNN()
