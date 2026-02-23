@@ -12,7 +12,7 @@ import sys
 
 sys.path.append('../preprocessing/utils')
 
-from preprocessing.utils.url_extractor import parse_url_components
+from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 
 
 def to_str(val: Any) -> str:
@@ -123,6 +123,27 @@ def extract_all_emails(text: str) -> List[str]:
     return out
 
 
+def _extract_urls_from_attr_value(value: Any) -> List[str]:
+    """Extract URLs from scalar/list/dict MISP attribute values."""
+    if isinstance(value, str):
+        return extract_urls_from_text(value)
+
+    if isinstance(value, list):
+        urls: List[str] = []
+        for item in value:
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    if isinstance(value, dict):
+        urls = []
+        for item in value.values():
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    text = to_str(value)
+    return extract_urls_from_text(text) if text else []
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -158,12 +179,22 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 subject = val
             elif a_type in ("email-body", "body"):
                 body = val
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
             elif a_type == "url":
-                if val.strip() and val not in url_set:
-                    url_set.add(val)
-                    urls.append(val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
             elif a_type in ("email-date", "date"):
                 date = val
+            elif a_type in ("html", "css", "header_List-Unsubscribe"):
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
 
         normalized.append(
             {
