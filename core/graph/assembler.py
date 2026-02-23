@@ -12,6 +12,8 @@ so changes to how the graph is derived from data live here in one place.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
+import math
 from typing import Any, Dict, List, Optional, Tuple, Set
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
@@ -24,6 +26,77 @@ from .common import (
     compute_lexical_features,
     is_freemail_domain,
 )
+
+
+def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int = 16) -> List[float]:
+    """Create a fixed-length HTML/CSS feature vector for one email."""
+    features: List[float] = []
+    html_data = html_data if isinstance(html_data, dict) else {}
+    css_data = css_data if isinstance(css_data, dict) else {}
+
+    tree = html_data.get("tree_stats", {}) or {}
+    total_elements = int(tree.get("total_elements", 0) or 0)
+    total = float(total_elements or 1)
+    forms = float(tree.get("forms", 0) or 0)
+    password_fields = float(tree.get("password_fields", 0) or 0)
+
+    # Block A: Structural complexity
+    features.extend(
+        [
+            math.log1p(total_elements),
+            float(tree.get("max_depth", 0) or 0),
+            float(tree.get("avg_depth", 0.0) or 0.0),
+            math.log1p(forms),
+            math.log1p(password_fields),
+            math.log1p(float(tree.get("hidden_elements", 0) or 0)),
+            math.log1p(float(tree.get("external_scripts", 0) or 0)),
+            float(tree.get("link_ratio", 0.0) or 0.0),
+            float(tree.get("image_ratio", 0.0) or 0.0),
+            (password_fields / forms) if forms else 0.0,
+        ]
+    )
+
+    # Block B: Hashed tag distribution (stable hash, not Python's randomized hash())
+    tag_bins = [0.0] * tag_bin_count
+    tag_counts = html_data.get("tag_counts", {}) or {}
+    if isinstance(tag_counts, dict):
+        for tag, count in tag_counts.items():
+            try:
+                idx = int.from_bytes(
+                    hashlib.blake2b(str(tag).encode("utf-8", "ignore"), digest_size=8).digest(),
+                    byteorder="big",
+                    signed=False,
+                ) % tag_bin_count
+                tag_bins[idx] += float(count or 0)
+            except Exception:
+                continue
+    tag_bins = [v / total for v in tag_bins]
+    features.extend(tag_bins)
+
+    # Block C: Structural SimHash bytes
+    fingerprint_hex = str(html_data.get("structure_fingerprint", "") or "").strip().lower()
+    try:
+        fingerprint_int = int(fingerprint_hex, 16) if fingerprint_hex else 0
+    except Exception:
+        fingerprint_int = 0
+    for i in range(8):
+        byte = (fingerprint_int >> (8 * i)) & 0xFF
+        features.append(float(byte) / 255.0)
+
+    # Block D: CSS features
+    style = css_data.get("style_features", {}) or {}
+    features.extend(
+        [
+            math.log1p(float(style.get("unique_color_count", 0) or 0)),
+            1.0 if style.get("uses_position_absolute") else 0.0,
+            1.0 if style.get("uses_z_index") else 0.0,
+            1.0 if style.get("uses_media_queries") else 0.0,
+            math.log1p(float(style.get("unique_class_count", 0) or 0)),
+            float(style.get("class_entropy", 0.0) or 0.0),
+        ]
+    )
+    return features
+
 
 @dataclass
 class NodeIR:
@@ -122,7 +195,7 @@ def _collect_edges_and_email_attrs(
 ) -> Tuple[
     Dict[str, List[int]],
     List[Dict[str, Any]],
-    Dict[str, List[int]],
+    Dict[str, List[Any]],
     Dict[str, Set[int]],
 ]:
     """Build email->component edges and gather raw email attributes and per-node docfreq sets."""
@@ -143,11 +216,12 @@ def _collect_edges_and_email_attrs(
     }
 
     email_meta: List[Dict[str, Any]] = []
-    email_attrs_raw: Dict[str, List[int]] = {
+    email_attrs_raw: Dict[str, List[Any]] = {
         "ts": [],
         "n_urls": [],
         "len_subject": [],
         "len_body": [],
+        "x_html_css": [],
     }
 
     # String-keyed maps to sets
@@ -196,6 +270,12 @@ def _collect_edges_and_email_attrs(
         email_attrs_raw["n_urls"].append(int(len(domains)))
         email_attrs_raw["len_subject"].append(int(len(subj)))
         email_attrs_raw["len_body"].append(int(len(body)))
+        email_attrs_raw["x_html_css"].append(
+            create_html_css_features(
+                em.get("html", {}) or {},
+                em.get("css", {}) or {},
+            )
+        )
 
         if em.get("sender") and em["sender"] in sender_to_idx:
             edges_idx["has_sender_src"].append(email_idx)
@@ -421,12 +501,21 @@ def _build_email_feature_matrix(
     len_subject: List[float],
     subj_vecs: List[List[float]],
     body_vecs: List[List[float]],
+    html_css_vecs: List[List[float]],
 ) -> List[List[float]]:
     """Construct the email feature matrix using raw scalars + TF-IDF vectors.
 
     Order: [ts, len_body, n_urls, len_subject, TFIDF(subject), TFIDF(body)]
     """
-    n_emails = max(len(ts), len(len_body), len(n_urls), len(len_subject), len(subj_vecs) if subj_vecs else 0, len(body_vecs) if body_vecs else 0)
+    n_emails = max(
+        len(ts),
+        len(len_body),
+        len(n_urls),
+        len(len_subject),
+        len(subj_vecs) if subj_vecs else 0,
+        len(body_vecs) if body_vecs else 0,
+        len(html_css_vecs) if html_css_vecs else 0,
+    )
     email_x: List[List[float]] = []
     for i in range(n_emails):
         row: List[float] = [
@@ -439,6 +528,8 @@ def _build_email_feature_matrix(
             row.extend(subj_vecs[i] if i < len(subj_vecs) else [])
         if body_vecs:
             row.extend(body_vecs[i] if i < len(body_vecs) else [])
+        if html_css_vecs:
+            row.extend(html_css_vecs[i] if i < len(html_css_vecs) else [])
         email_x.append(row)
     return email_x
 
@@ -489,7 +580,7 @@ def _assemble_edges(
 
 def _assemble_email_attrs(
     email_meta: List[Dict[str, Any]],
-    email_attrs_raw: Dict[str, List[int]],
+    email_attrs_raw: Dict[str, List[Any]],
     subj_dim: int,
     body_dim: int,
     subj_vecs: List[List[float]],
@@ -516,6 +607,7 @@ def _assemble_email_attrs(
         "n_urls": email_attrs_raw["n_urls"],
         "len_body": email_attrs_raw["len_body"],
         "len_subject": email_attrs_raw.get("len_subject", []),
+        "x_html_css": email_attrs_raw.get("x_html_css", []),
         "x_text": x_text if x_text and (len(x_text[0]) > 0 if x_text else False) else [],
     }
 
@@ -733,6 +825,7 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         [float(v) for v in email_attrs_raw["len_subject"]],
         subj_vecs,
         body_vecs,
+        [list(v) if isinstance(v, list) else [] for v in email_attrs_raw.get("x_html_css", [])],
     )
 
 

@@ -133,13 +133,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
-        "body_cluster": NodeMapping(
-            canonical="body_cluster",
-            pyg="body_cluster",
-            memgraph="BodyCluster",
-            memgraph_id_key="cid",
-            feature_strategy="centroid",
-        ),
     },
     edges={
         "has_sender": EdgeMapping(
@@ -207,29 +200,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Stem",
             memgraph_right_key="key",
-        ),
-        "has_body_cluster": EdgeMapping(
-            canonical="has_body_cluster",
-            src="email",
-            rel_pyg="has_body_cluster",
-            dst="body_cluster",
-            memgraph_type="HAS_BODY_CLUSTER",
-            memgraph_left_label="Email",
-            memgraph_left_key="eid",
-            memgraph_right_label="BodyCluster",
-            memgraph_right_key="cid",
-        ),
-        # Reverse edge for convenience/undirected use
-        "body_cluster_has_email": EdgeMapping(
-            canonical="body_cluster_has_email",
-            src="body_cluster",
-            rel_pyg="body_cluster_has_email",
-            dst="email",
-            memgraph_type="BODY_CLUSTER_HAS_EMAIL",
-            memgraph_left_label="BodyCluster",
-            memgraph_left_key="cid",
-            memgraph_right_label="Email",
-            memgraph_right_key="eid",
         ),
         "sender_from_domain": EdgeMapping(
             canonical="sender_from_domain",

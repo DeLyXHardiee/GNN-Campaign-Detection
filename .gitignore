@@ -6,6 +6,8 @@ core/GNN/notebooks/data
 data/*
 core/results
 core/GNN/models
+core/graph/utils/results
+core/graph/output
 
 
 # Ignore Python cache files
