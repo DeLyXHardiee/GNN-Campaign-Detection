@@ -5,11 +5,13 @@ import csv
 from collections import Counter
 import json
 import re
+from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from feature_set_extraction.tfidf_utils import build_vectorizer, save_idf_csv, precompute_subject_idf
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
+from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 
 
 '''
@@ -69,7 +71,10 @@ def extract_subject_features(subject, idf_dict):
         "subject": subject
     }
 
-    dict.update(get_term_frequency_information(subject, idf_dict))
+    # add summary stats
+    #dict.update(get_term_frequency_information(subject, idf_dict))
+    # add per-term TF-IDF mapping (uses idf_dict when provided)
+    dict.update(get_term_frequency_information(subject.lower(), idf_dict=idf_dict))
 
     return dict
 
@@ -96,6 +101,45 @@ def get_term_frequency_information(subject, idf_dict=None):
         "subject_n_terms": n_terms
     }
 
+
+def get_term_frequencies(subject, vectorizer=None, max_features=None, idf_dict=None, idf_csv_path=None):
+    """Return a dict mapping terms -> TF-IDF values for `subject`.
+
+    If `idf_dict` (or `idf_csv_path`) is provided, compute TF as
+    term_count / total_terms using simple whitespace splitting and
+    multiply by the provided IDF values (missing terms use 0.0).
+
+    If `idf_dict` is None, fall back to using a scikit-learn
+    `TfidfVectorizer` (best-effort) and return non-zero entries.
+    """
+    if not isinstance(subject, str):
+        subject = ""
+
+    # If an idf csv path is provided but no dict, try to load it
+    if idf_dict is None and idf_csv_path:
+        try:
+            idf_dict = load_idf_dict(idf_csv_path)
+        except Exception:
+            idf_dict = None
+
+    # If idf_dict is provided, use simple TF * IDF calculation
+    if idf_dict is not None:
+        terms = subject.lower().split()
+        n_terms = len(terms)
+        if n_terms == 0:
+            return {}
+        counts = Counter(terms)
+        tfidf_map = {}
+        for term, cnt in counts.items():
+            tf = cnt / n_terms
+            idf = idf_dict.get(term, 0.0)
+            val = tf * idf
+            if val != 0.0:
+                tfidf_map[term] = float(val)
+        return tfidf_map
+
+    return {}
+
 def load_idf_dict(csv_path):
     idf_dict = {}
     with open(csv_path, newline='', encoding='utf-8') as csvfile:
@@ -109,7 +153,7 @@ def load_idf_dict(csv_path):
             idf_dict[term] = idf
     return idf_dict
  
-def get_idf(subjects, output_path, max_features=2000):
+def get_idf(subjects, output_path, max_features=None):
     vectorizer = build_vectorizer(subjects, max_features=max_features)
     save_idf_csv(output_path, vectorizer)
     print(f"Saved IDF values to: {output_path}")
@@ -216,6 +260,103 @@ def extract_greeting_features(body):
         return {"greeting": f"{greeting_token}, username"}
 
     return {"greeting": f"{greeting_token}, other"}
+
+def extract_body_features(body: str) -> dict:
+    """
+    Extract structural features from an email body.
+
+    Returns a dictionary with:
+        has_html
+        num_html_tags
+        num_images
+        num_urls
+        has_script
+        has_css
+        num_css_rules
+        has_forms
+        image_text_ratio
+    """
+
+    # -------- Detect HTML --------
+    has_html = int(bool(re.search(r"<[^>]+>", body)))
+
+    if has_html:
+        soup = BeautifulSoup(body, "html.parser")
+
+        # -------- HTML tags --------
+        all_tags = soup.find_all(True)
+        num_html_tags = len(all_tags)
+
+        # -------- Images --------
+        images = soup.find_all("img")
+        num_images = len(images)
+
+        # -------- URLs --------
+        urls = set()
+
+        # links
+        for tag in soup.find_all(href=True):
+            urls.add(tag["href"])
+
+        # media / src attributes
+        for tag in soup.find_all(src=True):
+            urls.add(tag["src"])
+
+        # also catch raw URLs in text
+        raw_urls = re.findall(r'https?://\S+', body)
+        urls.update(raw_urls)
+
+        num_urls = len(urls)
+
+        # -------- Scripts --------
+        has_script = int(bool(soup.find_all("script")))
+
+        # -------- CSS --------
+        style_tags = soup.find_all("style")
+        inline_styles = soup.find_all(style=True)
+        has_css = int(bool(style_tags or inline_styles))
+
+        # Count CSS rules (simple heuristic: count "{")
+        num_css_rules = 0
+        for style in style_tags:
+            if style.string:
+                num_css_rules += style.string.count("{")
+
+        # -------- Forms --------
+        has_forms = int(bool(soup.find_all("form")))
+
+        # -------- Text content --------
+        visible_text = soup.get_text(separator=" ", strip=True)
+
+    else:
+        # Plain text handling
+        num_html_tags = 0
+        num_images = 0
+        num_urls = len(re.findall(r'https?://\S+', body))
+        has_script = 0
+        has_css = 0
+        num_css_rules = 0
+        has_forms = 0
+        visible_text = body
+
+    # -------- Image-text ratio --------
+    # Defined as images per word (common simple heuristic)
+    words = re.findall(r"\b\w+\b", visible_text)
+    word_count = len(words)
+
+    image_text_ratio = num_images / word_count if word_count > 0 else 0.0
+
+    return {
+        "has_html": has_html,
+        "num_html_tags": num_html_tags,
+        "num_images": num_images,
+        "num_urls": num_urls,
+        "has_script": has_script,
+        "has_css": has_css,
+        "num_css_rules": num_css_rules,
+        "has_forms": has_forms,
+        "image_text_ratio": round(image_text_ratio, 4),
+    }
 
 
 '''
@@ -335,110 +476,15 @@ This function currently extracts the following URL features:
 '''
 
 def extract_url_based_features(urls):
-    if not urls or not isinstance(urls, list):
-        return {
-            "domains": "",
-            "num_urls": 0,
-            "num_different_domains": 0,
-            "num_urls_with_ip": 0,
-            "num_short_urls": 0,
-            "has_at_symbol": 0,
-            "has_non_ascii_chars": 0,
-            "has_extra_http": 0,
-            "avg_subdomain_count": 0,
-            "avg_hyphen_count": 0,
-            
-            #"has_ev_certificate": 0,
-            #"has_webhost_domain": 0,
-            #"num_blacklisted_urls": 0,
-            #"has_phishtank_domain": 0,
-            #"has_domain_typos": 0,
-            #"has_click_here_link": 0,
-            #"visual_url_mismatch": 0
-        }
-    
-    domains = set()
-    urls_with_ip = 0
-    short_urls = 0
-    at_symbol_count = 0
-    non_ascii_count = 0
-    extra_http_count = 0
-    total_subdomains = 0
-    total_hyphens = 0
-    blacklisted_urls = 0
-    ev_cert_count = 0
-    webhost_count = 0
-    phishtank_count = 0
-    typo_count = 0
-    
-    for url in urls:
-        if not isinstance(url, str):
-            continue
-        
-        try:
-            url_clean = url.replace("https://", "").replace("http://", "")
-            domain = url_clean.split("/")[0].split("?")[0]
-            domains.add(domain)
-        except:
-            domain = ""
-        
-        if re.match(r'\d+\.\d+\.\d+\.\d+', domain):
-            urls_with_ip += 1
-        
-        short_url_services = ['bit.ly', 'tinyurl.com', 'short.link', 'ow.ly', 'goo.gl']
-        if any(service in url.lower() for service in short_url_services):
-            short_urls += 1
-        
-        if '@' in url:
-            at_symbol_count += 1
-        
-        try:
-            url.encode('ascii')
-        except UnicodeEncodeError:
-            non_ascii_count += 1
-        
-        if url.count('http') > 1 or url.count('https') > 1:
-            extra_http_count += 1
-        
-        if domain:
-            subdomain_count = domain.count('.') - 1
-            total_subdomains += max(0, subdomain_count)
-            
-            hyphen_count = domain.count('-')
-            total_hyphens += hyphen_count
-        
-        # ev_cert_count += check_ev_certificate(url)
-        # blacklisted_urls += check_blacklist(url)
-        # webhost_count += check_webhost(domain)
-        # phishtank_count += check_phishtank(domain)
-        # typo_count += check_typos(domain)
-    
-    avg_subdomains = total_subdomains / len(urls) if urls else 0
-    avg_hyphens = total_hyphens / len(urls) if urls else 0
-    
-    domainstr = ""
-    for domain in domains: 
-        domainstr = domainstr + domain + " "
-
-    return {
-        "domains": domainstr.strip(),
-        "num_urls": len(urls),
-        "num_different_domains": len(domains),
-        "num_urls_with_ip": urls_with_ip,
-        "num_short_urls": short_urls,
-        "has_at_symbol": 1 if at_symbol_count > 0 else 0,
-        "has_non_ascii_chars": 1 if non_ascii_count > 0 else 0,
-        "has_extra_http": 1 if extra_http_count > 0 else 0,
-        "avg_subdomain_count": round(avg_subdomains, 2),
-        "avg_hyphen_count": round(avg_hyphens, 2),
-        #"has_ev_certificate": 1 if ev_cert_count > 0 else 0,
-        #"num_blacklisted_urls": blacklisted_urls,
-        #"has_webhost_domain": 1 if webhost_count > 0 else 0,
-        #"has_phishtank_domain": 1 if phishtank_count > 0 else 0,
-        #"has_domain_typos": 1 if typo_count > 0 else 0,
-        #"has_click_here_link": 0,  # Would need body text analysis
-        #"visual_url_mismatch": 0   # Would need hyperlink/display text comparison
-    }
+    # Delegate to shared extractor and return its full feature dict
+    return extract_url_features_utils(
+        urls,
+        popular_domains=None,
+        phishing_target_domains=None,
+        blacklist=None,
+        domain_metadata=None,
+        anchor_pairs=None
+    )
 
 
 '''
