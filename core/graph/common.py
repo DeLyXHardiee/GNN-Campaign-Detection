@@ -4,6 +4,8 @@ Shared across graph builders and the assembler to avoid duplication.
 """
 from __future__ import annotations
 
+import ast
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
@@ -12,7 +14,7 @@ import sys
 
 sys.path.append('../preprocessing/utils')
 
-from preprocessing.utils.url_extractor import parse_url_components
+from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 
 
 def to_str(val: Any) -> str:
@@ -123,6 +125,53 @@ def extract_all_emails(text: str) -> List[str]:
     return out
 
 
+def _extract_urls_from_attr_value(value: Any) -> List[str]:
+    """Extract URLs from scalar/list/dict MISP attribute values."""
+    if isinstance(value, str):
+        return extract_urls_from_text(value)
+
+    if isinstance(value, list):
+        urls: List[str] = []
+        for item in value:
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    if isinstance(value, dict):
+        urls = []
+        for item in value.values():
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    text = to_str(value)
+    return extract_urls_from_text(text) if text else []
+
+
+def _coerce_mapping(value: Any) -> Dict[str, Any]:
+    """Best-effort conversion of a MISP attribute value into a dict."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        return {}
+    return {}
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -136,6 +185,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         receiver_set: Set[str] = set()
         subject = ""
         body = ""
+        html_data: Dict[str, Any] = {}
+        css_data: Dict[str, Any] = {}
         urls: List[str] = []
         url_set: Set[str] = set()
         date = ""
@@ -158,12 +209,34 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 subject = val
             elif a_type in ("email-body", "body"):
                 body = val
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
+            elif a_type == "html":
+                html_data = _coerce_mapping(raw_val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
+            elif a_type == "css":
+                css_data = _coerce_mapping(raw_val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
             elif a_type == "url":
-                if val.strip() and val not in url_set:
-                    url_set.add(val)
-                    urls.append(val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
             elif a_type in ("email-date", "date"):
                 date = val
+            elif a_type in ("header_List-Unsubscribe",):
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
 
         normalized.append(
             {
@@ -173,6 +246,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "receivers": receivers,
                 "subject": subject,
                 "body": body,
+                "html": html_data,
+                "css": css_data,
                 "urls": urls,
                 "date": date,
             }
