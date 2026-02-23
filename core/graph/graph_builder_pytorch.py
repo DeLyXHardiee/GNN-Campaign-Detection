@@ -29,7 +29,6 @@ import json
 import os
 import sys
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
-import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -178,13 +177,6 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
     stem_meta = (ir.nodes.get("stem") and ir.nodes["stem"].index_to_string) or []
     email_domain_meta = (ir.nodes.get("email_domain") and ir.nodes["email_domain"].index_to_string) or []
     email_meta = (ir.nodes.get("email") and ir.nodes["email"].index_to_meta) or []
-    # Body clusters are optional; derive simple labels if present in data
-    body_cluster_meta: List[str] = []
-    bc_pyg = N.get("body_cluster") and N["body_cluster"].pyg
-    if bc_pyg and bc_pyg in getattr(data, "node_types", []):
-        num_bc = int(getattr(data[bc_pyg], "num_nodes", 0) or (data[bc_pyg].x.size(0) if "x" in data[bc_pyg] else 0))
-        body_cluster_meta = [f"cluster_{i}" for i in range(num_bc)]
-
     meta = {
         "node_maps": {
             N["email"].pyg: {"index_to_meta": email_meta},
@@ -195,7 +187,6 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             N["domain"].pyg: {"index_to_string": domain_meta},
             N["stem"].pyg: {"index_to_string": stem_meta},
             N["email_domain"].pyg: {"index_to_string": email_domain_meta},
-            **({bc_pyg: {"index_to_string": body_cluster_meta}} if body_cluster_meta else {}),
         },
         "feature_shapes": {
             N["email"].pyg: list(data[N["email"].pyg].x.shape) if "x" in data[N["email"].pyg] else [0, 0],
@@ -206,7 +197,6 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             N["domain"].pyg: list(data[N["domain"].pyg].x.shape) if "x" in data[N["domain"].pyg] else [0, 0],
             N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
             N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
-            **({bc_pyg: list(data[bc_pyg].x.shape) if "x" in data[bc_pyg] else [0, 0]} if body_cluster_meta else {}),
         },
         "edge_counts": {
             f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges.get('has_sender', ([], []))[0]),
@@ -217,70 +207,9 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             f"{N['email'].pyg}->{N['stem'].pyg}:{schema.edge('has_stem').rel_pyg}": len(ir.edges.get('has_stem', ([], []))[0]),
             f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges.get('sender_from_domain', ([], []))[0]),
             f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges.get('receiver_from_domain', ([], []))[0]),
-            **(
-                {
-                    f"{N['email'].pyg}->{N['body_cluster'].pyg}:{schema.edge('has_body_cluster').rel_pyg}": int(
-                        data[(N['email'].pyg, schema.edge('has_body_cluster').rel_pyg, N['body_cluster'].pyg)].edge_index.size(1)
-                    )
-                }
-                if body_cluster_meta and (N['email'].pyg, schema.edge('has_body_cluster').rel_pyg, N['body_cluster'].pyg) in getattr(data, "edge_types", [])
-                else {}
-            ),
         },
     }
     return meta
-
-
-def add_body_clusters(
-    data: Any,
-    *,
-    embeddings: Optional[Any],
-    n_clusters: int = 300,
-    random_state: int = 42,
-    schema: GraphSchema = DEFAULT_SCHEMA,
-):
-    """
-    Cluster email body embeddings and attach body_cluster nodes + edges to the HeteroData.
-    - embeddings: numpy/torch array of shape [num_emails, dim]; if None uses data['email'].x
-    """
-    torch_lib = _ensure_torch()
-    try:
-        from sklearn.cluster import KMeans
-    except Exception:
-        print("scikit-learn is required for body clustering; skipping body_cluster creation.")
-        return None
-
-    email_pyg = schema.nodes["email"].pyg
-    bc_pyg = schema.nodes["body_cluster"].pyg
-    if email_pyg not in getattr(data, "node_types", []):
-        return None
-
-    if embeddings is None:
-        if "x" not in data[email_pyg]:
-            return None
-        emb_np = data[email_pyg].x.detach().cpu().numpy()
-    else:
-        emb_np = np.asarray(embeddings)
-    if emb_np.size == 0:
-        return None
-
-    n_clusters = max(1, min(int(n_clusters), emb_np.shape[0]))
-    try:
-        kmeans = KMeans(n_clusters=n_clusters, n_init="auto", random_state=random_state)
-        labels = kmeans.fit_predict(emb_np)
-        centroids = kmeans.cluster_centers_
-    except Exception as e:
-        print(f"Body clustering failed: {e}")
-        return None
-
-    data[bc_pyg].x = torch_lib.tensor(centroids, dtype=torch_lib.float)
-
-    src = torch_lib.arange(len(labels), dtype=torch_lib.long)
-    dst = torch_lib.tensor(labels, dtype=torch_lib.long)
-    rel_fwd = schema.edge("has_body_cluster").rel_pyg
-    data[email_pyg, rel_fwd, bc_pyg].edge_index = torch_lib.stack([src, dst], dim=0)
-
-    return labels, centroids
 
 
 def build_hetero_graph_from_misp(
@@ -288,9 +217,6 @@ def build_hetero_graph_from_misp(
     *,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType]] = None,
-    add_body_clusters_flag: bool = True,
-    body_cluster_k: int = 300,
-    body_embeddings: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -328,18 +254,7 @@ def build_hetero_graph_from_misp(
 
     _set_node_features_from_ir(data, ir, schema)
     _set_edges_from_ir(data, ir, schema)
-    
-    if add_body_clusters_flag:
-        embeddings = body_embeddings
-        if embeddings is None:
-            embeddings = ir.email_attrs.get("x_text") if hasattr(ir, "email_attrs") else None
-        add_body_clusters(
-            data,
-            embeddings=embeddings,
-            n_clusters=body_cluster_k,
-            schema=schema,
-        )
-    
+
     data = normalize_graph(data)
     
     metadata = _build_metadata_from_ir(data, ir, schema)
@@ -374,9 +289,6 @@ def build_graph(
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType]] = None,
-    add_body_clusters_flag: bool = True,
-    body_cluster_k: int = 300,
-    body_embeddings: Optional[Any] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -389,9 +301,6 @@ def build_graph(
         misp_events,
         schema=schema,
         exclude_nodes=exclude_nodes,
-        add_body_clusters_flag=add_body_clusters_flag,
-        body_cluster_k=body_cluster_k,
-        body_embeddings=body_embeddings,
     )
 
     if out_name is None:
