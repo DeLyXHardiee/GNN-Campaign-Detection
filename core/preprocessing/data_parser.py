@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from preprocessing.body_parser import extract_body_html_css_without_headers
 from preprocessing.attachment_parser import extract_attachment_hashes_from_email
+from preprocessing.html_css_parser import parse_css_fast, parse_html_fast
 
 try:
     import mailparser  # type: ignore
@@ -224,23 +225,27 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
     return _extract_selected_headers(normalized)
 
 
-def _parse_body_and_headers_with_mailparser(raw_bytes: bytes) -> Tuple[str, str, str, List[str], Dict[str, str]]:
+def _parse_body_and_headers_with_mailparser(
+    raw_bytes: bytes,
+) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], Dict[str, str]]:
     if not raw_bytes:
-        return "", "", "", [], {field: "" for field in HEADER_FIELDS}
+        return "", {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}, {"style_features": {}}, [], {field: "" for field in HEADER_FIELDS}
 
     body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
+    html_structure = parse_html_fast(html_text)
+    css_structure = parse_css_fast(css_text)
     attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
     if mailparser is None:
-        return body_text, html_text, css_text, attachment_hashes, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, {field: "" for field in HEADER_FIELDS}
 
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
         headers = _extract_headers_from_mailparser(parsed_mail)
-        return body_text, html_text, css_text, attachment_hashes, headers
+        return body_text, html_structure, css_structure, attachment_hashes, headers
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_text, css_text, attachment_hashes, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, {field: "" for field in HEADER_FIELDS}
 
 
 def _configure_mailparser_logging() -> None:
@@ -329,8 +334,8 @@ def parse_incidents_with_email_bodies(
             properties = _try_parse_mapping(row.get("properties", ""))
 
             body_text = ""
-            html_text = ""
-            css_text = ""
+            html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
+            css_text: Dict[str, Any] = {"style_features": {}}
             attachment_hashes: List[str] = []
             parser_headers = {field: "" for field in HEADER_FIELDS}
             if external_id:
