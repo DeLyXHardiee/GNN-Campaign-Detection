@@ -585,15 +585,15 @@ def parse_misp_event_attributes(event):
         attr_type = attr.get('type', '')
         attr_value = attr.get('value', '')
         
-        if attr_type == 'email-subject':
+        if attr_type in ('email-subject', 'subject'):
             email_fields['subject'] = attr_value
-        elif attr_type == 'email-body':
+        elif attr_type in ('email-body', 'body'):
             email_fields['body'] = attr_value
-        elif attr_type == 'email-src':
+        elif attr_type in ('email-src', 'from'):
             email_fields['sender'] = attr_value
-        elif attr_type == 'email-dst':
+        elif attr_type in ('email-dst', 'to'):
             email_fields['receiver'] = attr_value
-        elif attr_type == 'email-date':
+        elif attr_type in ('email-date', 'date'):
             email_fields['date'] = attr_value
     
     return email_fields
