@@ -4,6 +4,8 @@ Shared across graph builders and the assembler to avoid duplication.
 """
 from __future__ import annotations
 
+import ast
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
@@ -144,6 +146,32 @@ def _extract_urls_from_attr_value(value: Any) -> List[str]:
     return extract_urls_from_text(text) if text else []
 
 
+def _coerce_mapping(value: Any) -> Dict[str, Any]:
+    """Best-effort conversion of a MISP attribute value into a dict."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        return {}
+    return {}
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -157,6 +185,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         receiver_set: Set[str] = set()
         subject = ""
         body = ""
+        html_data: Dict[str, Any] = {}
+        css_data: Dict[str, Any] = {}
         urls: List[str] = []
         url_set: Set[str] = set()
         date = ""
@@ -183,6 +213,18 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                     if url and url not in url_set:
                         url_set.add(url)
                         urls.append(url)
+            elif a_type == "html":
+                html_data = _coerce_mapping(raw_val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
+            elif a_type == "css":
+                css_data = _coerce_mapping(raw_val)
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in url_set:
+                        url_set.add(url)
+                        urls.append(url)
             elif a_type == "url":
                 for url in _extract_urls_from_attr_value(raw_val):
                     if url and url not in url_set:
@@ -190,7 +232,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                         urls.append(url)
             elif a_type in ("email-date", "date"):
                 date = val
-            elif a_type in ("html", "css", "header_List-Unsubscribe"):
+            elif a_type in ("header_List-Unsubscribe",):
                 for url in _extract_urls_from_attr_value(raw_val):
                     if url and url not in url_set:
                         url_set.add(url)
@@ -204,6 +246,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "receivers": receivers,
                 "subject": subject,
                 "body": body,
+                "html": html_data,
+                "css": css_data,
                 "urls": urls,
                 "date": date,
             }
