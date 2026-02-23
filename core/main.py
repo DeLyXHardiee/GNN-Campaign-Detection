@@ -42,7 +42,7 @@ def run_graph_creation(misp_json_path="../data/misp/incidents-20260211-misp.json
 
     graph, graph_path, meta_path = build_graph(
         misp_json_path=misp_json_path,
-        out_dir="results",
+        out_dir="graph/output",
         exclude_nodes=excluded,
     )
     print(f"Graph created: {graph}")
@@ -174,10 +174,10 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing(limit=100)
+    misp_path = run_preprocessing()
     # create_feature_sets()
     #run_featureset_clustering()
-    #run_graph_creation(misp_path, to_memgraph=True)
+    run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
