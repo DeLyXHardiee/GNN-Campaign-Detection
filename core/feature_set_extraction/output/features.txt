@@ -40,15 +40,8 @@ url
 currently has a lot of non-implemented features that seems to include a lot of work
 
 {
-    "num_urls", "num_different_domains", "num_urls_with_ip", "num_short_urls", "has_at_symbol", 
-    "has_non_ascii_chars", "has_extra_http", "avg_subdomain_count", "avg_hyphen_count", 
-    
-    #"has_ev_certificate", 
-    #"has_webhost_domain", 
-    #"num_blacklisted_urls", 
-    #"has_phishtank_domain", 
-    #"has_domain_typos", 
-    #"has_click_here_link", 
-    #"visual_url_mismatch",
+    "domains","hostnames","domain_categories","registrar_locations","subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
+    "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains","any_similar_phish_targets","any_popular_domain_in_subdomain",
+    "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",
 }
 
