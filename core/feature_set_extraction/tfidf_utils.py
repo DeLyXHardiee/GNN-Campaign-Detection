@@ -11,14 +11,18 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-def build_vectorizer(texts, max_features=2000, stop_words='english'):
-    """Fit and return a TfidfVectorizer with sensible defaults."""
+def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range=(1, 2)):
+    """Fit and return a TfidfVectorizer with sensible defaults.
+
+    `ngram_range` can be overridden by callers. For subject IDF CSVs we
+    prefer unigrams (1,1) to avoid multi-word terms like "word1 word2".
+    """
     vec = TfidfVectorizer(
         max_features=max_features,
         stop_words=stop_words,
         min_df=2,
         max_df=0.8,
-        ngram_range=(1, 2)
+        ngram_range=ngram_range
     )
     vec.fit(texts)
     return vec
@@ -110,7 +114,9 @@ def precompute_subject_idf(misp_path):
         return idf_path
 
     try:
-        vec = build_vectorizer(subjects)
+        # use unigrams only here so the resulting CSV contains single words
+        # (no multi-word terms like "word1 word2").
+        vec = build_vectorizer(subjects, ngram_range=(1, 1))
         save_idf_csv(idf_path, vec)
     except Exception:
         # ignore errors; caller will fallback to worker-side computation
