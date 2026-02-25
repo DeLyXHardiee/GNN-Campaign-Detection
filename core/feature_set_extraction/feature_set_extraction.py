@@ -477,7 +477,8 @@ This function currently extracts the following URL features:
 
 def extract_url_based_features(urls):
     # Delegate to shared extractor and return its full feature dict
-    return extract_url_features_utils(
+    try:
+        return extract_url_features_utils(
         urls,
         popular_domains=None,
         phishing_target_domains=None,
@@ -485,6 +486,9 @@ def extract_url_based_features(urls):
         domain_metadata=None,
         anchor_pairs=None
     )
+    except Exception as e:
+        return {
+            "domains_failed": " ".join(urls) if urls else "",}
 
 
 '''
@@ -659,7 +663,11 @@ def get_FS5(misp_path):
         filtered_feat = {k: v for k, v in feat.items() 
                         if k not in ["subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms", 
                                      "num_urls", "has_urls", "body_word_count", "num_lines", "avg_word_length", "greeting", 
-                                     "recipient_email",]
+                                     "recipient_email", "domain_categories","registrar_locations",
+                                     "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
+                                     "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
+                                     "any_similar_phish_targets","any_popular_domain_in_subdomain",
+                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",]
                         }
         filtered_features.append(filtered_feat)
     

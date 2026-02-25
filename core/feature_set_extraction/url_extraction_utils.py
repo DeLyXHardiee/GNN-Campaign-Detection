@@ -81,45 +81,6 @@ def extract_domain_info(url):
     }
 
 
-# derive_domain_metadata is intentionally outcommented — WHOIS lookups disabled.
-def derive_domain_metadata(domains, timeout=8):
-    """Derive minimal domain metadata using WHOIS only.
-
-    Returns a dict domain -> { 'created': datetime (if available), 'registrar': str (if available) }
-    """
-    out = {}
-    seen = set()
-    for raw in domains:
-        if not raw:
-            continue
-        ext = tldextract.extract(raw)
-        domain = ".".join(p for p in (ext.domain, ext.suffix) if p)
-        if not domain or domain in seen:
-            continue
-        seen.add(domain)
-        entry = {}
-
-        if whois is not None:
-            try:
-                w = whois.whois(domain)
-                creation = getattr(w, 'creation_date', None)
-                if isinstance(creation, list):
-                    dates = [d for d in creation if isinstance(d, datetime)]
-                    if dates:
-                        entry['created'] = min(dates)
-                elif isinstance(creation, datetime):
-                    entry['created'] = creation
-
-                registrar = getattr(w, 'registrar', None) or getattr(w, 'org', None)
-                if registrar:
-                    entry['registrar'] = registrar
-            except Exception:
-                # ignore whois failures
-                pass
-
-        out[domain] = entry
-    return out
-
 def is_typo_of_popular(domain, popular_domains, max_distance=2):
     base = domain.split(".")[0]
     for pop in popular_domains:
@@ -164,7 +125,6 @@ def extract_url_features(
 
     # Domain metadata lookups disabled (WHOIS/RDAP/TLS). Keep `domain_metadata` if supplied,
     # otherwise proceed without attempting lookups.
-
     per_url = [extract_domain_info(u) for u in urls]
 
     # ---------- aggregate ----------
@@ -235,9 +195,13 @@ def extract_url_features(
             if text.startswith("http") and text != actual:
                 mismatch_count += 1
 
+    # represent lists as space-joined strings for CSV-friendly output
+    domain_list_str = " ".join(sorted(unique_domains))
+    hostname_list_str = " ".join([h for h in (d.get("hostname") for d in per_url) if h])
+
     return {
-        "domain_list": list(unique_domains),
-        "hostname_list": [d["hostname"] for d in per_url],
+        "domains": domain_list_str,
+        "hostnames": hostname_list_str,
         "domain_categories": domain_category_map,
         "registrar_locations": registrar_location_map,
         "subdomain_counts": subdomain_counts,
