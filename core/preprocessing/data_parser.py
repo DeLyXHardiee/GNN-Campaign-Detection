@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import ast
 import csv
+import ipaddress
 import json
 import logging
 import os
+import re
 import sys
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 from preprocessing.body_parser import extract_body_html_css_without_headers
@@ -48,6 +51,26 @@ HEADER_FIELDS = [
 ]
 
 _FOREFRONT_ALLOWED_KEYS = {"CIP", "CTRY", "LANG", "SCL", "SFV", "CAT", "BCL", "PCL"}
+_HOSTNAME_RE = re.compile(r"\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+\b", re.IGNORECASE)
+_IPV4_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+_TRACKING_QUERY_KEY_RE = re.compile(
+    r"^(utm_.+|mc_.+|trk.*|fbclid|gclid|msclkid|cid|icid|mkt_tok|campaign|source|medium|content|"
+    r"token|auth|signature|sig|hash|userid|user_id|uid)$",
+    re.IGNORECASE,
+)
+_TOKENISH_SEGMENT_RE = re.compile(r"^[a-z0-9_-]{20,}$", re.IGNORECASE)
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _default_header_value(field: str) -> Any:
+    if field == "Received":
+        return []
+    if field == "Return-Path":
+        return {"email": "", "domain": ""}
+    return ""
 
 
 def _normalize_scalar(value: Any) -> str:
@@ -118,13 +141,29 @@ def _try_parse_mapping(raw_value: Any) -> Dict[str, Any]:
     return {}
 
 
-def _extract_selected_headers(headers: Dict[str, Any]) -> Dict[str, str]:
-    lower_map = {str(k).strip().lower(): _normalize_scalar(v) for k, v in headers.items()}
-    selected: Dict[str, str] = {}
+def _extract_selected_headers(headers: Dict[str, Any]) -> Dict[str, Any]:
+    lower_map = {str(k).strip().lower(): v for k, v in headers.items()}
+    selected: Dict[str, Any] = {}
     for field in HEADER_FIELDS:
-        value = lower_map.get(field.lower(), "")
-        if field == "X-Forefront-Antispam-Report":
+        value = lower_map.get(field.lower(), _default_header_value(field))
+        if field == "Received":
+            value = _filter_received_header(value)
+        elif field == "Return-Path":
+            value = _normalize_return_path(value)
+        elif field == "Content-Type":
+            value = _filter_content_type(value)
+        elif field == "Received-SPF":
+            value = _filter_received_spf(value)
+        elif field == "List-Unsubscribe":
+            value = _filter_list_unsubscribe(value)
+        elif field == "Authentication-Results":
+            value = _filter_authentication_results(value)
+        elif field == "X-Forefront-Antispam-Report":
             value = _filter_forefront_antispam_report(value)
+        else:
+            value = _normalize_scalar(value)
+        if value in ("", None):
+            value = _default_header_value(field)
         selected[field] = value
     return selected
 
@@ -160,6 +199,296 @@ def _filter_forefront_antispam_report(value: str) -> str:
     return "; ".join(kept_parts)
 
 
+def _split_header_segments(value: Any) -> List[str]:
+    if isinstance(value, list):
+        segments: List[str] = []
+        for item in value:
+            item_text = _normalize_scalar(item)
+            if not item_text:
+                continue
+            segments.extend([segment.strip() for segment in item_text.split("|") if segment.strip()])
+        return segments
+    text = _normalize_scalar(value)
+    return [segment.strip() for segment in text.split("|") if segment.strip()]
+
+
+def _normalize_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", _normalize_scalar(value)).strip()
+
+
+def _contains_private_or_loopback_ip(value: str) -> bool:
+    for raw_ip in _IPV4_RE.findall(value):
+        try:
+            parsed = ipaddress.ip_address(raw_ip)
+        except ValueError:
+            continue
+        if parsed.is_private or parsed.is_loopback or parsed.is_link_local:
+            return True
+    return False
+
+
+def _is_corporate_internal_hop(received_hop: str) -> bool:
+    hop = _normalize_whitespace(received_hop).lower()
+    if not hop:
+        return False
+    if _contains_private_or_loopback_ip(hop):
+        return True
+
+    for hostname in _HOSTNAME_RE.findall(hop):
+        host = hostname.lower()
+        if host.endswith((".local", ".lan", ".corp", ".internal")):
+            return True
+
+    for marker in (" from ", " by "):
+        idx = hop.find(marker)
+        if idx == -1:
+            continue
+        token = hop[idx + len(marker):].split(" ", 1)[0].strip("()[];")
+        if token and "." not in token and token not in {"localhost"}:
+            return True
+
+    return " localhost" in hop or hop.startswith("localhost")
+
+
+def _received_hop_fingerprint(received_hop: str) -> str:
+    hop = _normalize_whitespace(received_hop).lower()
+    if not hop:
+        return ""
+    parts: List[str] = []
+    for label in ("from", "by", "with"):
+        match = re.search(rf"\b{label}\s+([^\s;()]+)", hop)
+        if match:
+            parts.append(f"{label}={match.group(1)}")
+    return "|".join(parts) if parts else hop
+
+
+def _parse_received_hop(received_hop: str) -> Dict[str, str]:
+    hop = _normalize_whitespace(received_hop)
+    if not hop:
+        return {"origin_ip": "", "helo_host": "", "by_host": "", "timestamp": ""}
+
+    helo_host = ""
+    by_host = ""
+    origin_ip = ""
+    timestamp = ""
+
+    from_match = re.search(r"\bfrom\s+([^\s;()]+)", hop, flags=re.IGNORECASE)
+    if from_match:
+        helo_host = from_match.group(1).strip("()[];")
+
+    by_match = re.search(r"\bby\s+([^\s;()]+)", hop, flags=re.IGNORECASE)
+    if by_match:
+        by_host = by_match.group(1).strip("()[];")
+
+    bracketed_ip_match = re.search(r"\[(\d{1,3}(?:\.\d{1,3}){3})\]", hop)
+    if bracketed_ip_match:
+        origin_ip = bracketed_ip_match.group(1)
+    else:
+        ipv4_match = _IPV4_RE.search(hop)
+        if ipv4_match:
+            origin_ip = ipv4_match.group(0)
+
+    if ";" in hop:
+        timestamp = hop.split(";", 1)[1].strip()
+
+    return {
+        "origin_ip": origin_ip,
+        "helo_host": helo_host.lower(),
+        "by_host": by_host.lower(),
+        "timestamp": timestamp,
+    }
+
+
+def _filter_received_header(value: Any) -> List[Dict[str, str]]:
+    hops = _split_header_segments(value)
+    if not hops:
+        return []
+
+    kept: List[Dict[str, str]] = []
+    seen: set[str] = set()
+    for raw_hop in hops:
+        hop = _normalize_whitespace(raw_hop)
+        if not hop:
+            continue
+        lowered = hop.lower()
+        if _is_corporate_internal_hop(lowered):
+            continue
+
+        fingerprint = _received_hop_fingerprint(lowered)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        kept.append(_parse_received_hop(hop))
+
+    return kept
+
+
+def _normalize_return_path(value: Any) -> Dict[str, str]:
+    if isinstance(value, dict):
+        email_value = _normalize_scalar(value.get("email", "")).lower().strip().strip("<>").strip()
+        domain_value = _normalize_scalar(value.get("domain", "")).lower().strip()
+        if not domain_value and "@" in email_value:
+            domain_value = email_value.rsplit("@", 1)[1]
+        return {"email": email_value, "domain": domain_value}
+
+    text = _normalize_scalar(value).lower().strip()
+    if not text:
+        return {"email": "", "domain": ""}
+    text = text.strip("<>").strip()
+    if not text:
+        return {"email": "", "domain": ""}
+
+    if "|" in text:
+        text = text.split("|", 1)[0].strip()
+
+    email_match = re.search(r"([a-z0-9._%+\-]+@([a-z0-9.\-]+\.[a-z]{2,}))", text)
+    if email_match:
+        return {"email": email_match.group(1), "domain": email_match.group(2)}
+
+    return {"email": text, "domain": ""}
+
+
+def _filter_content_type(value: str) -> str:
+    text = _normalize_scalar(value)
+    if not text:
+        return ""
+
+    parts = [part.strip() for part in text.split(";") if part.strip()]
+    if not parts:
+        return ""
+    kept_parts = [parts[0].lower()]
+    for raw_part in parts[1:]:
+        if "=" not in raw_part:
+            kept_parts.append(raw_part)
+            continue
+        key, raw_val = raw_part.split("=", 1)
+        normalized_key = key.strip().lower()
+        if normalized_key in {"boundary", "charset"}:
+            continue
+        kept_parts.append(f"{normalized_key}={raw_val.strip()}")
+    return "; ".join(kept_parts)
+
+
+def _filter_received_spf(value: str) -> str:
+    text = _normalize_scalar(value)
+    if not text:
+        return ""
+
+    compact_parts: List[str] = []
+    verdict_match = re.match(r"\s*([a-z-]+)\b", text, flags=re.IGNORECASE)
+    if verdict_match:
+        compact_parts.append(f"spf={verdict_match.group(1).lower()}")
+
+    domain_match = re.search(r"domain of\s+([^\s;()]+)", text, flags=re.IGNORECASE)
+    if domain_match:
+        compact_parts.append(f"domain={domain_match.group(1).lower()}")
+
+    allowed_keys = {"client-ip", "helo", "envelope-from", "mailfrom", "identity"}
+    for raw_part in text.split(";"):
+        part = raw_part.strip()
+        if "=" not in part:
+            continue
+        key, raw_val = part.split("=", 1)
+        normalized_key = key.strip().lower()
+        if normalized_key not in allowed_keys:
+            continue
+        normalized_val = _normalize_scalar(raw_val).lower()
+        if normalized_val:
+            compact_parts.append(f"{normalized_key}={normalized_val}")
+
+    deduped: List[str] = []
+    seen: set[str] = set()
+    for part in compact_parts:
+        if part in seen:
+            continue
+        seen.add(part)
+        deduped.append(part)
+    return "; ".join(deduped)
+
+
+def _is_token_like_text(value: str) -> bool:
+    normalized = _normalize_scalar(value).strip()
+    if not normalized:
+        return False
+    if _UUID_RE.match(normalized):
+        return True
+    return bool(_TOKENISH_SEGMENT_RE.match(normalized))
+
+
+def _filter_query_params(pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    kept: List[Tuple[str, str]] = []
+    for key, val in pairs:
+        normalized_key = _normalize_scalar(key).lower()
+        normalized_val = _normalize_scalar(val)
+        if _TRACKING_QUERY_KEY_RE.match(normalized_key):
+            continue
+        if "token" in normalized_key or "auth" in normalized_key:
+            continue
+        if _is_token_like_text(normalized_val):
+            continue
+        kept.append((key, val))
+    return kept
+
+
+def _strip_tokenized_path_segments(path: str) -> str:
+    segments = path.split("/")
+    cleaned_segments = [
+        segment
+        for segment in segments
+        if segment == "" or not _is_token_like_text(segment)
+    ]
+    cleaned_path = "/".join(cleaned_segments)
+    return cleaned_path or "/"
+
+
+def _sanitize_unsubscribe_target(value: str) -> str:
+    target = _normalize_scalar(value).strip().strip("<>").strip()
+    if not target:
+        return ""
+
+    if target.lower().startswith(("http://", "https://", "mailto:")):
+        parsed = urlsplit(target)
+        filtered_pairs = _filter_query_params(parse_qsl(parsed.query, keep_blank_values=True))
+        sanitized_path = _strip_tokenized_path_segments(parsed.path)
+        sanitized_query = urlencode(filtered_pairs, doseq=True)
+        return urlunsplit((parsed.scheme, parsed.netloc, sanitized_path, sanitized_query, ""))
+
+    return target
+
+
+def _filter_list_unsubscribe(value: str) -> str:
+    text = _normalize_scalar(value)
+    if not text:
+        return ""
+
+    extracted = re.findall(r"<([^>]+)>", text)
+    raw_targets = extracted if extracted else [part.strip() for part in text.split(",")]
+    sanitized_targets = [
+        sanitized
+        for sanitized in (_sanitize_unsubscribe_target(target) for target in raw_targets)
+        if sanitized
+    ]
+    return " | ".join(sanitized_targets)
+
+
+def _filter_authentication_results(value: str) -> str:
+    text = _normalize_scalar(value)
+    if not text:
+        return ""
+
+    compact_parts: List[str] = []
+    for label in ("spf", "dkim", "dmarc"):
+        match = re.search(rf"\b{label}\s*=\s*([a-z0-9_-]+)", text, flags=re.IGNORECASE)
+        if match:
+            compact_parts.append(f"{label}={match.group(1).lower()}")
+
+    header_from_match = re.search(r"\bheader\.from=([^\s;]+)", text, flags=re.IGNORECASE)
+    if header_from_match:
+        compact_parts.append(f"header.from={header_from_match.group(1).lower()}")
+
+    return "; ".join(compact_parts)
+
+
 def _decode_email_body(raw_bytes: bytes) -> str:
     # Keep this as passive byte-to-text decoding only; no parsing/execution.
     try:
@@ -176,7 +505,7 @@ def _normalize_header_value(value: Any) -> str:
     return _normalize_scalar(value)
 
 
-def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
+def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, Any]:
     raw_headers = getattr(parsed_mail, "headers", None)
     collected: Dict[str, Any] = {}
 
@@ -227,16 +556,22 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, str]:
 
 def _parse_body_and_headers_with_mailparser(
     raw_bytes: bytes,
-) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], Dict[str, str]]:
+) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], Dict[str, Any]]:
     if not raw_bytes:
-        return "", {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}, {"style_features": {}}, [], {field: "" for field in HEADER_FIELDS}
+        return (
+            "",
+            {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""},
+            {"style_features": {}},
+            [],
+            {field: _default_header_value(field) for field in HEADER_FIELDS},
+        )
 
     body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
     html_structure = parse_html_fast(html_text)
     css_structure = parse_css_fast(css_text)
     attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
     if mailparser is None:
-        return body_text, html_structure, css_structure, attachment_hashes, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, {field: _default_header_value(field) for field in HEADER_FIELDS}
 
     try:
         _configure_mailparser_logging()
@@ -245,7 +580,7 @@ def _parse_body_and_headers_with_mailparser(
         return body_text, html_structure, css_structure, attachment_hashes, headers
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_structure, css_structure, attachment_hashes, {field: "" for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, {field: _default_header_value(field) for field in HEADER_FIELDS}
 
 
 def _configure_mailparser_logging() -> None:
@@ -337,7 +672,7 @@ def parse_incidents_with_email_bodies(
             html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
             css_text: Dict[str, Any] = {"style_features": {}}
             attachment_hashes: List[str] = []
-            parser_headers = {field: "" for field in HEADER_FIELDS}
+            parser_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
             if external_id:
                 body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id)
                 if body_file is not None:
@@ -348,7 +683,11 @@ def parse_incidents_with_email_bodies(
             headers_raw = _normalize_scalar(row.get("emailHeaders"))
             csv_headers = _extract_selected_headers(_try_parse_email_headers(headers_raw))
             selected_headers = {
-                field: headers_from_properties.get(field, "") or csv_headers.get(field, "") or parser_headers.get(field, "")
+                field: (
+                    headers_from_properties.get(field, _default_header_value(field))
+                    or csv_headers.get(field, _default_header_value(field))
+                    or parser_headers.get(field, _default_header_value(field))
+                )
                 for field in HEADER_FIELDS
             }
 
