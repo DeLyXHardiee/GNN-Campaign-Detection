@@ -34,6 +34,7 @@ def _create_indexes(session, schema: GraphSchema) -> None:
         f"CREATE INDEX ON :{N['domain'].memgraph}({N['domain'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['stem'].memgraph}({N['stem'].memgraph_id_key})",
         f"CREATE INDEX ON :{N['email_domain'].memgraph}({N['email_domain'].memgraph_id_key})",
+        f"CREATE INDEX ON :{N['attachment'].memgraph}({N['attachment'].memgraph_id_key})",
     ]
     for stmt in index_statements:
         try:
@@ -131,6 +132,7 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     out[N["domain"].memgraph] = pack_string_nodes("domain")
     out[N["stem"].memgraph] = pack_string_nodes("stem")
     out[N["email_domain"].memgraph] = pack_string_nodes("email_domain")
+    out[N["attachment"].memgraph] = pack_string_nodes("attachment")
 
     return out
 
@@ -170,6 +172,7 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
     add_email_edge_rows("has_domain", "domain", E["has_domain"].memgraph_type)
     add_email_edge_rows("has_stem", "stem", E["has_stem"].memgraph_type)
+    add_email_edge_rows("has_attachment", "attachment", E["has_attachment"].memgraph_type)
     add_string_edge_rows("sender_from_domain", "sender", "email_domain", E["sender_from_domain"].memgraph_type)
     add_string_edge_rows("receiver_from_domain", "receiver", "email_domain", E["receiver_from_domain"].memgraph_type)
 
@@ -235,6 +238,7 @@ def build_memgraph(
             "has_url",
             "has_domain",
             "has_stem",
+            "has_attachment",
             "sender_from_domain",
             "receiver_from_domain",
         ]:

@@ -167,6 +167,28 @@ def _extract_emails_from_attr_value(value: Any) -> List[str]:
     return extract_all_emails(text) if text else []
 
 
+def _extract_strings_from_attr_value(value: Any) -> List[str]:
+    """Extract scalar strings from scalar/list/dict values recursively."""
+    if isinstance(value, str):
+        s = value.strip()
+        return [s] if s else []
+
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            out.extend(_extract_strings_from_attr_value(item))
+        return out
+
+    if isinstance(value, dict):
+        out: List[str] = []
+        for item in value.values():
+            out.extend(_extract_strings_from_attr_value(item))
+        return out
+
+    text = to_str(value).strip()
+    return [text] if text else []
+
+
 def _coerce_mapping(value: Any) -> Dict[str, Any]:
     """Best-effort conversion of a MISP attribute value into a dict."""
     if isinstance(value, dict):
@@ -209,12 +231,14 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         body = ""
         html_data: Dict[str, Any] = {}
         css_data: Dict[str, Any] = {}
+        attachments: List[str] = []
+        attachment_set: Set[str] = set()
         urls: List[str] = []
         url_set: Set[str] = set()
         date = ""
 
         for attr in attrs:
-            a_type = (attr or {}).get("type", "")
+            a_type = to_str((attr or {}).get("type", "")).strip().lower()
             raw_val = (attr or {}).get("value", "")
             val = to_str(raw_val)
             if a_type in ("email-src", "from"):
@@ -267,6 +291,12 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                     if url and url not in url_set:
                         url_set.add(url)
                         urls.append(url)
+            elif "attachment" in a_type:
+                for h in _extract_strings_from_attr_value(raw_val):
+                    nh = h.lower()
+                    if nh and nh not in attachment_set:
+                        attachment_set.add(nh)
+                        attachments.append(nh)
 
         normalized.append(
             {
@@ -278,6 +308,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "body": body,
                 "html": html_data,
                 "css": css_data,
+                "attachments": attachments,
                 "urls": urls,
                 "date": date,
             }
