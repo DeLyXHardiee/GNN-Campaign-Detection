@@ -17,6 +17,7 @@ class NodeType(Enum):
     DOMAIN = "domain"
     STEM = "stem"
     EMAIL_DOMAIN = "email_domain"
+    ATTACHMENT = "attachment"
 
     @classmethod
     def canonical_set(cls, items: Iterable["NodeType"]) -> Set[str]:

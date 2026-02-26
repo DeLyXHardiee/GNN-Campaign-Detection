@@ -133,6 +133,13 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_id_key="key",
             feature_strategy="str_len",
         ),
+        "attachment": NodeMapping(
+            canonical="attachment",
+            pyg="attachment",
+            memgraph="Attachment",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+        ),
     },
     edges={
         "has_sender": EdgeMapping(
@@ -221,6 +228,17 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_label="Receiver",
             memgraph_left_key="key",
             memgraph_right_label="EmailDomain",
+            memgraph_right_key="key",
+        ),
+        "has_attachment": EdgeMapping(
+            canonical="has_attachment",
+            src="email",
+            rel_pyg="has_attachment",
+            dst="attachment",
+            memgraph_type="HAS_ATTACHMENT",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="Attachment",
             memgraph_right_key="key",
         ),
     },

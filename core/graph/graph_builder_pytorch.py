@@ -4,7 +4,7 @@ Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 Capabilities:
 - Accepts input either as an in-memory list of MISP events or from a JSON file path.
 - Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
-- Node types: 'email', 'sender', 'receiver', 'week', 'url', 'domain', 'stem', 'email_domain'.
+- Node types: 'email', 'sender', 'receiver', 'week', 'url', 'domain', 'stem', 'email_domain', 'attachment'.
 - Edges:
     - ('email', 'has_sender', 'sender')
     - ('email', 'has_receiver', 'receiver')
@@ -14,6 +14,7 @@ Capabilities:
     - ('url', 'has_stem', 'stem')
     - ('sender', 'from_domain', 'email_domain')
     - ('receiver', 'from_domain', 'email_domain')
+    - ('email', 'has_attachment', 'attachment')
 - Component nodes are deduplicated: multiple emails sharing the same sender, week, etc. 
     will have edges to the same component node.
 - URLs are parsed into domain and stem components for better deduplication.
@@ -138,6 +139,7 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     set_simple("domain", ["x_lex", "docfreq"])
     set_simple("stem", ["x_lex", "docfreq"])
     set_simple("email_domain", ["x_lex", "docfreq_sender", "docfreq_receiver"])
+    set_simple("attachment", ["docfreq"])
 
 
 
@@ -160,6 +162,7 @@ def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         "has_url",
         "has_domain",
         "has_stem",
+        "has_attachment",
         "sender_from_domain",
         "receiver_from_domain",
     ]:
@@ -176,6 +179,7 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
     domain_meta = (ir.nodes.get("domain") and ir.nodes["domain"].index_to_string) or []
     stem_meta = (ir.nodes.get("stem") and ir.nodes["stem"].index_to_string) or []
     email_domain_meta = (ir.nodes.get("email_domain") and ir.nodes["email_domain"].index_to_string) or []
+    attachment_meta = (ir.nodes.get("attachment") and ir.nodes["attachment"].index_to_string) or []
     email_meta = (ir.nodes.get("email") and ir.nodes["email"].index_to_meta) or []
     meta = {
         "node_maps": {
@@ -187,6 +191,7 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             N["domain"].pyg: {"index_to_string": domain_meta},
             N["stem"].pyg: {"index_to_string": stem_meta},
             N["email_domain"].pyg: {"index_to_string": email_domain_meta},
+            N["attachment"].pyg: {"index_to_string": attachment_meta},
         },
         "feature_shapes": {
             N["email"].pyg: list(data[N["email"].pyg].x.shape) if "x" in data[N["email"].pyg] else [0, 0],
@@ -197,6 +202,7 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             N["domain"].pyg: list(data[N["domain"].pyg].x.shape) if "x" in data[N["domain"].pyg] else [0, 0],
             N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
             N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
+            N["attachment"].pyg: list(data[N["attachment"].pyg].x.shape) if "x" in data[N["attachment"].pyg] else [0, 0],
         },
         "edge_counts": {
             f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges.get('has_sender', ([], []))[0]),
@@ -205,6 +211,7 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
             f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges.get('has_url', ([], []))[0]),
             f"{N['email'].pyg}->{N['domain'].pyg}:{schema.edge('has_domain').rel_pyg}": len(ir.edges.get('has_domain', ([], []))[0]),
             f"{N['email'].pyg}->{N['stem'].pyg}:{schema.edge('has_stem').rel_pyg}": len(ir.edges.get('has_stem', ([], []))[0]),
+            f"{N['email'].pyg}->{N['attachment'].pyg}:{schema.edge('has_attachment').rel_pyg}": len(ir.edges.get('has_attachment', ([], []))[0]),
             f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges.get('sender_from_domain', ([], []))[0]),
             f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges.get('receiver_from_domain', ([], []))[0]),
         },
