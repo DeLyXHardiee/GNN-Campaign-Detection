@@ -119,6 +119,12 @@ def _ordered_keys(d: Dict[str, int]) -> List[str]:
     return [k for k, _ in sorted(d.items(), key=lambda kv: kv[1])]
 
 
+def _is_valid_stem(stem: str) -> bool:
+    """Return True if URL stem should be represented as a node."""
+    s = (stem or "").strip()
+    return bool(s) and s != "/"
+
+
 def _index_uniques_and_url_components(
     emails: List[Dict[str, Any]]
 ) -> Tuple[
@@ -167,7 +173,7 @@ def _index_uniques_and_url_components(
             s = comp.get("stem", "")
             if d:
                 domain_to_idx.setdefault(d, len(domain_to_idx))
-            if s:
+            if _is_valid_stem(s):
                 stem_to_idx.setdefault(s, len(stem_to_idx))
             url_components[u] = (d, s)
 
@@ -261,7 +267,7 @@ def _collect_edges_and_email_attrs(
                     edges_idx["has_domain_src"].append(email_idx)
                     edges_idx["has_domain_dst"].append(domain_to_idx[d])
             s = comp.get("stem", "")
-            if s:
+            if _is_valid_stem(s):
                 stem_email_sets.setdefault(s, set()).add(email_idx)
                 if s in stem_to_idx:
                     edges_idx["has_stem_src"].append(email_idx)
