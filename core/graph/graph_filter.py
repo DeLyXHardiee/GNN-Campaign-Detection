@@ -20,8 +20,16 @@ class NodeType(Enum):
     ATTACHMENT = "attachment"
 
     @classmethod
-    def canonical_set(cls, items: Iterable["NodeType"]) -> Set[str]:
-        return {i.value for i in items}
+    def canonical_set(cls, items: Iterable["NodeType | str"], schema: GraphSchema | None = None) -> Set[str]:
+        out: Set[str] = set()
+        for item in items:
+            if isinstance(item, NodeType):
+                out.add(item.value)
+            else:
+                out.add(str(item))
+        if schema is not None:
+            out = {n for n in out if n in schema.nodes}
+        return out
 
 
 def filter_graph_ir(ir: GraphIR, *, exclude_nodes: Set[str], schema: GraphSchema) -> GraphIR:

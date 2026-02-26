@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
 import math
@@ -15,6 +15,7 @@ import sys
 sys.path.append('../preprocessing/utils')
 
 from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
+from .misp_attribute_schema import DEFAULT_MISP_ATTRIBUTE_SCHEMA
 
 
 def to_str(val: Any) -> str:
@@ -223,94 +224,81 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         email_index = event.get("email_index", idx_ev)
         attrs = event.get("Attribute", []) or []
 
-        senders: List[str] = []
-        sender_set: Set[str] = set()
-        receivers: List[str] = []
-        receiver_set: Set[str] = set()
-        subject = ""
-        body = ""
-        html_data: Dict[str, Any] = {}
-        css_data: Dict[str, Any] = {}
-        attachments: List[str] = []
-        attachment_set: Set[str] = set()
-        urls: List[str] = []
-        url_set: Set[str] = set()
-        date = ""
+        accum: Dict[str, List[str]] = {
+            "senders": [],
+            "receivers": [],
+            "attachments": [],
+            "urls": [],
+        }
+        accum_seen: Dict[str, Set[str]] = {
+            "senders": set(),
+            "receivers": set(),
+            "attachments": set(),
+            "urls": set(),
+        }
+        fields: Dict[str, Any] = {
+            "subject": "",
+            "body": "",
+            "html": {},
+            "css": {},
+            "date": "",
+        }
 
         for attr in attrs:
             a_type = to_str((attr or {}).get("type", "")).strip().lower()
             raw_val = (attr or {}).get("value", "")
-            val = to_str(raw_val)
-            if a_type in ("email-src", "from"):
-                addrs = _extract_emails_from_attr_value(raw_val)
-                if not addrs and val.strip():
-                    fallback = normalize_email_address(val)
-                    addrs = [fallback] if fallback and "@" in fallback else []
-                for addr in addrs:
-                    if addr not in sender_set:
-                        sender_set.add(addr)
-                        senders.append(addr)
-            elif a_type in ("email-dst", "email-cc", "email-bcc", "to"):
-                addrs = _extract_emails_from_attr_value(raw_val)
-                if not addrs and val.strip():
-                    fallback = normalize_email_address(val)
-                    addrs = [fallback] if fallback and "@" in fallback else []
-                for addr in addrs:
-                    if addr not in receiver_set:
-                        receiver_set.add(addr)
-                        receivers.append(addr)
-            elif a_type in ("email-subject", "subject"):
-                subject = val
-            elif a_type in ("email-body", "body"):
-                body = val
+            mapping = DEFAULT_MISP_ATTRIBUTE_SCHEMA.resolve(a_type)
+            if mapping is None:
+                continue
+
+            extracted: Any
+            if mapping.strategy == "email_list":
+                extracted = _extract_emails_from_attr_value(raw_val)
+                if not extracted:
+                    fallback = normalize_email_address(to_str(raw_val))
+                    extracted = [fallback] if fallback and "@" in fallback else []
+            elif mapping.strategy == "url_list":
+                extracted = _extract_urls_from_attr_value(raw_val)
+            elif mapping.strategy == "string_list":
+                extracted = _extract_strings_from_attr_value(raw_val)
+            elif mapping.strategy == "dict_mapping":
+                extracted = _coerce_mapping(raw_val)
+            else:
+                extracted = to_str(raw_val)
+
+            if mapping.accumulate:
+                values = extracted if isinstance(extracted, list) else [to_str(extracted)]
+                for value in values:
+                    item = to_str(value).strip()
+                    if not item:
+                        continue
+                    if mapping.lowercase_items:
+                        item = item.lower()
+                    if item not in accum_seen[mapping.field]:
+                        accum_seen[mapping.field].add(item)
+                        accum[mapping.field].append(item)
+            else:
+                fields[mapping.field] = extracted
+
+            if mapping.extract_urls_side_effect:
                 for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in url_set:
-                        url_set.add(url)
-                        urls.append(url)
-            elif a_type == "html":
-                html_data = _coerce_mapping(raw_val)
-                for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in url_set:
-                        url_set.add(url)
-                        urls.append(url)
-            elif a_type == "css":
-                css_data = _coerce_mapping(raw_val)
-                for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in url_set:
-                        url_set.add(url)
-                        urls.append(url)
-            elif a_type == "url":
-                for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in url_set:
-                        url_set.add(url)
-                        urls.append(url)
-            elif a_type in ("email-date", "date"):
-                date = val
-            elif a_type in ("header_List-Unsubscribe",):
-                for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in url_set:
-                        url_set.add(url)
-                        urls.append(url)
-            elif "attachment" in a_type:
-                for h in _extract_strings_from_attr_value(raw_val):
-                    nh = h.lower()
-                    if nh and nh not in attachment_set:
-                        attachment_set.add(nh)
-                        attachments.append(nh)
+                    if url and url not in accum_seen["urls"]:
+                        accum_seen["urls"].add(url)
+                        accum["urls"].append(url)
 
         normalized.append(
             {
                 "email_info": info,
                 "email_index": email_index,
-                "senders": senders,
-                "receivers": receivers,
-                "subject": subject,
-                "body": body,
-                "html": html_data,
-                "css": css_data,
-                "attachments": attachments,
-                "urls": urls,
-                "date": date,
+                "senders": accum["senders"],
+                "receivers": accum["receivers"],
+                "subject": fields["subject"],
+                "body": fields["body"],
+                "html": fields["html"],
+                "css": fields["css"],
+                "attachments": accum["attachments"],
+                "urls": accum["urls"],
+                "date": fields["date"],
             }
         )
 

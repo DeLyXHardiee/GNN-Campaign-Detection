@@ -24,17 +24,9 @@ def _with_tx(session, cypher: str, parameters: Optional[Dict[str, Any]] = None) 
     session.run(cypher, parameters or {})
 
 def _create_indexes(session, schema: GraphSchema) -> None:
-    N = schema.nodes
     index_statements = [
-        f"CREATE INDEX ON :{N['email'].memgraph}({N['email'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['sender'].memgraph}({N['sender'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['receiver'].memgraph}({N['receiver'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['week'].memgraph}({N['week'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['url'].memgraph}({N['url'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['domain'].memgraph}({N['domain'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['stem'].memgraph}({N['stem'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['email_domain'].memgraph}({N['email_domain'].memgraph_id_key})",
-        f"CREATE INDEX ON :{N['attachment'].memgraph}({N['attachment'].memgraph_id_key})",
+        f"CREATE INDEX ON :{node.memgraph}({node.memgraph_id_key})"
+        for node in schema.nodes.values()
     ]
     for stmt in index_statements:
         try:
@@ -125,14 +117,10 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
             rows.append(row)
         return rows
 
-    out[N["sender"].memgraph] = pack_string_nodes("sender")
-    out[N["receiver"].memgraph] = pack_string_nodes("receiver")
-    out[N["week"].memgraph] = pack_string_nodes("week")
-    out[N["url"].memgraph] = pack_string_nodes("url")
-    out[N["domain"].memgraph] = pack_string_nodes("domain")
-    out[N["stem"].memgraph] = pack_string_nodes("stem")
-    out[N["email_domain"].memgraph] = pack_string_nodes("email_domain")
-    out[N["attachment"].memgraph] = pack_string_nodes("attachment")
+    for node_key, node_map in schema.nodes.items():
+        if node_key == "email":
+            continue
+        out[node_map.memgraph] = pack_string_nodes(node_key)
 
     return out
 
@@ -166,15 +154,11 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         for l, r in zip(src, dst):
             rows.append({"l": left_meta[l], "r": right_meta[r]})
 
-    add_email_edge_rows("has_sender", "sender", E["has_sender"].memgraph_type)
-    add_email_edge_rows("has_receiver", "receiver", E["has_receiver"].memgraph_type)
-    add_email_edge_rows("in_week", "week", E["in_week"].memgraph_type)
-    add_email_edge_rows("has_url", "url", E["has_url"].memgraph_type)
-    add_email_edge_rows("has_domain", "domain", E["has_domain"].memgraph_type)
-    add_email_edge_rows("has_stem", "stem", E["has_stem"].memgraph_type)
-    add_email_edge_rows("has_attachment", "attachment", E["has_attachment"].memgraph_type)
-    add_string_edge_rows("sender_from_domain", "sender", "email_domain", E["sender_from_domain"].memgraph_type)
-    add_string_edge_rows("receiver_from_domain", "receiver", "email_domain", E["receiver_from_domain"].memgraph_type)
+    for edge_key, edge_map in E.items():
+        if edge_map.edge_strategy == "email_to_entity" or edge_map.src == "email":
+            add_email_edge_rows(edge_key, edge_map.dst, edge_map.memgraph_type)
+        else:
+            add_string_edge_rows(edge_key, edge_map.src, edge_map.dst, edge_map.memgraph_type)
 
     return out
 
@@ -189,7 +173,7 @@ def build_memgraph(
     clear: bool = True,
     create_indexes: bool = True,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType]] = None,
+    exclude_nodes: Optional[list[NodeType | str]] = None,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
@@ -203,7 +187,7 @@ def build_memgraph(
 
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
     if exclude_nodes:
-        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes), schema=schema)
+        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
 
     node_rows_by_label = _prepare_node_rows_from_ir(ir, schema)
     edge_rows_by_type = _prepare_edge_rows_from_ir(ir, schema)
@@ -231,17 +215,7 @@ def build_memgraph(
                 e.memgraph_right_key,
             )
 
-        for edge_key in [
-            "has_sender",
-            "has_receiver",
-            "in_week",
-            "has_url",
-            "has_domain",
-            "has_stem",
-            "has_attachment",
-            "sender_from_domain",
-            "receiver_from_domain",
-        ]:
+        for edge_key in E:
             add_edges(edge_key)
 
     driver.close()
