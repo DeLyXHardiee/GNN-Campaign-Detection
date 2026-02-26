@@ -4,6 +4,7 @@ pandas
 numpy
 networkx
 scikit-learn
+sentence-transformers
 neo4j
 pytest
 mail-parser

@@ -411,40 +411,30 @@ def _compute_node_attributes_and_features(
     sender_docfreq: List[int] = [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]
     receiver_docfreq: List[int] = [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]
 
-    TEXT_SUBJ_MAX_FEATS = 128
-    TEXT_BODY_MAX_FEATS = 256
+    SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
     subj_vecs: List[List[float]] = []
     body_vecs: List[List[float]] = []
     subj_dim = 0
     body_dim = 0
     try:
-        from sklearn.feature_extraction.text import TfidfVectorizer  # type: ignore
+        from sentence_transformers import SentenceTransformer  # type: ignore
+
+        model = SentenceTransformer(SBERT_MODEL_NAME)
         subj_corpus: List[str] = [(em.get("subject") or "").strip() for em in emails]
         body_corpus: List[str] = [(em.get("body") or "").strip() for em in emails]
         if any(bool(t) for t in subj_corpus):
-            subj_vec = TfidfVectorizer(
-                max_features=TEXT_SUBJ_MAX_FEATS,
-                ngram_range=(1, 2),
-                min_df=1,
-                stop_words="english",
-                strip_accents="unicode",
-                lowercase=True,
-            ).fit_transform(subj_corpus)
-            subj_dim = int(subj_vec.shape[1])
+            # E5 family expects instruction prefixes for optimal embeddings.
+            subj_inputs = [f"passage: {text}" for text in subj_corpus]
+            subj_vec = model.encode(subj_inputs, show_progress_bar=False, convert_to_numpy=True)
+            subj_dim = int(subj_vec.shape[1]) if len(subj_vec.shape) > 1 else 0
             if subj_dim > 0:
-                subj_vecs = [row.toarray().astype("float32")[0].tolist() for row in subj_vec]
+                subj_vecs = subj_vec.astype("float32").tolist()
         if any(bool(t) for t in body_corpus):
-            body_vec = TfidfVectorizer(
-                max_features=TEXT_BODY_MAX_FEATS,
-                ngram_range=(1, 1),
-                min_df=1,
-                stop_words="english",
-                strip_accents="unicode",
-                lowercase=True,
-            ).fit_transform(body_corpus)
-            body_dim = int(body_vec.shape[1])
+            body_inputs = [f"passage: {text}" for text in body_corpus]
+            body_vec = model.encode(body_inputs, show_progress_bar=False, convert_to_numpy=True)
+            body_dim = int(body_vec.shape[1]) if len(body_vec.shape) > 1 else 0
             if body_dim > 0:
-                body_vecs = [row.toarray().astype("float32")[0].tolist() for row in body_vec]
+                body_vecs = body_vec.astype("float32").tolist()
     except Exception:
         subj_vecs, body_vecs = [], []
         subj_dim = body_dim = 0
@@ -503,9 +493,9 @@ def _build_email_feature_matrix(
     body_vecs: List[List[float]],
     html_css_vecs: List[List[float]],
 ) -> List[List[float]]:
-    """Construct the email feature matrix using raw scalars + TF-IDF vectors.
+    """Construct the email feature matrix using raw scalars + text embeddings.
 
-    Order: [ts, len_body, n_urls, len_subject, TFIDF(subject), TFIDF(body)]
+    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body)]
     """
     n_emails = max(
         len(ts),
