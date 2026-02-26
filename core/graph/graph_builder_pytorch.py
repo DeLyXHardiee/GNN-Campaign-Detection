@@ -19,7 +19,7 @@ Capabilities:
 - URLs are parsed into domain and stem components for better deduplication.
 - Email addresses are normalized (lowercase, angle brackets removed) and connected to their 
     domain nodes (email_domain) to increase graph connectivity.
- - Email features include normalized scalars (ts_minmax, len_body_z, n_urls_z, len_subject_z) and optional TF-IDF.
+- Email features include normalized scalars (ts_minmax, len_body_z, n_urls_z, len_subject_z) and optional SBERT embeddings.
 - Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
 """
@@ -239,7 +239,7 @@ def build_hetero_graph_from_misp(
     their domain nodes to increase connectivity.
     
     Email features include normalized scalars: ts_minmax, len_body_z,
-    n_urls_z, len_subject_z, and optional TF-IDF of subject/body.
+    n_urls_z, len_subject_z, and optional SBERT embeddings of subject/body.
 
     Returns (graph, metadata) where metadata contains mappings for node indices.
     """
