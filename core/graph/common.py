@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 from typing import Set
 from datetime import timezone
 import math
@@ -146,6 +146,27 @@ def _extract_urls_from_attr_value(value: Any) -> List[str]:
     return extract_urls_from_text(text) if text else []
 
 
+def _extract_emails_from_attr_value(value: Any) -> List[str]:
+    """Extract email addresses from scalar/list/dict MISP attribute values."""
+    if isinstance(value, str):
+        return extract_all_emails(value)
+
+    if isinstance(value, list):
+        emails: List[str] = []
+        for item in value:
+            emails.extend(_extract_emails_from_attr_value(item))
+        return emails
+
+    if isinstance(value, dict):
+        emails: List[str] = []
+        for item in value.values():
+            emails.extend(_extract_emails_from_attr_value(item))
+        return emails
+
+    text = to_str(value)
+    return extract_all_emails(text) if text else []
+
+
 def _coerce_mapping(value: Any) -> Dict[str, Any]:
     """Best-effort conversion of a MISP attribute value into a dict."""
     if isinstance(value, dict):
@@ -180,7 +201,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         email_index = event.get("email_index", idx_ev)
         attrs = event.get("Attribute", []) or []
 
-        sender: Optional[str] = None
+        senders: List[str] = []
+        sender_set: Set[str] = set()
         receivers: List[str] = []
         receiver_set: Set[str] = set()
         subject = ""
@@ -196,15 +218,23 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             raw_val = (attr or {}).get("value", "")
             val = to_str(raw_val)
             if a_type in ("email-src", "from"):
-                addrs = extract_all_emails(val)
-                sender = addrs[0] if addrs else (normalize_email_address(val) if val.strip() else None)
+                addrs = _extract_emails_from_attr_value(raw_val)
+                if not addrs and val.strip():
+                    fallback = normalize_email_address(val)
+                    addrs = [fallback] if fallback and "@" in fallback else []
+                for addr in addrs:
+                    if addr not in sender_set:
+                        sender_set.add(addr)
+                        senders.append(addr)
             elif a_type in ("email-dst", "email-cc", "email-bcc", "to"):
-                if val.strip():
-                    addrs = extract_all_emails(val)
-                    for addr in addrs:
-                        if addr not in receiver_set:
-                            receiver_set.add(addr)
-                            receivers.append(addr)
+                addrs = _extract_emails_from_attr_value(raw_val)
+                if not addrs and val.strip():
+                    fallback = normalize_email_address(val)
+                    addrs = [fallback] if fallback and "@" in fallback else []
+                for addr in addrs:
+                    if addr not in receiver_set:
+                        receiver_set.add(addr)
+                        receivers.append(addr)
             elif a_type in ("email-subject", "subject"):
                 subject = val
             elif a_type in ("email-body", "body"):
@@ -242,7 +272,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             {
                 "email_info": info,
                 "email_index": email_index,
-                "sender": sender,
+                "senders": senders,
                 "receivers": receivers,
                 "subject": subject,
                 "body": body,

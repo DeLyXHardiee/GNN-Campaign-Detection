@@ -125,6 +125,25 @@ def _is_valid_stem(stem: str) -> bool:
     return bool(s) and s != "/"
 
 
+def _as_email_list(value: Any) -> List[str]:
+    """Normalize scalar/list email field to a unique list preserving order."""
+    if isinstance(value, list):
+        raw_vals = value
+    elif value:
+        raw_vals = [value]
+    else:
+        raw_vals = []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for v in raw_vals:
+        s = str(v).strip().lower()
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
 def _index_uniques_and_url_components(
     emails: List[Dict[str, Any]]
 ) -> Tuple[
@@ -146,14 +165,14 @@ def _index_uniques_and_url_components(
     url_components: Dict[str, Tuple[str, str]] = {}    # Track URL -> (domain, stem) mapping for edge creation
 
     for em in emails:
-        sender = em.get("sender")
-        if sender:
+        senders = _as_email_list(em.get("senders"))
+        for sender in senders:
             sender_to_idx.setdefault(sender, len(sender_to_idx))
             sender_domain = extract_email_domain(sender)
             if sender_domain and not is_freemail_domain(sender_domain):
                 email_domain_to_idx.setdefault(sender_domain, len(email_domain_to_idx))
 
-        for r in em.get("receivers", []) or []:
+        for r in _as_email_list(em.get("receivers")):
             if r:
                 receiver_to_idx.setdefault(r, len(receiver_to_idx))
                 receiver_domain = extract_email_domain(r)
@@ -283,15 +302,17 @@ def _collect_edges_and_email_attrs(
             )
         )
 
-        if em.get("sender") and em["sender"] in sender_to_idx:
-            edges_idx["has_sender_src"].append(email_idx)
-            edges_idx["has_sender_dst"].append(sender_to_idx[em["sender"]])
-            sender_email_sets.setdefault(em["sender"], set()).add(email_idx)
-            s_dom = extract_email_domain(em["sender"])
+        senders = _as_email_list(em.get("senders"))
+        for sender in senders:
+            if sender in sender_to_idx:
+                edges_idx["has_sender_src"].append(email_idx)
+                edges_idx["has_sender_dst"].append(sender_to_idx[sender])
+                sender_email_sets.setdefault(sender, set()).add(email_idx)
+            s_dom = extract_email_domain(sender)
             if s_dom and not is_freemail_domain(s_dom):
                 email_domain_sender_sets.setdefault(s_dom, set()).add(email_idx)
 
-        for r in em.get("receivers", []) or []:
+        for r in _as_email_list(em.get("receivers")):
             if r and r in receiver_to_idx:
                 edges_idx["has_receiver_src"].append(email_idx)
                 edges_idx["has_receiver_dst"].append(receiver_to_idx[r])
