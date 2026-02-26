@@ -107,7 +107,7 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
 
 
 def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
-    HData = _ensure_heterodata()
+    _ensure_heterodata()
     torch_lib = _ensure_torch()
     N = schema.nodes
 
@@ -132,14 +132,10 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         else:
             data[N[node_key].pyg].num_nodes = 0
 
-    set_simple("sender", ["docfreq"])
-    set_simple("receiver", ["docfreq"])
-    set_simple("week")
-    set_simple("url", ["x_lex", "docfreq"])
-    set_simple("domain", ["x_lex", "docfreq"])
-    set_simple("stem", ["x_lex", "docfreq"])
-    set_simple("email_domain", ["x_lex", "docfreq_sender", "docfreq_receiver"])
-    set_simple("attachment", ["docfreq"])
+    for node_key, node_map in schema.nodes.items():
+        if node_key == "email":
+            continue
+        set_simple(node_key, list(node_map.extra_attr_keys))
 
 
 
@@ -155,66 +151,35 @@ def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         if src:
             data[N[e.src].pyg, e.rel_pyg, N[e.dst].pyg].edge_index = torch_lib.tensor([src, dst], dtype=torch_lib.long)
 
-    for ek in [
-        "has_sender",
-        "has_receiver",
-        "in_week",
-        "has_url",
-        "has_domain",
-        "has_stem",
-        "has_attachment",
-        "sender_from_domain",
-        "receiver_from_domain",
-    ]:
+    for ek in schema.edges:
         set_edges(ek)
 
 
 def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str, Any]:
     """Construct the metadata dict summarizing node maps, feature shapes, and edge counts."""
     N = schema.nodes
-    sender_meta = (ir.nodes.get("sender") and ir.nodes["sender"].index_to_string) or []
-    receiver_meta = (ir.nodes.get("receiver") and ir.nodes["receiver"].index_to_string) or []
-    week_meta = (ir.nodes.get("week") and ir.nodes["week"].index_to_string) or []
-    url_meta = (ir.nodes.get("url") and ir.nodes["url"].index_to_string) or []
-    domain_meta = (ir.nodes.get("domain") and ir.nodes["domain"].index_to_string) or []
-    stem_meta = (ir.nodes.get("stem") and ir.nodes["stem"].index_to_string) or []
-    email_domain_meta = (ir.nodes.get("email_domain") and ir.nodes["email_domain"].index_to_string) or []
-    attachment_meta = (ir.nodes.get("attachment") and ir.nodes["attachment"].index_to_string) or []
     email_meta = (ir.nodes.get("email") and ir.nodes["email"].index_to_meta) or []
+    node_maps: Dict[str, Dict[str, Any]] = {N["email"].pyg: {"index_to_meta": email_meta}}
+    feature_shapes: Dict[str, List[int]] = {}
+    edge_counts: Dict[str, int] = {}
+
+    for node_key, node_map in schema.nodes.items():
+        pyg_label = node_map.pyg
+        if node_key != "email":
+            meta = (ir.nodes.get(node_key) and ir.nodes[node_key].index_to_string) or []
+            node_maps[pyg_label] = {"index_to_string": meta}
+        feature_shapes[pyg_label] = list(data[pyg_label].x.shape) if "x" in data[pyg_label] else [0, 0]
+
+    for edge_key, edge in schema.edges.items():
+        src_label = N[edge.src].pyg
+        dst_label = N[edge.dst].pyg
+        count_key = f"{src_label}->{dst_label}:{edge.rel_pyg}"
+        edge_counts[count_key] = len(ir.edges.get(edge_key, ([], []))[0])
+
     meta = {
-        "node_maps": {
-            N["email"].pyg: {"index_to_meta": email_meta},
-            N["sender"].pyg: {"index_to_string": sender_meta},
-            N["receiver"].pyg: {"index_to_string": receiver_meta},
-            N["week"].pyg: {"index_to_string": week_meta},
-            N["url"].pyg: {"index_to_string": url_meta},
-            N["domain"].pyg: {"index_to_string": domain_meta},
-            N["stem"].pyg: {"index_to_string": stem_meta},
-            N["email_domain"].pyg: {"index_to_string": email_domain_meta},
-            N["attachment"].pyg: {"index_to_string": attachment_meta},
-        },
-        "feature_shapes": {
-            N["email"].pyg: list(data[N["email"].pyg].x.shape) if "x" in data[N["email"].pyg] else [0, 0],
-            N["sender"].pyg: list(data[N["sender"].pyg].x.shape) if "x" in data[N["sender"].pyg] else [0, 0],
-            N["receiver"].pyg: list(data[N["receiver"].pyg].x.shape) if "x" in data[N["receiver"].pyg] else [0, 0],
-            N["week"].pyg: list(data[N["week"].pyg].x.shape) if "x" in data[N["week"].pyg] else [0, 0],
-            N["url"].pyg: list(data[N["url"].pyg].x.shape) if "x" in data[N["url"].pyg] else [0, 0],
-            N["domain"].pyg: list(data[N["domain"].pyg].x.shape) if "x" in data[N["domain"].pyg] else [0, 0],
-            N["stem"].pyg: list(data[N["stem"].pyg].x.shape) if "x" in data[N["stem"].pyg] else [0, 0],
-            N["email_domain"].pyg: list(data[N["email_domain"].pyg].x.shape) if "x" in data[N["email_domain"].pyg] else [0, 0],
-            N["attachment"].pyg: list(data[N["attachment"].pyg].x.shape) if "x" in data[N["attachment"].pyg] else [0, 0],
-        },
-        "edge_counts": {
-            f"{N['email'].pyg}->{N['sender'].pyg}:{schema.edge('has_sender').rel_pyg}": len(ir.edges.get('has_sender', ([], []))[0]),
-            f"{N['email'].pyg}->{N['receiver'].pyg}:{schema.edge('has_receiver').rel_pyg}": len(ir.edges.get('has_receiver', ([], []))[0]),
-            f"{N['email'].pyg}->{N['week'].pyg}:{schema.edge('in_week').rel_pyg}": len(ir.edges.get('in_week', ([], []))[0]),
-            f"{N['email'].pyg}->{N['url'].pyg}:{schema.edge('has_url').rel_pyg}": len(ir.edges.get('has_url', ([], []))[0]),
-            f"{N['email'].pyg}->{N['domain'].pyg}:{schema.edge('has_domain').rel_pyg}": len(ir.edges.get('has_domain', ([], []))[0]),
-            f"{N['email'].pyg}->{N['stem'].pyg}:{schema.edge('has_stem').rel_pyg}": len(ir.edges.get('has_stem', ([], []))[0]),
-            f"{N['email'].pyg}->{N['attachment'].pyg}:{schema.edge('has_attachment').rel_pyg}": len(ir.edges.get('has_attachment', ([], []))[0]),
-            f"{N['sender'].pyg}->{N['email_domain'].pyg}:{schema.edge('sender_from_domain').rel_pyg}": len(ir.edges.get('sender_from_domain', ([], []))[0]),
-            f"{N['receiver'].pyg}->{N['email_domain'].pyg}:{schema.edge('receiver_from_domain').rel_pyg}": len(ir.edges.get('receiver_from_domain', ([], []))[0]),
-        },
+        "node_maps": node_maps,
+        "feature_shapes": feature_shapes,
+        "edge_counts": edge_counts,
     }
     return meta
 
@@ -223,7 +188,7 @@ def build_hetero_graph_from_misp(
     misp_events: List[dict],
     *,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType]] = None,
+    exclude_nodes: Optional[list[NodeType | str]] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -254,7 +219,7 @@ def build_hetero_graph_from_misp(
     N = schema.nodes
     ir = assemble_misp_graph_ir(misp_events, schema=schema)
     if exclude_nodes:
-        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes), schema=schema)
+        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
 
     HData = _ensure_heterodata()
     data = HData()
@@ -295,7 +260,7 @@ def build_graph(
     out_dir: str = "results",
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType]] = None,
+    exclude_nodes: Optional[list[NodeType | str]] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:

@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import math
-from typing import Any, Dict, List, Optional, Tuple, Set
+from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .common import (
@@ -144,109 +144,310 @@ def _as_email_list(value: Any) -> List[str]:
     return out
 
 
-def _index_uniques_and_url_components(
-    emails: List[Dict[str, Any]]
-) -> Tuple[
-    Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int],
-    Dict[str, Tuple[str, str]],
-]:
-    """Scan emails once to index unique entities and collect URL components.
-
-    Returns dicts mapping string -> index for senders/receivers/weeks/urls/domains/stems/email_domains,
-    along with a url_components map: url -> (domain, stem).
-    """
-    sender_to_idx: Dict[str, int] = {}
-    receiver_to_idx: Dict[str, int] = {}
-    week_to_idx: Dict[str, int] = {}
-    url_to_idx: Dict[str, int] = {}
-    domain_to_idx: Dict[str, int] = {}
-    stem_to_idx: Dict[str, int] = {}
-    email_domain_to_idx: Dict[str, int] = {}
-    attachment_to_idx: Dict[str, int] = {}
-    url_components: Dict[str, Tuple[str, str]] = {}    # Track URL -> (domain, stem) mapping for edge creation
-
-    for em in emails:
-        senders = _as_email_list(em.get("senders"))
-        for sender in senders:
-            sender_to_idx.setdefault(sender, len(sender_to_idx))
-            sender_domain = extract_email_domain(sender)
-            if sender_domain and not is_freemail_domain(sender_domain):
-                email_domain_to_idx.setdefault(sender_domain, len(email_domain_to_idx))
-
-        for r in _as_email_list(em.get("receivers")):
-            if r:
-                receiver_to_idx.setdefault(r, len(receiver_to_idx))
-                receiver_domain = extract_email_domain(r)
-                if receiver_domain and not is_freemail_domain(receiver_domain):
-                    email_domain_to_idx.setdefault(receiver_domain, len(email_domain_to_idx))
-
-        week_key = extract_week_key(em.get("date", ""))
-        if week_key:
-            week_to_idx.setdefault(week_key, len(week_to_idx))
-
-        for u in em.get("urls", []) or []:
-            if not u:
-                continue
-            url_to_idx.setdefault(u, len(url_to_idx))
-            comp = parse_url_components(u)
-            d = comp.get("domain", "")
-            s = comp.get("stem", "")
-            if d:
-                domain_to_idx.setdefault(d, len(domain_to_idx))
-            if _is_valid_stem(s):
-                stem_to_idx.setdefault(s, len(stem_to_idx))
-            url_components[u] = (d, s)
-
-        for h in _as_email_list(em.get("attachments")):
-            attachment_to_idx.setdefault(h, len(attachment_to_idx))
-
-    return (
-        sender_to_idx,
-        receiver_to_idx,
-        week_to_idx,
-        url_to_idx,
-        domain_to_idx,
-        stem_to_idx,
-        email_domain_to_idx,
-        attachment_to_idx,
-        url_components,
-    )
+@dataclass
+class ProviderRegistry:
+    """Registry for declarative assembler providers."""
+    node_indexers: Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int]]]
+    edge_builders: Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, int]], Dict[str, List[int]], Dict[str, Dict[str, Set[int]]], str], None]]
+    node_feature_builders: Dict[str, Callable[[str, Dict[str, Dict[str, int]], Dict[str, Tuple[str, str]], Dict[str, Dict[str, Set[int]]]], Tuple[List[List[float]], List[str], Dict[str, List[Any]]]]]
 
 
-def _collect_edges_and_email_attrs(
-    emails: List[Dict[str, Any]],
-    sender_to_idx: Dict[str, int],
-    receiver_to_idx: Dict[str, int],
-    week_to_idx: Dict[str, int],
-    url_to_idx: Dict[str, int],
-    domain_to_idx: Dict[str, int],
-    stem_to_idx: Dict[str, int],
-    email_domain_to_idx: Dict[str, int],
-    attachment_to_idx: Dict[str, int],
-) -> Tuple[
-    Dict[str, List[int]],
-    List[Dict[str, Any]],
-    Dict[str, List[Any]],
-    Dict[str, Set[int]],
-]:
-    """Build email->component edges and gather raw email attributes and per-node docfreq sets."""
-    # Edge indices
-    edges_idx: Dict[str, List[int]] = {
-        "has_sender_src": [],
-        "has_sender_dst": [],
-        "has_receiver_src": [],
-        "has_receiver_dst": [],
-        "in_week_src": [],
-        "in_week_dst": [],
-        "has_url_src": [],
-        "has_url_dst": [],
-        "has_domain_src": [],
-        "has_domain_dst": [],
-        "has_stem_src": [],
-        "has_stem_dst": [],
-        "has_attachment_src": [],
-        "has_attachment_dst": [],
+def _dedup_index(values: List[str]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for v in values:
+        if v:
+            out.setdefault(v, len(out))
+    return out
+
+
+def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
+    if node_key == "sender":
+        return _as_email_list(email.get("senders"))
+    if node_key == "receiver":
+        return _as_email_list(email.get("receivers"))
+    if node_key == "attachment":
+        return _as_email_list(email.get("attachments"))
+    if node_key == "url":
+        return _as_email_list(email.get("urls"))
+    return _as_email_list(email.get(f"{node_key}s") or email.get(node_key))
+
+
+def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int]]]:
+    def sender(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_as_email_list(em.get("senders")))
+        return _dedup_index(vals)
+
+    def receiver(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_as_email_list(em.get("receivers")))
+        return _dedup_index(vals)
+
+    def week(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals = [extract_week_key(em.get("date", "")) or "" for em in emails]
+        return _dedup_index(vals)
+
+    def url(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_as_email_list(em.get("urls")))
+        return _dedup_index(vals)
+
+    def domain(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            for u in _as_email_list(em.get("urls")):
+                d = parse_url_components(u).get("domain", "")
+                if d:
+                    vals.append(d)
+        return _dedup_index(vals)
+
+    def stem(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            for u in _as_email_list(em.get("urls")):
+                s = parse_url_components(u).get("stem", "")
+                if _is_valid_stem(s):
+                    vals.append(s)
+        return _dedup_index(vals)
+
+    def email_domain(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            for sender_addr in _as_email_list(em.get("senders")):
+                d = extract_email_domain(sender_addr)
+                if d and not is_freemail_domain(d):
+                    vals.append(d)
+            for receiver_addr in _as_email_list(em.get("receivers")):
+                d = extract_email_domain(receiver_addr)
+                if d and not is_freemail_domain(d):
+                    vals.append(d)
+        return _dedup_index(vals)
+
+    def attachment(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_as_email_list(em.get("attachments")))
+        return _dedup_index(vals)
+
+    return {
+        "sender": sender,
+        "receiver": receiver,
+        "week": week,
+        "url": url,
+        "domain": domain,
+        "stem": stem,
+        "email_domain": email_domain,
+        "attachment": attachment,
     }
+
+
+def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, int]], Dict[str, List[int]], Dict[str, Dict[str, Set[int]]], str], None]]:
+    def email_to_entity(
+        email_ctx: Dict[str, Any],
+        indices: Dict[str, Dict[str, int]],
+        edges_idx: Dict[str, List[int]],
+        docfreq_maps: Dict[str, Dict[str, Set[int]]],
+        edge_name: str,
+    ) -> None:
+        email_idx = int(email_ctx["email_idx"])
+        em = email_ctx["email"]
+        dst_key = email_ctx["edge_dst"]
+        values = _field_values_for_node(em, dst_key)
+        for value in values:
+            if value in indices.get(dst_key, {}):
+                edges_idx[f"{edge_name}_src"].append(email_idx)
+                edges_idx[f"{edge_name}_dst"].append(indices[dst_key][value])
+                if dst_key == "sender":
+                    docfreq_maps["sender_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "receiver":
+                    docfreq_maps["receiver_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "url":
+                    docfreq_maps["url_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "attachment":
+                    docfreq_maps["attachment_email_sets"].setdefault(value, set()).add(email_idx)
+
+    def email_to_week_from_date(
+        email_ctx: Dict[str, Any],
+        indices: Dict[str, Dict[str, int]],
+        edges_idx: Dict[str, List[int]],
+        _docfreq_maps: Dict[str, Dict[str, Set[int]]],
+        edge_name: str,
+    ) -> None:
+        email_idx = int(email_ctx["email_idx"])
+        em = email_ctx["email"]
+        wk = extract_week_key(em.get("date", ""))
+        if wk and wk in indices.get("week", {}):
+            edges_idx[f"{edge_name}_src"].append(email_idx)
+            edges_idx[f"{edge_name}_dst"].append(indices["week"][wk])
+
+    def email_to_domain_from_urls(
+        email_ctx: Dict[str, Any],
+        indices: Dict[str, Dict[str, int]],
+        edges_idx: Dict[str, List[int]],
+        docfreq_maps: Dict[str, Dict[str, Set[int]]],
+        edge_name: str,
+    ) -> None:
+        email_idx = int(email_ctx["email_idx"])
+        em = email_ctx["email"]
+        for u in _as_email_list(em.get("urls")):
+            d = parse_url_components(u).get("domain", "")
+            if not d:
+                continue
+            docfreq_maps["domain_email_sets"].setdefault(d, set()).add(email_idx)
+            if d in indices.get("domain", {}):
+                edges_idx[f"{edge_name}_src"].append(email_idx)
+                edges_idx[f"{edge_name}_dst"].append(indices["domain"][d])
+
+    def email_to_stem_from_urls(
+        email_ctx: Dict[str, Any],
+        indices: Dict[str, Dict[str, int]],
+        edges_idx: Dict[str, List[int]],
+        docfreq_maps: Dict[str, Dict[str, Set[int]]],
+        edge_name: str,
+    ) -> None:
+        email_idx = int(email_ctx["email_idx"])
+        em = email_ctx["email"]
+        for u in _as_email_list(em.get("urls")):
+            s = parse_url_components(u).get("stem", "")
+            if not _is_valid_stem(s):
+                continue
+            docfreq_maps["stem_email_sets"].setdefault(s, set()).add(email_idx)
+            if s in indices.get("stem", {}):
+                edges_idx[f"{edge_name}_src"].append(email_idx)
+                edges_idx[f"{edge_name}_dst"].append(indices["stem"][s])
+
+    return {
+        "email_to_entity": email_to_entity,
+        "email_to_week_from_date": email_to_week_from_date,
+        "email_to_domain_from_urls": email_to_domain_from_urls,
+        "email_to_stem_from_urls": email_to_stem_from_urls,
+    }
+
+
+def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int]], Dict[str, Tuple[str, str]], Dict[str, Dict[str, Set[int]]]], Tuple[List[List[float]], List[str], Dict[str, List[Any]]]]]:
+    def sender(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(len(v))] for v in meta]
+        attrs = {"docfreq": [len(docfreq_maps["sender_email_sets"].get(v, set())) for v in meta]}
+        return x, meta, attrs
+
+    def receiver(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(len(v))] for v in meta]
+        attrs = {"docfreq": [len(docfreq_maps["receiver_email_sets"].get(v, set())) for v in meta]}
+        return x, meta, attrs
+
+    def week(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], _docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(i)] for i, _ in enumerate(meta)]
+        return x, meta, {}
+
+    def url(node_key: str, indices: Dict[str, Dict[str, int]], url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x: List[List[float]] = []
+        for u in meta:
+            stem = (url_components.get(u) or ("", ""))[1] if u in url_components else parse_url_components(u).get("stem", "/")
+            x.append([float(len(stem or "/"))])
+        attrs = {
+            "x_lex": [compute_lexical_features(u) for u in meta],
+            "docfreq": [len(docfreq_maps["url_email_sets"].get(u, set())) for u in meta],
+        }
+        return x, meta, attrs
+
+    def domain(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x_lex = [compute_lexical_features(d) for d in meta]
+        x = [[float(v[7] if len(v) > 7 else 0.0)] for v in x_lex]
+        attrs = {
+            "x_lex": x_lex,
+            "docfreq": [len(docfreq_maps["domain_email_sets"].get(d, set())) for d in meta],
+        }
+        return x, meta, attrs
+
+    def stem(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(len(s))] for s in meta]
+        attrs = {
+            "x_lex": [compute_lexical_features(s) for s in meta],
+            "docfreq": [len(docfreq_maps["stem_email_sets"].get(s, set())) for s in meta],
+        }
+        return x, meta, attrs
+
+    def email_domain(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(len(d))] for d in meta]
+        attrs = {
+            "x_lex": [compute_lexical_features(d) for d in meta],
+            "docfreq_sender": [len(docfreq_maps["email_domain_sender_sets"].get(d, set())) for d in meta],
+            "docfreq_receiver": [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in meta],
+        }
+        return x, meta, attrs
+
+    def attachment(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+        meta = _ordered_keys(indices[node_key])
+        x = [[float(len(v))] for v in meta]
+        attrs = {"docfreq": [len(docfreq_maps["attachment_email_sets"].get(v, set())) for v in meta]}
+        return x, meta, attrs
+
+    return {
+        "sender": sender,
+        "receiver": receiver,
+        "week": week,
+        "url": url,
+        "domain": domain,
+        "stem": stem,
+        "email_domain": email_domain,
+        "attachment": attachment,
+    }
+
+
+DEFAULT_PROVIDER_REGISTRY = ProviderRegistry(
+    node_indexers=_node_indexers(),
+    edge_builders=_edge_builders(),
+    node_feature_builders=_node_feature_builders(),
+)
+
+
+def index_entities(
+    emails: List[Dict[str, Any]],
+    schema: GraphSchema,
+    registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
+) -> Dict[str, Any]:
+    """Registry-driven entity indexing pass."""
+    indices: Dict[str, Dict[str, int]] = {}
+    for node_key in schema.nodes:
+        if node_key == "email":
+            continue
+        provider = registry.node_indexers.get(node_key)
+        if provider is None:
+            indices[node_key] = {}
+            continue
+        indices[node_key] = provider(emails)
+
+    url_components: Dict[str, Tuple[str, str]] = {}
+    for em in emails:
+        for u in _as_email_list(em.get("urls")):
+            comp = parse_url_components(u)
+            url_components[u] = (comp.get("domain", ""), comp.get("stem", ""))
+
+    out: Dict[str, Any] = dict(indices)
+    out["url_components"] = url_components
+    return out
+
+
+def materialize_edges(
+    emails: List[Dict[str, Any]],
+    indices: Dict[str, Dict[str, int]],
+    schema: GraphSchema,
+    registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
+) -> Tuple[Dict[str, List[int]], List[Dict[str, Any]], Dict[str, List[Any]], Dict[str, Dict[str, Set[int]]]]:
+    edges_idx: Dict[str, List[int]] = {}
+    for edge_name in schema.edges:
+        edges_idx[f"{edge_name}_src"] = []
+        edges_idx[f"{edge_name}_dst"] = []
 
     email_meta: List[Dict[str, Any]] = []
     email_attrs_raw: Dict[str, List[Any]] = {
@@ -256,54 +457,36 @@ def _collect_edges_and_email_attrs(
         "len_body": [],
         "x_html_css": [],
     }
-
-    # String-keyed maps to sets
-    domain_email_sets: Dict[str, Set[int]] = {}
-    stem_email_sets: Dict[str, Set[int]] = {}
-    email_domain_sender_sets: Dict[str, Set[int]] = {}
-    email_domain_receiver_sets: Dict[str, Set[int]] = {}
-    url_email_sets: Dict[str, Set[int]] = {}
-    attachment_email_sets: Dict[str, Set[int]] = {}
-    sender_email_sets: Dict[str, Set[int]] = {}
-    receiver_email_sets: Dict[str, Set[int]] = {}
+    docfreq_maps: Dict[str, Dict[str, Set[int]]] = {
+        "domain_email_sets": {},
+        "stem_email_sets": {},
+        "email_domain_sender_sets": {},
+        "email_domain_receiver_sets": {},
+        "url_email_sets": {},
+        "attachment_email_sets": {},
+        "sender_email_sets": {},
+        "receiver_email_sets": {},
+    }
 
     for email_idx, em in enumerate(emails):
-        subj = em.get("subject", "")
-        body = em.get("body", "")
-        urls = em.get("urls", []) or []
-
-        email_meta.append({
-            "info": em.get("email_info", ""),
-            "index": email_idx,
-            "email_index": em.get("email_index", email_idx),
-            "date": em.get("date", ""),
-        })
-
-        ts_val = to_unix_ts(em.get("date", ""))
-        email_attrs_raw["ts"].append(ts_val)
-
-        domains: Set[str] = set()
-        for u in urls:
-            if not u:
-                continue
-            comp = parse_url_components(u)
-            d = comp.get("domain", "")
-            if d:
-                domains.add(d)
-                domain_email_sets.setdefault(d, set()).add(email_idx)
-                if d in domain_to_idx:
-                    edges_idx["has_domain_src"].append(email_idx)
-                    edges_idx["has_domain_dst"].append(domain_to_idx[d])
-            s = comp.get("stem", "")
-            if _is_valid_stem(s):
-                stem_email_sets.setdefault(s, set()).add(email_idx)
-                if s in stem_to_idx:
-                    edges_idx["has_stem_src"].append(email_idx)
-                    edges_idx["has_stem_dst"].append(stem_to_idx[s])
-
+        urls = _as_email_list(em.get("urls"))
+        email_meta.append(
+            {
+                "info": em.get("email_info", ""),
+                "index": email_idx,
+                "email_index": em.get("email_index", email_idx),
+                "date": em.get("date", ""),
+            }
+        )
+        email_attrs_raw["ts"].append(to_unix_ts(em.get("date", "")))
+        email_attrs_raw["len_subject"].append(int(len(em.get("subject", "") or "")))
+        email_attrs_raw["len_body"].append(int(len(em.get("body", "") or "")))
+        domains = {
+            parse_url_components(u).get("domain", "")
+            for u in urls
+            if parse_url_components(u).get("domain", "")
+        }
         email_attrs_raw["n_urls"].append(int(len(domains)))
-        email_attrs_raw["len_subject"].append(int(len(subj)))
-        email_attrs_raw["len_body"].append(int(len(body)))
         email_attrs_raw["x_html_css"].append(
             create_html_css_features(
                 em.get("html", {}) or {},
@@ -311,52 +494,31 @@ def _collect_edges_and_email_attrs(
             )
         )
 
-        senders = _as_email_list(em.get("senders"))
-        for sender in senders:
-            if sender in sender_to_idx:
-                edges_idx["has_sender_src"].append(email_idx)
-                edges_idx["has_sender_dst"].append(sender_to_idx[sender])
-                sender_email_sets.setdefault(sender, set()).add(email_idx)
-            s_dom = extract_email_domain(sender)
-            if s_dom and not is_freemail_domain(s_dom):
-                email_domain_sender_sets.setdefault(s_dom, set()).add(email_idx)
+        for sender in _as_email_list(em.get("senders")):
+            d = extract_email_domain(sender)
+            if d and not is_freemail_domain(d):
+                docfreq_maps["email_domain_sender_sets"].setdefault(d, set()).add(email_idx)
+        for receiver in _as_email_list(em.get("receivers")):
+            d = extract_email_domain(receiver)
+            if d and not is_freemail_domain(d):
+                docfreq_maps["email_domain_receiver_sets"].setdefault(d, set()).add(email_idx)
 
-        for r in _as_email_list(em.get("receivers")):
-            if r and r in receiver_to_idx:
-                edges_idx["has_receiver_src"].append(email_idx)
-                edges_idx["has_receiver_dst"].append(receiver_to_idx[r])
-                receiver_email_sets.setdefault(r, set()).add(email_idx)
-            r_dom = extract_email_domain(r)
-            if r_dom and not is_freemail_domain(r_dom):
-                email_domain_receiver_sets.setdefault(r_dom, set()).add(email_idx)
-
-        wk = extract_week_key(em.get("date", ""))
-        if wk and wk in week_to_idx:
-            edges_idx["in_week_src"].append(email_idx)
-            edges_idx["in_week_dst"].append(week_to_idx[wk])
-
-        for u in urls:
-            if u and u in url_to_idx:
-                edges_idx["has_url_src"].append(email_idx)
-                edges_idx["has_url_dst"].append(url_to_idx[u])
-                url_email_sets.setdefault(u, set()).add(email_idx)
-
-        for h in _as_email_list(em.get("attachments")):
-            if h in attachment_to_idx:
-                edges_idx["has_attachment_src"].append(email_idx)
-                edges_idx["has_attachment_dst"].append(attachment_to_idx[h])
-                attachment_email_sets.setdefault(h, set()).add(email_idx)
-
-    docfreq_maps: Dict[str, Dict[str, Set[int]]] = {
-        "domain_email_sets": domain_email_sets,
-        "stem_email_sets": stem_email_sets,
-        "email_domain_sender_sets": email_domain_sender_sets,
-        "email_domain_receiver_sets": email_domain_receiver_sets,
-        "url_email_sets": url_email_sets,
-        "attachment_email_sets": attachment_email_sets,
-        "sender_email_sets": sender_email_sets,
-        "receiver_email_sets": receiver_email_sets,
-    }
+        for edge_name, edge_map in schema.edges.items():
+            provider = registry.edge_builders.get(edge_map.edge_strategy)
+            if provider is None:
+                continue
+            provider(
+                {
+                    "email_idx": email_idx,
+                    "email": em,
+                    "edge_src": edge_map.src,
+                    "edge_dst": edge_map.dst,
+                },
+                indices,
+                edges_idx,
+                docfreq_maps,
+                edge_name,
+            )
 
     return edges_idx, email_meta, email_attrs_raw, docfreq_maps
 
@@ -384,18 +546,13 @@ def _connect_email_entities_to_domains(
     return sender_src, sender_dst, receiver_src, receiver_dst
 
 
-def _compute_node_attributes_and_features(
-    sender_to_idx: Dict[str, int],
-    receiver_to_idx: Dict[str, int],
-    week_to_idx: Dict[str, int],
-    url_to_idx: Dict[str, int],
-    domain_to_idx: Dict[str, int],
-    stem_to_idx: Dict[str, int],
-    email_domain_to_idx: Dict[str, int],
-    attachment_to_idx: Dict[str, int],
+def build_node_features(
+    emails: List[Dict[str, Any]],
+    schema: GraphSchema,
+    indices: Dict[str, Dict[str, int]],
     url_components: Dict[str, Tuple[str, str]],
     docfreq_maps: Dict[str, Dict[str, Set[int]]],
-    emails: List[Dict[str, Any]],
+    registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
 ) -> Tuple[
     Dict[str, List[List[float]]],
     Dict[str, List[str]],
@@ -405,59 +562,23 @@ def _compute_node_attributes_and_features(
     int,
     int,
 ]:
-    sender_meta = _ordered_keys(sender_to_idx)
-    receiver_meta = _ordered_keys(receiver_to_idx)
-    week_meta = _ordered_keys(week_to_idx)
-    url_meta = _ordered_keys(url_to_idx)
-    domain_meta = _ordered_keys(domain_to_idx)
-    stem_meta = _ordered_keys(stem_to_idx)
-    email_domain_meta = _ordered_keys(email_domain_to_idx)
-    attachment_meta = _ordered_keys(attachment_to_idx)
-
-    sender_len = [float(len(s)) for s in sender_meta]
-    sender_x = [[sender_len[i]] for i in range(len(sender_len))]
-
-    receiver_len = [float(len(r)) for r in receiver_meta]
-    receiver_x = [[receiver_len[i]] for i in range(len(receiver_len))]
-
-    week_indices = [float(idx) for idx in range(len(week_meta))]
-    week_x = [[week_indices[i]] for i in range(len(week_indices))]
-
-    stem_len = [float(len(s)) for s in stem_meta]
-    stem_x = [[stem_len[i]] for i in range(len(stem_len))]
-
-    email_domain_len = [float(len(d)) for d in email_domain_meta]
-    email_domain_x = [[email_domain_len[i]] for i in range(len(email_domain_len))]
-    attachment_len = [float(len(h)) for h in attachment_meta]
-    attachment_x = [[attachment_len[i]] for i in range(len(attachment_len))]
-
-    url_path_lens: List[float] = []
-    for u in url_meta:
-        if u in url_components:
-            _, stem = url_components[u]
-            url_path_lens.append(float(len(stem or "/")))
-        else:
-            comp = parse_url_components(u)
-            url_path_lens.append(float(len(comp.get("stem", "/"))))
-    url_x = [[float(url_path_lens[i])] for i in range(len(url_path_lens))]
-    url_docfreq: List[int] = [len(docfreq_maps["url_email_sets"].get(u, set())) for u in url_meta]
-    url_x_lex: List[List[float]] = [compute_lexical_features(u) for u in url_meta]
-
-    domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in domain_meta]
-    domain_entropies: List[float] = [v[7] if len(v) > 7 else 0.0 for v in domain_x_lex]
-    domain_x = [[float(domain_entropies[i])] for i in range(len(domain_entropies))]
-    domain_docfreq: List[int] = [len(docfreq_maps["domain_email_sets"].get(d, set())) for d in domain_meta]
-
-    stem_x_lex: List[List[float]] = [compute_lexical_features(s) for s in stem_meta]
-    stem_docfreq: List[int] = [len(docfreq_maps["stem_email_sets"].get(s, set())) for s in stem_meta]
-
-    email_domain_x_lex: List[List[float]] = [compute_lexical_features(d) for d in email_domain_meta]
-    email_domain_docfreq_sender: List[int] = [len(docfreq_maps["email_domain_sender_sets"].get(d, set())) for d in email_domain_meta]
-    email_domain_docfreq_receiver: List[int] = [len(docfreq_maps["email_domain_receiver_sets"].get(d, set())) for d in email_domain_meta]
-
-    sender_docfreq: List[int] = [len(docfreq_maps["sender_email_sets"].get(s, set())) for s in sender_meta]
-    receiver_docfreq: List[int] = [len(docfreq_maps["receiver_email_sets"].get(r, set())) for r in receiver_meta]
-    attachment_docfreq: List[int] = [len(docfreq_maps["attachment_email_sets"].get(h, set())) for h in attachment_meta]
+    node_x: Dict[str, List[List[float]]] = {}
+    node_meta: Dict[str, List[str]] = {}
+    node_attrs: Dict[str, Dict[str, List[Any]]] = {}
+    for node_key in schema.nodes:
+        if node_key == "email":
+            continue
+        provider = registry.node_feature_builders.get(node_key)
+        if provider is None:
+            meta = _ordered_keys(indices.get(node_key, {}))
+            node_x[node_key] = [[float(len(v))] for v in meta]
+            node_meta[node_key] = meta
+            node_attrs[node_key] = {}
+            continue
+        x, meta, attrs = provider(node_key, indices, url_components, docfreq_maps)
+        node_x[node_key] = x
+        node_meta[node_key] = meta
+        node_attrs[node_key] = attrs
 
     SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
     subj_vecs: List[List[float]] = []
@@ -471,7 +592,6 @@ def _compute_node_attributes_and_features(
         subj_corpus: List[str] = [(em.get("subject") or "").strip() for em in emails]
         body_corpus: List[str] = [(em.get("body") or "").strip() for em in emails]
         if any(bool(t) for t in subj_corpus):
-            # E5 family expects instruction prefixes for optimal embeddings.
             subj_inputs = [f"passage: {text}" for text in subj_corpus]
             subj_vec = model.encode(subj_inputs, show_progress_bar=False, convert_to_numpy=True)
             subj_dim = int(subj_vec.shape[1]) if len(subj_vec.shape) > 1 else 0
@@ -486,49 +606,6 @@ def _compute_node_attributes_and_features(
     except Exception:
         subj_vecs, body_vecs = [], []
         subj_dim = body_dim = 0
-
-    node_x: Dict[str, List[List[float]]] = {
-        "sender": sender_x,
-        "receiver": receiver_x,
-        "week": week_x,
-        "url": url_x,
-        "domain": domain_x,
-        "stem": stem_x,
-        "email_domain": email_domain_x,
-        "attachment": attachment_x,
-    }
-    node_meta: Dict[str, List[str]] = {
-        "sender": sender_meta,
-        "receiver": receiver_meta,
-        "week": week_meta,
-        "url": url_meta,
-        "domain": domain_meta,
-        "stem": stem_meta,
-        "email_domain": email_domain_meta,
-        "attachment": attachment_meta,
-    }
-    node_attrs: Dict[str, Dict[str, List[Any]]] = {
-        "sender": {"docfreq": sender_docfreq},
-        "receiver": {"docfreq": receiver_docfreq},
-        "url": {
-            "x_lex": url_x_lex,
-            "docfreq": url_docfreq,
-        },
-        "domain": {
-            "x_lex": domain_x_lex,
-            "docfreq": domain_docfreq,
-        },
-        "stem": {
-            "x_lex": stem_x_lex,
-            "docfreq": stem_docfreq,
-        },
-        "email_domain": {
-            "x_lex": email_domain_x_lex,
-            "docfreq_sender": email_domain_docfreq_sender,
-            "docfreq_receiver": email_domain_docfreq_receiver,
-        },
-        "attachment": {"docfreq": attachment_docfreq},
-    }
 
     return node_x, node_meta, node_attrs, subj_vecs, body_vecs, subj_dim, body_dim
 
@@ -577,6 +654,7 @@ def _build_email_feature_matrix(
 
 
 def _assemble_nodes(
+    schema: GraphSchema,
     node_x: Dict[str, List[List[float]]],
     node_meta: Dict[str, List[str]],
     node_attrs: Dict[str, Dict[str, List[Any]]],
@@ -584,42 +662,34 @@ def _assemble_nodes(
     email_meta: List[Dict[str, Any]],
     email_x: List[List[float]],
 ) -> Dict[str, NodeIR]:
-    return {
-        "email": NodeIR(index={}, x=email_x, index_to_meta=email_meta),
-        "sender": NodeIR(index=indices["sender"], x=node_x["sender"], index_to_string=node_meta["sender"],
-                          attrs=node_attrs.get("sender", {})),
-        "receiver": NodeIR(index=indices["receiver"], x=node_x["receiver"], index_to_string=node_meta["receiver"],
-                            attrs=node_attrs.get("receiver", {})),
-        "week": NodeIR(index=indices["week"], x=node_x["week"], index_to_string=node_meta["week"]),
-        "url": NodeIR(index=indices["url"], x=node_x["url"], index_to_string=node_meta["url"],
-                       attrs=node_attrs.get("url", {})),
-        "domain": NodeIR(index=indices["domain"], x=node_x["domain"], index_to_string=node_meta["domain"],
-                          attrs=node_attrs.get("domain", {})),
-        "stem": NodeIR(index=indices["stem"], x=node_x["stem"], index_to_string=node_meta["stem"],
-                        attrs=node_attrs.get("stem", {})),
-        "email_domain": NodeIR(index=indices["email_domain"], x=node_x["email_domain"], index_to_string=node_meta["email_domain"],
-                                 attrs=node_attrs.get("email_domain", {})),
-        "attachment": NodeIR(index=indices["attachment"], x=node_x["attachment"], index_to_string=node_meta["attachment"],
-                               attrs=node_attrs.get("attachment", {})),
-    }
+    nodes: Dict[str, NodeIR] = {"email": NodeIR(index={}, x=email_x, index_to_meta=email_meta)}
+    for node_key in schema.nodes:
+        if node_key == "email":
+            continue
+        nodes[node_key] = NodeIR(
+            index=indices.get(node_key, {}),
+            x=node_x.get(node_key, []),
+            index_to_string=node_meta.get(node_key, []),
+            attrs=node_attrs.get(node_key, {}),
+        )
+    return nodes
 
 
 def _assemble_edges(
+    schema: GraphSchema,
     edges_idx: Dict[str, List[int]],
     snd_dom_src: List[int], snd_dom_dst: List[int],
     rcv_dom_src: List[int], rcv_dom_dst: List[int],
 ) -> Dict[str, Tuple[List[int], List[int]]]:
-    return {
-        "has_sender": (edges_idx["has_sender_src"], edges_idx["has_sender_dst"]),
-        "has_receiver": (edges_idx["has_receiver_src"], edges_idx["has_receiver_dst"]),
-        "in_week": (edges_idx["in_week_src"], edges_idx["in_week_dst"]),
-        "has_url": (edges_idx["has_url_src"], edges_idx["has_url_dst"]),
-        "has_domain": (edges_idx["has_domain_src"], edges_idx["has_domain_dst"]),
-        "has_stem": (edges_idx["has_stem_src"], edges_idx["has_stem_dst"]),
-        "has_attachment": (edges_idx["has_attachment_src"], edges_idx["has_attachment_dst"]),
-        "sender_from_domain": (snd_dom_src, snd_dom_dst),
-        "receiver_from_domain": (rcv_dom_src, rcv_dom_dst),
-    }
+    edges: Dict[str, Tuple[List[int], List[int]]] = {}
+    for edge_name in schema.edges:
+        src_key = f"{edge_name}_src"
+        dst_key = f"{edge_name}_dst"
+        if src_key in edges_idx and dst_key in edges_idx:
+            edges[edge_name] = (edges_idx[src_key], edges_idx[dst_key])
+    edges["sender_from_domain"] = (snd_dom_src, snd_dom_dst)
+    edges["receiver_from_domain"] = (rcv_dom_src, rcv_dom_dst)
+    return edges
 
 
 def _assemble_email_attrs(
@@ -776,17 +846,7 @@ def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
     Iteratively collapse 1:1 mappings where a child node is connected only to a single parent
     and has no other edges.
     """
-    # Define hierarchy of collapses (Parent, Child, Edge)
-    # Order matters slightly for efficiency, but loop handles dependencies.
-    collapse_specs = [
-        ("sender", "email_domain", "sender_from_domain"),
-        ("receiver", "email_domain", "receiver_from_domain"),
-        ("email", "sender", "has_sender"),
-        ("email", "receiver", "has_receiver"),
-        ("email", "url", "has_url"),
-        ("email", "domain", "has_domain"),
-        ("email", "stem", "has_stem"),
-    ]
+    collapse_specs = list(schema.collapse_rules)
     
     while True:
         something_changed = False
@@ -812,35 +872,15 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
     """
     schema = schema or DEFAULT_SCHEMA
     emails = parse_misp_events(misp_events)
-
-    (
-        sender_to_idx,
-        receiver_to_idx,
-        week_to_idx,
-        url_to_idx,
-        domain_to_idx,
-        stem_to_idx,
-        email_domain_to_idx,
-        attachment_to_idx,
-        url_components,
-    ) = _index_uniques_and_url_components(emails)
-
-    edges_idx, email_meta, email_attrs_raw, docfreq_maps = _collect_edges_and_email_attrs(
-        emails,
-        sender_to_idx,
-        receiver_to_idx,
-        week_to_idx,
-        url_to_idx,
-        domain_to_idx,
-        stem_to_idx,
-        email_domain_to_idx,
-        attachment_to_idx,
+    indexed = index_entities(emails, schema, DEFAULT_PROVIDER_REGISTRY)
+    indices = {k: v for k, v in indexed.items() if k != "url_components"}
+    url_components = indexed["url_components"]
+    edges_idx, email_meta, email_attrs_raw, docfreq_maps = materialize_edges(
+        emails, indices, schema, DEFAULT_PROVIDER_REGISTRY
     )
-
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
-        sender_to_idx, receiver_to_idx, email_domain_to_idx
+        indices["sender"], indices["receiver"], indices["email_domain"]
     )
-
     (
         node_x,
         node_meta,
@@ -849,18 +889,13 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         body_vecs,
         subj_dim,
         body_dim,
-    ) = _compute_node_attributes_and_features(
-        sender_to_idx,
-        receiver_to_idx,
-        week_to_idx,
-        url_to_idx,
-        domain_to_idx,
-        stem_to_idx,
-        email_domain_to_idx,
-        attachment_to_idx,
+    ) = build_node_features(
+        emails,
+        schema,
+        indices,
         url_components,
         docfreq_maps,
-        emails,
+        DEFAULT_PROVIDER_REGISTRY,
     )
 
     # Use raw attributes for feature matrix construction
@@ -877,24 +912,17 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
 
 
     nodes = _assemble_nodes(
+        schema,
         node_x,
         node_meta,
         node_attrs,
-        {
-            "sender": sender_to_idx,
-            "receiver": receiver_to_idx,
-            "week": week_to_idx,
-            "url": url_to_idx,
-            "domain": domain_to_idx,
-            "stem": stem_to_idx,
-            "email_domain": email_domain_to_idx,
-            "attachment": attachment_to_idx,
-        },
+        indices,
         email_meta,
         email_x,
     )
 
     edges = _assemble_edges(
+        schema,
         edges_idx,
         snd_dom_src, snd_dom_dst,
         rcv_dom_src, rcv_dom_dst,
