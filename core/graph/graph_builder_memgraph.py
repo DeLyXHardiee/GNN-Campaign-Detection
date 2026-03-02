@@ -73,6 +73,15 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     email_node = ir.nodes.get("email")
     email_meta = (email_node and email_node.index_to_meta) or []
     n_emails = len(email_meta)
+    _email_bool_attrs = (
+        "cyrillic_domain",
+        "contains_symbols",
+        "body_has_tracking_url",
+        "body_has_tracking_image",
+        "body_has_tracking_pixel",
+        "body_has_unsubscribe_link",
+        "domain_is_common_webprovided",
+    )
     get_attr = lambda k: (ir.email_attrs.get(k) or [0] * n_emails)
     ts_raw = get_attr("ts")
     len_body_raw = get_attr("len_body")
@@ -80,19 +89,21 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     body_dim_arr = ir.email_attrs.get("x_text_body_dim") or [0] * n_emails
     len_subject_arr = ir.email_attrs.get("len_subject") or [0] * n_emails
     for eid, em in enumerate(email_meta):
-        email_rows.append(
-            {
-                "eid": int(eid),
-                "email_index": em.get("email_index", int(eid)),
-                "date": em.get("date", ""),
-                "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
-                "n_urls": int(get_attr("n_urls")[eid]),
-                "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
-                "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
-                "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
-                "len_subject": int(len_subject_arr[eid]) if eid < len(len_subject_arr) else 0,
-            }
-        )
+        row: Dict[str, Any] = {
+            "eid": int(eid),
+            "email_index": em.get("email_index", int(eid)),
+            "date": em.get("date", ""),
+            "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
+            "n_urls": int(get_attr("n_urls")[eid]),
+            "len_body": int(len_body_raw[eid]) if eid < len(len_body_raw) else 0,
+            "x_text_subject_dim": int(subj_dim_arr[eid]) if eid < len(subj_dim_arr) else 0,
+            "x_text_body_dim": int(body_dim_arr[eid]) if eid < len(body_dim_arr) else 0,
+            "len_subject": int(len_subject_arr[eid]) if eid < len(len_subject_arr) else 0,
+        }
+        for k in _email_bool_attrs:
+            arr = get_attr(k)
+            row[k] = int(arr[eid]) if eid < len(arr) else 0
+        email_rows.append(row)
     out[N["email"].memgraph] = email_rows
 
     # Helper to pack simple string-keyed nodes with optional attributes aligned by index

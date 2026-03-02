@@ -331,6 +331,13 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "urls": accum["urls"],
                 "date": fields["date"],
                 "received_hops": fields.get("received_hops", []),
+                "cyrillic_domain": fields.get("cyrillic_domain", ""),
+                "contains_symbols": fields.get("contains_symbols", ""),
+                "body_has_tracking_url": fields.get("body_has_tracking_url", ""),
+                "body_has_tracking_image": fields.get("body_has_tracking_image", ""),
+                "body_has_tracking_pixel": fields.get("body_has_tracking_pixel", ""),
+                "body_has_unsubscribe_link": fields.get("body_has_unsubscribe_link", ""),
+                "domain_is_common_webprovided": fields.get("domain_is_common_webprovided", ""),
             }
         )
 
