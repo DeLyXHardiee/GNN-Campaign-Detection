@@ -169,6 +169,20 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
         return _as_email_list(email.get("attachments"))
     if node_key == "url":
         return _as_email_list(email.get("urls"))
+    if node_key == "origin_ip":
+        hops = email.get("received_hops") or []
+        return [str(h.get("origin_ip", "")).strip() for h in hops if isinstance(h, dict) and str(h.get("origin_ip", "")).strip()]
+    if node_key == "received_host":
+        hops = email.get("received_hops") or []
+        vals: List[str] = []
+        for h in hops:
+            if not isinstance(h, dict):
+                continue
+            for key in ("helo_host", "by_host"):
+                v = str(h.get(key, "")).strip()
+                if v:
+                    vals.append(v)
+        return vals
     return _as_email_list(email.get(f"{node_key}s") or email.get(node_key))
 
 
@@ -232,6 +246,27 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
             vals.extend(_as_email_list(em.get("attachments")))
         return _dedup_index(vals)
 
+    def origin_ip(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            for h in em.get("received_hops") or []:
+                if isinstance(h, dict):
+                    v = str(h.get("origin_ip", "")).strip()
+                    if v:
+                        vals.append(v)
+        return _dedup_index(vals)
+
+    def received_host(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            for h in em.get("received_hops") or []:
+                if isinstance(h, dict):
+                    for key in ("helo_host", "by_host"):
+                        v = str(h.get(key, "")).strip()
+                        if v:
+                            vals.append(v)
+        return _dedup_index(vals)
+
     return {
         "sender": sender,
         "receiver": receiver,
@@ -241,6 +276,8 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
         "stem": stem,
         "email_domain": email_domain,
         "attachment": attachment,
+        "origin_ip": origin_ip,
+        "received_host": received_host,
     }
 
 
@@ -268,6 +305,10 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
                     docfreq_maps["url_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "attachment":
                     docfreq_maps["attachment_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "origin_ip":
+                    docfreq_maps["origin_ip_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "received_host":
+                    docfreq_maps["received_host_email_sets"].setdefault(value, set()).add(email_idx)
 
     def email_to_week_from_date(
         email_ctx: Dict[str, Any],
@@ -392,6 +433,14 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
         attrs = {"docfreq": [len(docfreq_maps["attachment_email_sets"].get(v, set())) for v in meta]}
         return x, meta, attrs
 
+    def _str_len_docfreq(docfreq_key: str):
+        def _builder(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
+            meta = _ordered_keys(indices[node_key])
+            x = [[float(len(v))] for v in meta]
+            attrs = {"docfreq": [len(docfreq_maps[docfreq_key].get(v, set())) for v in meta]}
+            return x, meta, attrs
+        return _builder
+
     return {
         "sender": sender,
         "receiver": receiver,
@@ -401,6 +450,8 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
         "stem": stem,
         "email_domain": email_domain,
         "attachment": attachment,
+        "origin_ip": _str_len_docfreq("origin_ip_email_sets"),
+        "received_host": _str_len_docfreq("received_host_email_sets"),
     }
 
 
@@ -466,6 +517,8 @@ def materialize_edges(
         "attachment_email_sets": {},
         "sender_email_sets": {},
         "receiver_email_sets": {},
+        "origin_ip_email_sets": {},
+        "received_host_email_sets": {},
     }
 
     for email_idx, em in enumerate(emails):

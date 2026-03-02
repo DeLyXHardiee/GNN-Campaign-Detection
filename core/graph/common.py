@@ -190,6 +190,32 @@ def _extract_strings_from_attr_value(value: Any) -> List[str]:
     return [text] if text else []
 
 
+def _normalize_hop_dict(h: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a Received hop dict to lowercase keys (origin_ip, helo_host, by_host, timestamp)."""
+    if not isinstance(h, dict):
+        return {}
+    return {str(k).strip().lower(): (to_str(v).strip() if v is not None else "") for k, v in h.items()}
+
+
+def _coerce_received_hops(value: Any) -> List[Dict[str, Any]]:
+    """Coerce MISP attribute value to list of Received hop dicts (origin_ip, helo_host, by_host, timestamp)."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_normalize_hop_dict(h) for h in value if isinstance(h, dict)]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [_normalize_hop_dict(h) for h in parsed if isinstance(h, dict)]
+        except Exception:
+            pass
+    return []
+
+
 def _coerce_mapping(value: Any) -> Dict[str, Any]:
     """Best-effort conversion of a MISP attribute value into a dict."""
     if isinstance(value, dict):
@@ -242,6 +268,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             "html": {},
             "css": {},
             "date": "",
+            "received_hops": [],
         }
 
         for attr in attrs:
@@ -263,6 +290,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 extracted = _extract_strings_from_attr_value(raw_val)
             elif mapping.strategy == "dict_mapping":
                 extracted = _coerce_mapping(raw_val)
+            elif mapping.strategy == "received_list":
+                extracted = _coerce_received_hops(raw_val)
             else:
                 extracted = to_str(raw_val)
 
@@ -301,6 +330,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "attachments": accum["attachments"],
                 "urls": accum["urls"],
                 "date": fields["date"],
+                "received_hops": fields.get("received_hops", []),
             }
         )
 
