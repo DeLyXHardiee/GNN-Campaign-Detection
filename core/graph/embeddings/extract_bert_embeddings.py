@@ -28,10 +28,9 @@ from pathlib import Path
 
 import torch
 
+from ..feature_projection import SCALAR_COUNT, HTML_CSS_LEN, BOOL_ATTR_COUNT
+
 SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
-_SCALAR_COUNT = 4  # ts, len_body, n_urls, len_subject
-_HTML_CSS_LEN = 40  # len(create_html_css_features({}, {}))
-_BOOL_ATTR_COUNT = 7  # cyrillic_domain, contains_symbols, body_has_tracking_*, etc.
 _EMAIL_NODE_TYPE = "email"
 
 
@@ -41,7 +40,7 @@ def _infer_text_dims(total_dim: int) -> tuple[int, int]:
     Layout: [scalars (4), subject_emb, body_emb, html_css, bool_attrs (7)]. Subject and body
     use the same SBERT model so subj_dim == body_dim when both present.
     """
-    text_dim = total_dim - _SCALAR_COUNT - _HTML_CSS_LEN - _BOOL_ATTR_COUNT
+    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT
     if text_dim <= 0:
         return 0, 0
     half = text_dim // 2
@@ -68,7 +67,7 @@ def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[flo
     if subj_dim <= 0 and body_dim <= 0:
         return [], [], 0, 0
 
-    start_subj = _SCALAR_COUNT
+    start_subj = SCALAR_COUNT
     end_subj = start_subj + subj_dim
     start_body = end_subj
     end_body = start_body + body_dim
