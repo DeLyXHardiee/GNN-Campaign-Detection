@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Literal, Tuple
 
-ExtractorStrategy = Literal["email_list", "url_list", "string_single", "dict_mapping", "string_list"]
+ExtractorStrategy = Literal["email_list", "url_list", "string_single", "dict_mapping", "string_list", "received_list"]
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ DEFAULT_MISP_ATTRIBUTE_SCHEMA = AttributeSchema(
         "email-date": AttributeMapping("date", "string_single"),
         "date": AttributeMapping("date", "string_single"),
         "header_list-unsubscribe": AttributeMapping("urls", "url_list", accumulate=True),
+        "header_received": AttributeMapping("received_hops", "received_list"),
     },
     contains=[
         ("attachment", AttributeMapping("attachments", "string_list", accumulate=True, lowercase_items=True)),
