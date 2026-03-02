@@ -27,6 +27,17 @@ from .common import (
     is_freemail_domain,
 )
 
+# Boolean email attributes (string "true"/"false" in data, stored as 0/1 in features and attrs)
+EMAIL_BOOL_ATTR_KEYS = (
+    "cyrillic_domain",
+    "contains_symbols",
+    "body_has_tracking_url",
+    "body_has_tracking_image",
+    "body_has_tracking_pixel",
+    "body_has_unsubscribe_link",
+    "domain_is_common_webprovided",
+)
+
 
 def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int = 16) -> List[float]:
     """Create a fixed-length HTML/CSS feature vector for one email."""
@@ -507,6 +518,7 @@ def materialize_edges(
         "len_subject": [],
         "len_body": [],
         "x_html_css": [],
+        **{k: [] for k in EMAIL_BOOL_ATTR_KEYS},
     }
     docfreq_maps: Dict[str, Dict[str, Set[int]]] = {
         "domain_email_sets": {},
@@ -546,6 +558,9 @@ def materialize_edges(
                 em.get("css", {}) or {},
             )
         )
+        for k in EMAIL_BOOL_ATTR_KEYS:
+            raw = str(em.get(k, "") or "").strip().lower()
+            email_attrs_raw[k].append(1 if raw == "true" else 0)
 
         for sender in _as_email_list(em.get("senders")):
             d = extract_email_domain(sender)
@@ -652,10 +667,11 @@ def _build_email_feature_matrix(
     subj_vecs: List[List[float]],
     body_vecs: List[List[float]],
     html_css_vecs: List[List[float]],
+    bool_attr_rows: Optional[List[List[float]]] = None,
 ) -> List[List[float]]:
-    """Construct the email feature matrix using raw scalars + text embeddings.
+    """Construct the email feature matrix using raw scalars + text embeddings + boolean attrs.
 
-    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body)]
+    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs...]
     """
     n_emails = max(
         len(ts),
@@ -665,6 +681,7 @@ def _build_email_feature_matrix(
         len(subj_vecs) if subj_vecs else 0,
         len(body_vecs) if body_vecs else 0,
         len(html_css_vecs) if html_css_vecs else 0,
+        len(bool_attr_rows) if bool_attr_rows else 0,
     )
     email_x: List[List[float]] = []
     for i in range(n_emails):
@@ -680,6 +697,8 @@ def _build_email_feature_matrix(
             row.extend(body_vecs[i] if i < len(body_vecs) else [])
         if html_css_vecs:
             row.extend(html_css_vecs[i] if i < len(html_css_vecs) else [])
+        if bool_attr_rows and i < len(bool_attr_rows):
+            row.extend(float(v) for v in bool_attr_rows[i])
         email_x.append(row)
     return email_x
 
@@ -748,7 +767,7 @@ def _assemble_email_attrs(
     # 1. Debugging/inspection (e.g. raw timestamps)
     # 2. Custom feature engineering in downstream tasks
     # 3. Filtering or stratification during analysis
-    return {
+    out: Dict[str, Any] = {
         "ts": email_attrs_raw["ts"],
         "n_urls": email_attrs_raw["n_urls"],
         "len_body": email_attrs_raw["len_body"],
@@ -756,6 +775,9 @@ def _assemble_email_attrs(
         "x_html_css": email_attrs_raw.get("x_html_css", []),
         "x_text": x_text if x_text and (len(x_text[0]) > 0 if x_text else False) else [],
     }
+    for k in EMAIL_BOOL_ATTR_KEYS:
+        out[k] = email_attrs_raw.get(k, [])
+    return out
 
 
 def _compute_degrees(ir: GraphIR, schema: GraphSchema, node_type: str) -> List[int]:
@@ -938,6 +960,11 @@ def assemble_misp_graph_ir(
 
     # Use raw attributes for feature matrix construction
     # Normalization happens later in the pipeline (e.g. via normalizer.py)
+    n_emails = len(email_attrs_raw["ts"])
+    bool_attr_rows: List[List[float]] = [
+        [float(email_attrs_raw.get(k, [0] * n_emails)[i]) for k in EMAIL_BOOL_ATTR_KEYS]
+        for i in range(n_emails)
+    ]
     email_x = _build_email_feature_matrix(
         [float(v) for v in email_attrs_raw["ts"]],
         [float(v) for v in email_attrs_raw["len_body"]],
@@ -946,6 +973,7 @@ def assemble_misp_graph_ir(
         subj_vecs,
         body_vecs,
         [list(v) if isinstance(v, list) else [] for v in email_attrs_raw.get("x_html_css", [])],
+        bool_attr_rows=bool_attr_rows,
     )
 
 

@@ -49,6 +49,13 @@ DEFAULT_MISP_ATTRIBUTE_SCHEMA = AttributeSchema(
         "date": AttributeMapping("date", "string_single"),
         "header_list-unsubscribe": AttributeMapping("urls", "url_list", accumulate=True),
         "header_received": AttributeMapping("received_hops", "received_list"),
+        "cyrillic_domain": AttributeMapping("cyrillic_domain", "string_single"),
+        "contains_symbols": AttributeMapping("contains_symbols", "string_single"),
+        "body_has_tracking_url": AttributeMapping("body_has_tracking_url", "string_single"),
+        "body_has_tracking_image": AttributeMapping("body_has_tracking_image", "string_single"),
+        "body_has_tracking_pixel": AttributeMapping("body_has_tracking_pixel", "string_single"),
+        "body_has_unsubscribe_link": AttributeMapping("body_has_unsubscribe_link", "string_single"),
+        "domain_is_common_webprovided": AttributeMapping("domain_is_common_webprovided", "string_single"),
     },
     contains=[
         ("attachment", AttributeMapping("attachments", "string_list", accumulate=True, lowercase_items=True)),
