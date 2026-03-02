@@ -668,16 +668,18 @@ def parse_incidents_with_email_bodies(
             external_id = _normalize_scalar(row.get("external_id"))
             properties = _try_parse_mapping(row.get("properties", ""))
 
+            body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id) if external_id else None
+            if body_file is None:
+                # Skip emails that have no matching file in bodies_dir.
+                continue
+
             body_text = ""
             html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
             css_text: Dict[str, Any] = {"style_features": {}}
             attachment_hashes: List[str] = []
             parser_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
-            if external_id:
-                body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id)
-                if body_file is not None:
-                    raw_body_bytes = _read_body_file_bytes(body_file)
-                    body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(raw_body_bytes)
+            raw_body_bytes = _read_body_file_bytes(body_file)
+            body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(raw_body_bytes)
 
             headers_from_properties = _extract_selected_headers(_try_parse_mapping(properties.get("emailHeaders")))
             headers_raw = _normalize_scalar(row.get("emailHeaders"))

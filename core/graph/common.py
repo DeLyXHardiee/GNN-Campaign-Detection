@@ -286,10 +286,12 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                         accum_seen["urls"].add(url)
                         accum["urls"].append(url)
 
+        external_id = to_str(event.get("external_id", ""))
         normalized.append(
             {
                 "email_info": info,
                 "email_index": email_index,
+                "external_id": external_id.strip() or str(email_index),
                 "senders": accum["senders"],
                 "receivers": accum["receivers"],
                 "subject": fields["subject"],
