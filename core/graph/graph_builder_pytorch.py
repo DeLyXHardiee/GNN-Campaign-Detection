@@ -37,6 +37,7 @@ from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir
 from .normalizer import normalize_graph
+from preprocessing.utils.defang import sanitize_for_json
 
 
 if TYPE_CHECKING:  
@@ -252,8 +253,9 @@ def save_graph(
     torch_lib.save(graph, graph_path)
 
     meta_path = os.path.splitext(graph_path)[0] + ".meta.json"
+    metadata_sanitized = sanitize_for_json(metadata)
     with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
+        json.dump(metadata_sanitized, f, indent=2, ensure_ascii=False)
 
     return graph_path, meta_path
 

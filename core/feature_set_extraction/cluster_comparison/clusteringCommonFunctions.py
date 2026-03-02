@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
+from preprocessing.utils.defang import sanitize_for_json
 
 
 def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None, n_components=None):
@@ -137,7 +138,7 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
                     cluster_data["clusters"][cluster_name]["emails"].append(email_record)
     
     with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(cluster_data, f, indent=2, ensure_ascii=False)
+        json.dump(sanitize_for_json(cluster_data), f, indent=2, ensure_ascii=False)
     
     print(f"Saved cluster results to: {output_path}")
     return output_path
