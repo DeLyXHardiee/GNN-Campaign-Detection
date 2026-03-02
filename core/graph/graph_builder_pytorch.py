@@ -37,7 +37,16 @@ from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir
 from .normalizer import normalize_graph
+from .feature_projection import (
+    SCALAR_COUNT,
+    HTML_CSS_LEN,
+    BOOL_ATTR_COUNT,
+    EmailFeatureProjectionModule,
+)
 from preprocessing.utils.defang import sanitize_for_json
+
+# Fixed seed for email feature projection so graph builds are reproducible
+_EMAIL_PROJECTION_SEED = 42
 
 
 if TYPE_CHECKING:  
@@ -107,6 +116,15 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
     return out
 
 
+def _infer_email_embedding_dims(total_dim: int) -> Tuple[int, int]:
+    """Infer subj_dim and body_dim from raw email feature dimension (layout from feature_projection)."""
+    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT
+    if text_dim <= 0:
+        return 0, 0
+    half = text_dim // 2
+    return half, half
+
+
 def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     _ensure_heterodata()
     torch_lib = _ensure_torch()
@@ -117,7 +135,18 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         return
     email_x = ir.nodes["email"].x
     if email_x:
-        data[N["email"].pyg].x = torch_lib.tensor(email_x, dtype=torch_lib.float)
+        raw = torch_lib.tensor(email_x, dtype=torch_lib.float)
+        total_dim = raw.size(1)
+        subj_dim, body_dim = _infer_email_embedding_dims(total_dim)
+        # Apply balanced projection so BERT is down-projected and other features up-projected
+        torch_lib.manual_seed(_EMAIL_PROJECTION_SEED)
+        proj = EmailFeatureProjectionModule(
+            subj_dim=subj_dim,
+            body_dim=body_dim,
+            bert_out_dim=128,
+            other_out_dim=32,
+        )
+        data[N["email"].pyg].x = proj(raw)
     else:
         data[N["email"].pyg].num_nodes = 0
 
