@@ -6,6 +6,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
+from preprocessing.utils.defang import defang_url_string
+
 
 def _clean_text(value: Any) -> str:
     text = "" if value is None else str(value)
@@ -19,7 +21,7 @@ def _sanitize_structure(value: Any) -> Any:
     if isinstance(value, list):
         return [_sanitize_structure(v) for v in value]
     if isinstance(value, str):
-        return _clean_text(value)
+        return defang_url_string(_clean_text(value))
     return value
 
 

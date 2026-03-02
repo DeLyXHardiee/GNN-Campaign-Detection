@@ -11,6 +11,7 @@ from feature_set_extraction.tfidf_utils import build_vectorizer, save_idf_csv, p
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
+from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 
 
@@ -723,7 +724,7 @@ def _extract_and_save_featureset(args):
             os.makedirs(output_dir, exist_ok=True)
 
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(fs_features, f, indent=2, ensure_ascii=False)
+            json.dump(sanitize_for_json(fs_features), f, indent=2, ensure_ascii=False)
         
         sample_keys = list(fs_features[0].keys()) if fs_features else []
         return (fs_name, output_path, len(fs_features), sample_keys, True, None)
