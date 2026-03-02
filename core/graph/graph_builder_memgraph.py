@@ -174,6 +174,7 @@ def build_memgraph(
     create_indexes: bool = True,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType | str]] = None,
+    embeddings_output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
@@ -185,7 +186,11 @@ def build_memgraph(
     N = schema.nodes
     E = schema.edges
 
-    ir = assemble_misp_graph_ir(misp_events, schema=schema)
+    ir = assemble_misp_graph_ir(
+        misp_events,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+    )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
 

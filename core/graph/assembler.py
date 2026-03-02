@@ -553,6 +553,7 @@ def build_node_features(
     url_components: Dict[str, Tuple[str, str]],
     docfreq_maps: Dict[str, Dict[str, Set[int]]],
     registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
+    embeddings_output_dir: Optional[str] = None,
 ) -> Tuple[
     Dict[str, List[List[float]]],
     Dict[str, List[str]],
@@ -580,32 +581,10 @@ def build_node_features(
         node_meta[node_key] = meta
         node_attrs[node_key] = attrs
 
-    SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
-    subj_vecs: List[List[float]] = []
-    body_vecs: List[List[float]] = []
-    subj_dim = 0
-    body_dim = 0
-    try:
-        from sentence_transformers import SentenceTransformer  # type: ignore
+    from .embeddings import DEFAULT_OUTPUT_DIR, get_embeddings
 
-        model = SentenceTransformer(SBERT_MODEL_NAME)
-        subj_corpus: List[str] = [(em.get("subject") or "").strip() for em in emails]
-        body_corpus: List[str] = [(em.get("body") or "").strip() for em in emails]
-        if any(bool(t) for t in subj_corpus):
-            subj_inputs = [f"passage: {text}" for text in subj_corpus]
-            subj_vec = model.encode(subj_inputs, show_progress_bar=False, convert_to_numpy=True)
-            subj_dim = int(subj_vec.shape[1]) if len(subj_vec.shape) > 1 else 0
-            if subj_dim > 0:
-                subj_vecs = subj_vec.astype("float32").tolist()
-        if any(bool(t) for t in body_corpus):
-            body_inputs = [f"passage: {text}" for text in body_corpus]
-            body_vec = model.encode(body_inputs, show_progress_bar=False, convert_to_numpy=True)
-            body_dim = int(body_vec.shape[1]) if len(body_vec.shape) > 1 else 0
-            if body_dim > 0:
-                body_vecs = body_vec.astype("float32").tolist()
-    except Exception:
-        subj_vecs, body_vecs = [], []
-        subj_dim = body_dim = 0
+    out_dir = embeddings_output_dir if embeddings_output_dir else str(DEFAULT_OUTPUT_DIR)
+    subj_vecs, body_vecs, subj_dim, body_dim = get_embeddings(emails, output_dir=out_dir)
 
     return node_x, node_meta, node_attrs, subj_vecs, body_vecs, subj_dim, body_dim
 
@@ -860,7 +839,12 @@ def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
     return ir
 
 
-def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSchema] = None) -> GraphIR:
+def assemble_misp_graph_ir(
+    misp_events: List[dict],
+    *,
+    schema: Optional[GraphSchema] = None,
+    embeddings_output_dir: Optional[str] = None,
+) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
     High-level steps:
@@ -896,6 +880,7 @@ def assemble_misp_graph_ir(misp_events: List[dict], *, schema: Optional[GraphSch
         url_components,
         docfreq_maps,
         DEFAULT_PROVIDER_REGISTRY,
+        embeddings_output_dir=embeddings_output_dir,
     )
 
     # Use raw attributes for feature matrix construction

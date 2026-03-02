@@ -189,6 +189,7 @@ def build_hetero_graph_from_misp(
     *,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType | str]] = None,
+    embeddings_output_dir: Optional[str] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -217,7 +218,11 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
-    ir = assemble_misp_graph_ir(misp_events, schema=schema)
+    ir = assemble_misp_graph_ir(
+        misp_events,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+    )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
 
@@ -261,6 +266,7 @@ def build_graph(
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[list[NodeType | str]] = None,
+    embeddings_output_dir: Optional[str] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -273,6 +279,7 @@ def build_graph(
         misp_events,
         schema=schema,
         exclude_nodes=exclude_nodes,
+        embeddings_output_dir=embeddings_output_dir,
     )
 
     if out_name is None:
