@@ -216,6 +216,49 @@ def _coerce_received_hops(value: Any) -> List[Dict[str, Any]]:
     return []
 
 
+# One-hot encoding for SPF/DKIM/DMARC for GNN message passing. "unknown" = missing/other.
+AUTH_ONEHOT_VOCAB = ("pass", "fail", "neutral", "softfail", "none", "unknown")
+AUTH_ONEHOT_DIM_PER_FIELD = len(AUTH_ONEHOT_VOCAB)
+AUTH_ONEHOT_DIM = 3 * AUTH_ONEHOT_DIM_PER_FIELD  # spf + dkim + dmarc
+
+
+def auth_value_to_onehot(value: str) -> List[float]:
+    """Encode a single auth result (e.g. 'pass', 'fail') as a one-hot vector of length AUTH_ONEHOT_DIM_PER_FIELD."""
+    s = (to_str(value) or "").strip().lower()
+    if not s or s not in AUTH_ONEHOT_VOCAB:
+        idx = AUTH_ONEHOT_VOCAB.index("unknown")
+    else:
+        idx = AUTH_ONEHOT_VOCAB.index(s)
+    return [1.0 if i == idx else 0.0 for i in range(AUTH_ONEHOT_DIM_PER_FIELD)]
+
+
+def auth_triple_to_onehot(spf: str, dkim: str, dmarc: str) -> List[float]:
+    """Encode (spf, dkim, dmarc) as a concatenated one-hot vector of length AUTH_ONEHOT_DIM for email features."""
+    out: List[float] = []
+    out.extend(auth_value_to_onehot(spf))
+    out.extend(auth_value_to_onehot(dkim))
+    out.extend(auth_value_to_onehot(dmarc))
+    return out
+
+
+def parse_authentication_results(value: Any) -> Dict[str, str]:
+    """Extract spf, dkim, dmarc from Authentication-Results header value.
+
+    Accepts compact strings like 'spf=pass; dkim=pass; dmarc=pass' or raw header text.
+    Returns dict with keys 'spf', 'dkim', 'dmarc'; missing values are ''.
+    """
+    import re
+    text = to_str(value).strip() if value is not None else ""
+    if not text:
+        return {"spf": "", "dkim": "", "dmarc": ""}
+    out: Dict[str, str] = {"spf": "", "dkim": "", "dmarc": ""}
+    for label in ("spf", "dkim", "dmarc"):
+        match = re.search(rf"\b{label}\s*=\s*([a-z0-9_-]+)", text, flags=re.IGNORECASE)
+        if match:
+            out[label] = match.group(1).lower()
+    return out
+
+
 def _coerce_mapping(value: Any) -> Dict[str, Any]:
     """Best-effort conversion of a MISP attribute value into a dict."""
     if isinstance(value, dict):
@@ -270,6 +313,10 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             "date": "",
             "received_hops": [],
             "return_path": {},
+            "authentication_results": "",
+            "auth_spf": "",
+            "auth_dkim": "",
+            "auth_dmarc": "",
         }
 
         for attr in attrs:
@@ -309,6 +356,11 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                         accum[mapping.field].append(item)
             else:
                 fields[mapping.field] = extracted
+                if mapping.field == "authentication_results":
+                    auth = parse_authentication_results(extracted)
+                    fields["auth_spf"] = auth.get("spf", "")
+                    fields["auth_dkim"] = auth.get("dkim", "")
+                    fields["auth_dmarc"] = auth.get("dmarc", "")
 
             if mapping.extract_urls_side_effect:
                 for url in _extract_urls_from_attr_value(raw_val):
@@ -340,6 +392,9 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "body_has_unsubscribe_link": fields.get("body_has_unsubscribe_link", ""),
                 "domain_is_common_webprovided": fields.get("domain_is_common_webprovided", ""),
                 "return_path": fields.get("return_path", {}),
+                "auth_spf": fields.get("auth_spf", ""),
+                "auth_dkim": fields.get("auth_dkim", ""),
+                "auth_dmarc": fields.get("auth_dmarc", ""),
             }
         )
 
@@ -355,6 +410,12 @@ __all__ = [
     "extract_email_domain",
     "extract_all_emails",
     "parse_misp_events",
+    "parse_authentication_results",
+    "auth_value_to_onehot",
+    "auth_triple_to_onehot",
+    "AUTH_ONEHOT_VOCAB",
+    "AUTH_ONEHOT_DIM_PER_FIELD",
+    "AUTH_ONEHOT_DIM",
     "compute_lexical_features",
     "is_freemail_domain",
 ]

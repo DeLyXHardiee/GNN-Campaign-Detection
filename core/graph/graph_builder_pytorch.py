@@ -41,6 +41,7 @@ from .feature_projection import (
     SCALAR_COUNT,
     HTML_CSS_LEN,
     BOOL_ATTR_COUNT,
+    AUTH_ONEHOT_DIM,
     EmailFeatureProjectionModule,
 )
 from preprocessing.utils.defang import sanitize_for_json
@@ -118,7 +119,7 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
 
 def _infer_email_embedding_dims(total_dim: int) -> Tuple[int, int]:
     """Infer subj_dim and body_dim from raw email feature dimension (layout from feature_projection)."""
-    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT
+    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT - AUTH_ONEHOT_DIM
     if text_dim <= 0:
         return 0, 0
     half = text_dim // 2
@@ -206,11 +207,13 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
         count_key = f"{src_label}->{dst_label}:{edge.rel_pyg}"
         edge_counts[count_key] = len(ir.edges.get(edge_key, ([], []))[0])
 
-    meta = {
+    meta: Dict[str, Any] = {
         "node_maps": node_maps,
         "feature_shapes": feature_shapes,
         "edge_counts": edge_counts,
     }
+    if getattr(ir, "email_attrs", None):
+        meta["email_attrs"] = ir.email_attrs
     return meta
 
 

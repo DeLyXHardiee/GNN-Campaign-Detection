@@ -54,6 +54,7 @@ def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, 
         _add_attr(attributes, "html", incident.get("email_html", ""))
         _add_attr(attributes, "css", incident.get("email_css", ""))
         _add_attr(attributes, "attachments", incident.get("email_attachments", []))
+        _add_attr(attributes, "url", incident.get("email_urls", []))
 
         for field in [
             "category",

@@ -50,6 +50,7 @@ DEFAULT_MISP_ATTRIBUTE_SCHEMA = AttributeSchema(
         "header_list-unsubscribe": AttributeMapping("urls", "url_list", accumulate=True),
         "header_received": AttributeMapping("received_hops", "received_list"),
         "header_return-path": AttributeMapping("return_path", "dict_mapping"),
+        "header_authentication-results": AttributeMapping("authentication_results", "string_single"),
         "cyrillic_domain": AttributeMapping("cyrillic_domain", "string_single"),
         "contains_symbols": AttributeMapping("contains_symbols", "string_single"),
         "body_has_tracking_url": AttributeMapping("body_has_tracking_url", "string_single"),
