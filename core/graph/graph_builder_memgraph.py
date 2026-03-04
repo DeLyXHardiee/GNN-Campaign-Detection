@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
-from .assembler import assemble_misp_graph_ir
+from .assembler import assemble_misp_graph_ir, AUTH_ATTR_KEYS
 from .graph_filter import NodeType, filter_graph_ir
 
 try:
@@ -103,6 +103,9 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         for k in _email_bool_attrs:
             arr = get_attr(k)
             row[k] = int(arr[eid]) if eid < len(arr) else 0
+        for k in AUTH_ATTR_KEYS:
+            arr = get_attr(k)
+            row[k] = str(arr[eid]) if eid < len(arr) and arr[eid] is not None else ""
         email_rows.append(row)
     out[N["email"].memgraph] = email_rows
 

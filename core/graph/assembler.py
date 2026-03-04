@@ -26,7 +26,11 @@ from .common import (
     compute_lexical_features,
     is_freemail_domain,
     to_str,
+    auth_triple_to_onehot,
 )
+
+# Authentication-Results header components (spf, dkim, dmarc) stored as string attributes on email nodes
+AUTH_ATTR_KEYS = ("auth_spf", "auth_dkim", "auth_dmarc")
 
 # Boolean email attributes (string "true"/"false" in data, stored as 0/1 in features and attrs)
 EMAIL_BOOL_ATTR_KEYS = (
@@ -552,6 +556,7 @@ def materialize_edges(
         "len_body": [],
         "x_html_css": [],
         **{k: [] for k in EMAIL_BOOL_ATTR_KEYS},
+        **{k: [] for k in AUTH_ATTR_KEYS},
     }
     docfreq_maps: Dict[str, Dict[str, Set[int]]] = {
         "domain_email_sets": {},
@@ -596,6 +601,8 @@ def materialize_edges(
         for k in EMAIL_BOOL_ATTR_KEYS:
             raw = str(em.get(k, "") or "").strip().lower()
             email_attrs_raw[k].append(1 if raw == "true" else 0)
+        for k in AUTH_ATTR_KEYS:
+            email_attrs_raw[k].append(str(em.get(k, "") or "").strip())
 
         for sender in _as_email_list(em.get("senders")):
             d = extract_email_domain(sender)
@@ -703,10 +710,11 @@ def _build_email_feature_matrix(
     body_vecs: List[List[float]],
     html_css_vecs: List[List[float]],
     bool_attr_rows: Optional[List[List[float]]] = None,
+    auth_onehot_rows: Optional[List[List[float]]] = None,
 ) -> List[List[float]]:
-    """Construct the email feature matrix using raw scalars + text embeddings + boolean attrs.
+    """Construct the email feature matrix using raw scalars + text embeddings + boolean attrs + auth one-hot.
 
-    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs...]
+    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs(7), auth_onehot(18)]
     """
     n_emails = max(
         len(ts),
@@ -717,6 +725,7 @@ def _build_email_feature_matrix(
         len(body_vecs) if body_vecs else 0,
         len(html_css_vecs) if html_css_vecs else 0,
         len(bool_attr_rows) if bool_attr_rows else 0,
+        len(auth_onehot_rows) if auth_onehot_rows else 0,
     )
     email_x: List[List[float]] = []
     for i in range(n_emails):
@@ -734,6 +743,8 @@ def _build_email_feature_matrix(
             row.extend(html_css_vecs[i] if i < len(html_css_vecs) else [])
         if bool_attr_rows and i < len(bool_attr_rows):
             row.extend(float(v) for v in bool_attr_rows[i])
+        if auth_onehot_rows and i < len(auth_onehot_rows):
+            row.extend(float(v) for v in auth_onehot_rows[i])
         email_x.append(row)
     return email_x
 
@@ -811,6 +822,8 @@ def _assemble_email_attrs(
         "x_text": x_text if x_text and (len(x_text[0]) > 0 if x_text else False) else [],
     }
     for k in EMAIL_BOOL_ATTR_KEYS:
+        out[k] = email_attrs_raw.get(k, [])
+    for k in AUTH_ATTR_KEYS:
         out[k] = email_attrs_raw.get(k, [])
     return out
 
@@ -1000,6 +1013,17 @@ def assemble_misp_graph_ir(
         [float(email_attrs_raw.get(k, [0] * n_emails)[i]) for k in EMAIL_BOOL_ATTR_KEYS]
         for i in range(n_emails)
     ]
+    auth_spf = email_attrs_raw.get("auth_spf", [""] * n_emails)
+    auth_dkim = email_attrs_raw.get("auth_dkim", [""] * n_emails)
+    auth_dmarc = email_attrs_raw.get("auth_dmarc", [""] * n_emails)
+    auth_onehot_rows: List[List[float]] = [
+        auth_triple_to_onehot(
+            auth_spf[i] if i < len(auth_spf) else "",
+            auth_dkim[i] if i < len(auth_dkim) else "",
+            auth_dmarc[i] if i < len(auth_dmarc) else "",
+        )
+        for i in range(n_emails)
+    ]
     email_x = _build_email_feature_matrix(
         [float(v) for v in email_attrs_raw["ts"]],
         [float(v) for v in email_attrs_raw["len_body"]],
@@ -1009,6 +1033,7 @@ def assemble_misp_graph_ir(
         body_vecs,
         [list(v) if isinstance(v, list) else [] for v in email_attrs_raw.get("x_html_css", [])],
         bool_attr_rows=bool_attr_rows,
+        auth_onehot_rows=auth_onehot_rows,
     )
 
 

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Tuple
 from preprocessing.body_parser import extract_body_html_css_without_headers
 from preprocessing.attachment_parser import extract_attachment_hashes_from_email
 from preprocessing.html_css_parser import parse_css_fast, parse_html_fast
+from preprocessing.utils.url_extractor import extract_urls_from_text, deduplicate_urls
 
 try:
     import mailparser  # type: ignore
@@ -693,6 +694,11 @@ def parse_incidents_with_email_bodies(
                 for field in HEADER_FIELDS
             }
 
+            urls_from_body = extract_urls_from_text(body_text)
+            list_unsub_str = _normalize_header_value(selected_headers.get("List-Unsubscribe", ""))
+            urls_from_headers = extract_urls_from_text(list_unsub_str)
+            email_urls = deduplicate_urls(urls_from_body + urls_from_headers)
+
             incident: Dict[str, Any] = {
                 "record_index": row_idx,
                 "external_id": external_id,
@@ -701,6 +707,7 @@ def parse_incidents_with_email_bodies(
                 "email_css": css_text,
                 "email_attachments": attachment_hashes,
                 "email_headers": selected_headers,
+                "email_urls": email_urls,
             }
 
             for field in INCIDENT_FIELDS:

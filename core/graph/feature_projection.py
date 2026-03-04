@@ -2,11 +2,11 @@
 Separate projections for email node features to balance dimensionality.
 
 Raw email features are laid out as:
-  [scalars (4), SBERT(subject), SBERT(body), html_css (40), bool_attrs (7)]
-  = [ts, len_body, n_urls, len_subject, subj_emb, body_emb, html_css, bools]
+  [scalars (4), SBERT(subject), SBERT(body), html_css (40), bool_attrs (7), auth_onehot (18)]
+  = [ts, len_body, n_urls, len_subject, subj_emb, body_emb, html_css, bools, spf/dkim/dmarc one-hot]
 
 BERT embeddings dominate the feature space (e.g. 1024 dims each). This module
-projects BERT down and projects the rest (scalars + html_css + bools) up,
+projects BERT down and projects the rest (scalars + html_css + bools + auth_onehot) up,
 then concatenates for a balanced email feature vector.
 
 Usage:
@@ -19,13 +19,15 @@ from __future__ import annotations
 
 from typing import Tuple
 
+from .common import AUTH_ONEHOT_DIM
+
 # Layout of raw email.x (must match assembler and extract_bert_embeddings)
 SCALAR_COUNT = 4  # ts, len_body, n_urls, len_subject
 HTML_CSS_LEN = 40  # len(create_html_css_features({}, {}))
 BOOL_ATTR_COUNT = 7  # cyrillic_domain, contains_symbols, body_has_tracking_*, etc.
 
-# Non-BERT feature dim: scalars + html_css + bools
-OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT  # 51
+# Non-BERT feature dim: scalars + html_css + bools + auth_onehot (AUTH_ONEHOT_DIM from common)
+OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM  # 69
 
 
 def email_feature_layout(
@@ -35,7 +37,7 @@ def email_feature_layout(
     """Return (bert_dim, other_dim, total_raw_dim) for the given embedding dims."""
     bert_dim = subj_dim + body_dim
     other_dim = OTHER_FEATURE_DIM
-    total = SCALAR_COUNT + bert_dim + HTML_CSS_LEN + BOOL_ATTR_COUNT
+    total = SCALAR_COUNT + bert_dim + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
     return bert_dim, other_dim, total
 
 
@@ -88,7 +90,7 @@ class EmailFeatureProjection:
         self.bert_out_dim = bert_out_dim
         self.other_out_dim = other_out_dim
         self.html_css_len = html_css_len
-        self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT
+        self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
 
         nn = _get_nn()
         if self.bert_in_dim > 0:
@@ -108,13 +110,14 @@ class EmailFeatureProjection:
         torch = _get_torch()
         if x.dim() != 2:
             raise ValueError("Expected 2D tensor [N, raw_dim]")
-        # Other part: scalars [0:4], html_css [4+bert_dim : 4+bert_dim+40], bools [-7:]
+        # Other part: scalars [0:4], html_css [4+bert_dim : 4+bert_dim+40], bools+auth_onehot [-7-18:]
         start_html = SCALAR_COUNT + self.bert_in_dim
         end_html = start_html + self.html_css_len
+        trail_len = BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
         other_parts = [
             x[:, :SCALAR_COUNT],
             x[:, start_html:end_html],
-            x[:, -BOOL_ATTR_COUNT:],
+            x[:, -trail_len:],
         ]
         other = torch.cat(other_parts, dim=1)
         other_proj = self.other_proj(other)
@@ -152,7 +155,7 @@ class EmailFeatureProjectionModule(_ProjectionBase):
         self.bert_out_dim = bert_out_dim
         self.other_out_dim = other_out_dim
         self.html_css_len = html_css_len
-        self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT
+        self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
 
         nn = _get_nn()
         if self.bert_in_dim > 0:
@@ -172,10 +175,11 @@ class EmailFeatureProjectionModule(_ProjectionBase):
             raise ValueError("Expected 2D tensor [N, raw_dim]")
         start_html = SCALAR_COUNT + self.bert_in_dim
         end_html = start_html + self.html_css_len
+        trail_len = BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
         other_parts = [
             x[:, :SCALAR_COUNT],
             x[:, start_html:end_html],
-            x[:, -BOOL_ATTR_COUNT:],
+            x[:, -trail_len:],
         ]
         other = torch.cat(other_parts, dim=1)
         other_proj = self.other_proj(other)
@@ -190,6 +194,7 @@ __all__ = [
     "SCALAR_COUNT",
     "HTML_CSS_LEN",
     "BOOL_ATTR_COUNT",
+    "AUTH_ONEHOT_DIM",
     "OTHER_FEATURE_DIM",
     "email_feature_layout",
     "EmailFeatureProjection",
