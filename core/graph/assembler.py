@@ -25,6 +25,7 @@ from .common import (
     to_unix_ts,
     compute_lexical_features,
     is_freemail_domain,
+    to_str,
 )
 
 # Boolean email attributes (string "true"/"false" in data, stored as 0/1 in features and attrs)
@@ -194,6 +195,18 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
                 if v:
                     vals.append(v)
         return vals
+    if node_key == "return_path_email":
+        rp = email.get("return_path") or {}
+        if not isinstance(rp, dict):
+            return []
+        v = to_str(rp.get("email", "")).strip().lower()
+        return [v] if v else []
+    if node_key == "return_path_domain":
+        rp = email.get("return_path") or {}
+        if not isinstance(rp, dict):
+            return []
+        v = to_str(rp.get("domain", "")).strip().lower()
+        return [v] if v else []
     return _as_email_list(email.get(f"{node_key}s") or email.get(node_key))
 
 
@@ -278,6 +291,18 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
                             vals.append(v)
         return _dedup_index(vals)
 
+    def return_path_email(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_field_values_for_node(em, "return_path_email"))
+        return _dedup_index(vals)
+
+    def return_path_domain(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_field_values_for_node(em, "return_path_domain"))
+        return _dedup_index(vals)
+
     return {
         "sender": sender,
         "receiver": receiver,
@@ -289,6 +314,8 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
         "attachment": attachment,
         "origin_ip": origin_ip,
         "received_host": received_host,
+        "return_path_email": return_path_email,
+        "return_path_domain": return_path_domain,
     }
 
 
@@ -320,6 +347,10 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
                     docfreq_maps["origin_ip_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "received_host":
                     docfreq_maps["received_host_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "return_path_email":
+                    docfreq_maps["return_path_email_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "return_path_domain":
+                    docfreq_maps["return_path_domain_email_sets"].setdefault(value, set()).add(email_idx)
 
     def email_to_week_from_date(
         email_ctx: Dict[str, Any],
@@ -463,6 +494,8 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
         "attachment": attachment,
         "origin_ip": _str_len_docfreq("origin_ip_email_sets"),
         "received_host": _str_len_docfreq("received_host_email_sets"),
+        "return_path_email": _str_len_docfreq("return_path_email_email_sets"),
+        "return_path_domain": _str_len_docfreq("return_path_domain_email_sets"),
     }
 
 
@@ -531,6 +564,8 @@ def materialize_edges(
         "receiver_email_sets": {},
         "origin_ip_email_sets": {},
         "received_host_email_sets": {},
+        "return_path_email_email_sets": {},
+        "return_path_domain_email_sets": {},
     }
 
     for email_idx, em in enumerate(emails):

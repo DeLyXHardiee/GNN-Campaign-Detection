@@ -20,6 +20,8 @@ class NodeType(Enum):
     ATTACHMENT = "attachment"
     ORIGIN_IP = "origin_ip"
     RECEIVED_HOST = "received_host"
+    RETURN_PATH_EMAIL = "return_path_email"
+    RETURN_PATH_DOMAIN = "return_path_domain"
 
     @classmethod
     def canonical_set(cls, items: Iterable["NodeType | str"], schema: GraphSchema | None = None) -> Set[str]:

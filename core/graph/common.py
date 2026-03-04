@@ -269,6 +269,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             "css": {},
             "date": "",
             "received_hops": [],
+            "return_path": {},
         }
 
         for attr in attrs:
@@ -338,6 +339,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "body_has_tracking_pixel": fields.get("body_has_tracking_pixel", ""),
                 "body_has_unsubscribe_link": fields.get("body_has_unsubscribe_link", ""),
                 "domain_is_common_webprovided": fields.get("domain_is_common_webprovided", ""),
+                "return_path": fields.get("return_path", {}),
             }
         )
 
