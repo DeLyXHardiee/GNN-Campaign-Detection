@@ -4,6 +4,8 @@ Shared across graph builders and the assembler to avoid duplication.
 """
 from __future__ import annotations
 
+import ast
+import json
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
@@ -12,7 +14,8 @@ import sys
 
 sys.path.append('../preprocessing/utils')
 
-from preprocessing.utils.url_extractor import parse_url_components
+from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
+from .misp_attribute_schema import DEFAULT_MISP_ATTRIBUTE_SCHEMA
 
 
 def to_str(val: Any) -> str:
@@ -123,6 +126,165 @@ def extract_all_emails(text: str) -> List[str]:
     return out
 
 
+def _extract_urls_from_attr_value(value: Any) -> List[str]:
+    """Extract URLs from scalar/list/dict MISP attribute values."""
+    if isinstance(value, str):
+        return extract_urls_from_text(value)
+
+    if isinstance(value, list):
+        urls: List[str] = []
+        for item in value:
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    if isinstance(value, dict):
+        urls = []
+        for item in value.values():
+            urls.extend(_extract_urls_from_attr_value(item))
+        return urls
+
+    text = to_str(value)
+    return extract_urls_from_text(text) if text else []
+
+
+def _extract_emails_from_attr_value(value: Any) -> List[str]:
+    """Extract email addresses from scalar/list/dict MISP attribute values."""
+    if isinstance(value, str):
+        return extract_all_emails(value)
+
+    if isinstance(value, list):
+        emails: List[str] = []
+        for item in value:
+            emails.extend(_extract_emails_from_attr_value(item))
+        return emails
+
+    if isinstance(value, dict):
+        emails: List[str] = []
+        for item in value.values():
+            emails.extend(_extract_emails_from_attr_value(item))
+        return emails
+
+    text = to_str(value)
+    return extract_all_emails(text) if text else []
+
+
+def _extract_strings_from_attr_value(value: Any) -> List[str]:
+    """Extract scalar strings from scalar/list/dict values recursively."""
+    if isinstance(value, str):
+        s = value.strip()
+        return [s] if s else []
+
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            out.extend(_extract_strings_from_attr_value(item))
+        return out
+
+    if isinstance(value, dict):
+        out: List[str] = []
+        for item in value.values():
+            out.extend(_extract_strings_from_attr_value(item))
+        return out
+
+    text = to_str(value).strip()
+    return [text] if text else []
+
+
+def _normalize_hop_dict(h: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a Received hop dict to lowercase keys (origin_ip, helo_host, by_host, timestamp)."""
+    if not isinstance(h, dict):
+        return {}
+    return {str(k).strip().lower(): (to_str(v).strip() if v is not None else "") for k, v in h.items()}
+
+
+def _coerce_received_hops(value: Any) -> List[Dict[str, Any]]:
+    """Coerce MISP attribute value to list of Received hop dicts (origin_ip, helo_host, by_host, timestamp)."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_normalize_hop_dict(h) for h in value if isinstance(h, dict)]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [_normalize_hop_dict(h) for h in parsed if isinstance(h, dict)]
+        except Exception:
+            pass
+    return []
+
+
+# One-hot encoding for SPF/DKIM/DMARC for GNN message passing. "unknown" = missing/other.
+AUTH_ONEHOT_VOCAB = ("pass", "fail", "neutral", "softfail", "none", "unknown")
+AUTH_ONEHOT_DIM_PER_FIELD = len(AUTH_ONEHOT_VOCAB)
+AUTH_ONEHOT_DIM = 3 * AUTH_ONEHOT_DIM_PER_FIELD  # spf + dkim + dmarc
+
+
+def auth_value_to_onehot(value: str) -> List[float]:
+    """Encode a single auth result (e.g. 'pass', 'fail') as a one-hot vector of length AUTH_ONEHOT_DIM_PER_FIELD."""
+    s = (to_str(value) or "").strip().lower()
+    if not s or s not in AUTH_ONEHOT_VOCAB:
+        idx = AUTH_ONEHOT_VOCAB.index("unknown")
+    else:
+        idx = AUTH_ONEHOT_VOCAB.index(s)
+    return [1.0 if i == idx else 0.0 for i in range(AUTH_ONEHOT_DIM_PER_FIELD)]
+
+
+def auth_triple_to_onehot(spf: str, dkim: str, dmarc: str) -> List[float]:
+    """Encode (spf, dkim, dmarc) as a concatenated one-hot vector of length AUTH_ONEHOT_DIM for email features."""
+    out: List[float] = []
+    out.extend(auth_value_to_onehot(spf))
+    out.extend(auth_value_to_onehot(dkim))
+    out.extend(auth_value_to_onehot(dmarc))
+    return out
+
+
+def parse_authentication_results(value: Any) -> Dict[str, str]:
+    """Extract spf, dkim, dmarc from Authentication-Results header value.
+
+    Accepts compact strings like 'spf=pass; dkim=pass; dmarc=pass' or raw header text.
+    Returns dict with keys 'spf', 'dkim', 'dmarc'; missing values are ''.
+    """
+    import re
+    text = to_str(value).strip() if value is not None else ""
+    if not text:
+        return {"spf": "", "dkim": "", "dmarc": ""}
+    out: Dict[str, str] = {"spf": "", "dkim": "", "dmarc": ""}
+    for label in ("spf", "dkim", "dmarc"):
+        match = re.search(rf"\b{label}\s*=\s*([a-z0-9_-]+)", text, flags=re.IGNORECASE)
+        if match:
+            out[label] = match.group(1).lower()
+    return out
+
+
+def _coerce_mapping(value: Any) -> Dict[str, Any]:
+    """Best-effort conversion of a MISP attribute value into a dict."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+        return {}
+    return {}
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -131,50 +293,108 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
         email_index = event.get("email_index", idx_ev)
         attrs = event.get("Attribute", []) or []
 
-        sender: Optional[str] = None
-        receivers: List[str] = []
-        receiver_set: Set[str] = set()
-        subject = ""
-        body = ""
-        urls: List[str] = []
-        url_set: Set[str] = set()
-        date = ""
+        accum: Dict[str, List[str]] = {
+            "senders": [],
+            "receivers": [],
+            "attachments": [],
+            "urls": [],
+        }
+        accum_seen: Dict[str, Set[str]] = {
+            "senders": set(),
+            "receivers": set(),
+            "attachments": set(),
+            "urls": set(),
+        }
+        fields: Dict[str, Any] = {
+            "subject": "",
+            "body": "",
+            "html": {},
+            "css": {},
+            "date": "",
+            "received_hops": [],
+            "return_path": {},
+            "authentication_results": "",
+            "auth_spf": "",
+            "auth_dkim": "",
+            "auth_dmarc": "",
+        }
 
         for attr in attrs:
-            a_type = (attr or {}).get("type", "")
+            a_type = to_str((attr or {}).get("type", "")).strip().lower()
             raw_val = (attr or {}).get("value", "")
-            val = to_str(raw_val)
-            if a_type == "email-src":
-                addrs = extract_all_emails(val)
-                sender = addrs[0] if addrs else (normalize_email_address(val) if val.strip() else None)
-            elif a_type in ("email-dst", "email-cc", "email-bcc"):
-                if val.strip():
-                    addrs = extract_all_emails(val)
-                    for addr in addrs:
-                        if addr not in receiver_set:
-                            receiver_set.add(addr)
-                            receivers.append(addr)
-            elif a_type == "email-subject":
-                subject = val
-            elif a_type == "email-body":
-                body = val
-            elif a_type == "url":
-                if val.strip() and val not in url_set:
-                    url_set.add(val)
-                    urls.append(val)
-            elif a_type == "email-date":
-                date = val
+            mapping = DEFAULT_MISP_ATTRIBUTE_SCHEMA.resolve(a_type)
+            if mapping is None:
+                continue
 
+            extracted: Any
+            if mapping.strategy == "email_list":
+                extracted = _extract_emails_from_attr_value(raw_val)
+                if not extracted:
+                    fallback = normalize_email_address(to_str(raw_val))
+                    extracted = [fallback] if fallback and "@" in fallback else []
+            elif mapping.strategy == "url_list":
+                extracted = _extract_urls_from_attr_value(raw_val)
+            elif mapping.strategy == "string_list":
+                extracted = _extract_strings_from_attr_value(raw_val)
+            elif mapping.strategy == "dict_mapping":
+                extracted = _coerce_mapping(raw_val)
+            elif mapping.strategy == "received_list":
+                extracted = _coerce_received_hops(raw_val)
+            else:
+                extracted = to_str(raw_val)
+
+            if mapping.accumulate:
+                values = extracted if isinstance(extracted, list) else [to_str(extracted)]
+                for value in values:
+                    item = to_str(value).strip()
+                    if not item:
+                        continue
+                    if mapping.lowercase_items:
+                        item = item.lower()
+                    if item not in accum_seen[mapping.field]:
+                        accum_seen[mapping.field].add(item)
+                        accum[mapping.field].append(item)
+            else:
+                fields[mapping.field] = extracted
+                if mapping.field == "authentication_results":
+                    auth = parse_authentication_results(extracted)
+                    fields["auth_spf"] = auth.get("spf", "")
+                    fields["auth_dkim"] = auth.get("dkim", "")
+                    fields["auth_dmarc"] = auth.get("dmarc", "")
+
+            if mapping.extract_urls_side_effect:
+                for url in _extract_urls_from_attr_value(raw_val):
+                    if url and url not in accum_seen["urls"]:
+                        accum_seen["urls"].add(url)
+                        accum["urls"].append(url)
+
+        external_id = to_str(event.get("external_id", ""))
         normalized.append(
             {
                 "email_info": info,
                 "email_index": email_index,
-                "sender": sender,
-                "receivers": receivers,
-                "subject": subject,
-                "body": body,
-                "urls": urls,
-                "date": date,
+                "external_id": external_id.strip() or str(email_index),
+                "senders": accum["senders"],
+                "receivers": accum["receivers"],
+                "subject": fields["subject"],
+                "body": fields["body"],
+                "html": fields["html"],
+                "css": fields["css"],
+                "attachments": accum["attachments"],
+                "urls": accum["urls"],
+                "date": fields["date"],
+                "received_hops": fields.get("received_hops", []),
+                "cyrillic_domain": fields.get("cyrillic_domain", ""),
+                "contains_symbols": fields.get("contains_symbols", ""),
+                "body_has_tracking_url": fields.get("body_has_tracking_url", ""),
+                "body_has_tracking_image": fields.get("body_has_tracking_image", ""),
+                "body_has_tracking_pixel": fields.get("body_has_tracking_pixel", ""),
+                "body_has_unsubscribe_link": fields.get("body_has_unsubscribe_link", ""),
+                "domain_is_common_webprovided": fields.get("domain_is_common_webprovided", ""),
+                "return_path": fields.get("return_path", {}),
+                "auth_spf": fields.get("auth_spf", ""),
+                "auth_dkim": fields.get("auth_dkim", ""),
+                "auth_dmarc": fields.get("auth_dmarc", ""),
             }
         )
 
@@ -190,6 +410,12 @@ __all__ = [
     "extract_email_domain",
     "extract_all_emails",
     "parse_misp_events",
+    "parse_authentication_results",
+    "auth_value_to_onehot",
+    "auth_triple_to_onehot",
+    "AUTH_ONEHOT_VOCAB",
+    "AUTH_ONEHOT_DIM_PER_FIELD",
+    "AUTH_ONEHOT_DIM",
     "compute_lexical_features",
     "is_freemail_domain",
 ]

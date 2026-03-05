@@ -9,8 +9,8 @@ This module is the single source of truth for:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,8 @@ class NodeMapping:
     pyg: node type label used in HeteroData for PyG
     memgraph: node label used in Memgraph
     memgraph_id_key: property used as a stable key when merging nodes in Memgraph
-    feature_strategy: hint for PyG feature construction (kept minimal and optional)
+    feature_strategy: hint for feature construction
+    extra_attr_keys: optional attributes to merge into base node features
     """
 
     canonical: str
@@ -29,6 +30,7 @@ class NodeMapping:
     memgraph: str
     memgraph_id_key: str
     feature_strategy: str
+    extra_attr_keys: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,7 @@ class EdgeMapping:
     memgraph_left_key: property of left node used to match
     memgraph_right_label: label of right node in Memgraph
     memgraph_right_key: property of right node used to match
+    edge_strategy: optional hint describing how this edge is materialized.
     """
 
     canonical: str
@@ -55,12 +58,14 @@ class EdgeMapping:
     memgraph_left_key: str
     memgraph_right_label: str
     memgraph_right_key: str
+    edge_strategy: str = "default"
 
 
 @dataclass(frozen=True)
 class GraphSchema:
     nodes: Dict[str, NodeMapping]  # key by canonical name
     edges: Dict[str, EdgeMapping]  # key by canonical relationship name
+    collapse_rules: Tuple[Tuple[str, str, str], ...] = field(default_factory=tuple)
 
     def node(self, canonical: str) -> NodeMapping:
         return self.nodes[canonical]
@@ -73,6 +78,65 @@ class GraphSchema:
 
     def pyg_edge_keys(self) -> List[Tuple[str, str, str]]:
         return [(self.nodes[e.src].pyg, e.rel_pyg, self.nodes[e.dst].pyg) for e in self.edges.values()]
+
+
+def validate_schema(schema: GraphSchema) -> None:
+    """Validate graph schema consistency and raise ValueError when invalid."""
+    node_keys = list(schema.nodes.keys())
+    edge_keys = list(schema.edges.keys())
+    if len(node_keys) != len(set(node_keys)):
+        raise ValueError("Schema contains duplicate node canonical keys.")
+    if len(edge_keys) != len(set(edge_keys)):
+        raise ValueError("Schema contains duplicate edge canonical keys.")
+
+    pyg_nodes = [n.pyg for n in schema.nodes.values()]
+    mem_nodes = [n.memgraph for n in schema.nodes.values()]
+    if len(pyg_nodes) != len(set(pyg_nodes)):
+        raise ValueError("Schema contains duplicate PyG node labels.")
+    if len(mem_nodes) != len(set(mem_nodes)):
+        raise ValueError("Schema contains duplicate Memgraph node labels.")
+
+    for edge_key, edge in schema.edges.items():
+        if edge.src not in schema.nodes:
+            raise ValueError(f"Edge '{edge_key}' references unknown src node '{edge.src}'.")
+        if edge.dst not in schema.nodes:
+            raise ValueError(f"Edge '{edge_key}' references unknown dst node '{edge.dst}'.")
+        left = schema.nodes[edge.src]
+        right = schema.nodes[edge.dst]
+        if left.memgraph != edge.memgraph_left_label:
+            raise ValueError(
+                f"Edge '{edge_key}' left label '{edge.memgraph_left_label}' does not match "
+                f"node '{edge.src}' label '{left.memgraph}'."
+            )
+        if right.memgraph != edge.memgraph_right_label:
+            raise ValueError(
+                f"Edge '{edge_key}' right label '{edge.memgraph_right_label}' does not match "
+                f"node '{edge.dst}' label '{right.memgraph}'."
+            )
+        if left.memgraph_id_key != edge.memgraph_left_key:
+            raise ValueError(
+                f"Edge '{edge_key}' left key '{edge.memgraph_left_key}' does not match "
+                f"node '{edge.src}' key '{left.memgraph_id_key}'."
+            )
+        if right.memgraph_id_key != edge.memgraph_right_key:
+            raise ValueError(
+                f"Edge '{edge_key}' right key '{edge.memgraph_right_key}' does not match "
+                f"node '{edge.dst}' key '{right.memgraph_id_key}'."
+            )
+
+    for parent, child, edge_key in schema.collapse_rules:
+        if parent not in schema.nodes:
+            raise ValueError(f"Collapse rule references unknown parent node '{parent}'.")
+        if child not in schema.nodes:
+            raise ValueError(f"Collapse rule references unknown child node '{child}'.")
+        if edge_key not in schema.edges:
+            raise ValueError(f"Collapse rule references unknown edge '{edge_key}'.")
+        edge = schema.edges[edge_key]
+        if edge.src != parent or edge.dst != child:
+            raise ValueError(
+                f"Collapse rule ({parent}, {child}, {edge_key}) mismatches edge endpoints "
+                f"({edge.src}, {edge.dst})."
+            )
 
 
 DEFAULT_SCHEMA = GraphSchema(
@@ -90,6 +154,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="Sender",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
         ),
         "receiver": NodeMapping(
             canonical="receiver",
@@ -97,6 +162,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="Receiver",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
         ),
         "week": NodeMapping(
             canonical="week",
@@ -111,6 +177,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="Url",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("x_lex", "docfreq"),
         ),
         "domain": NodeMapping(
             canonical="domain",
@@ -118,6 +185,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="Domain",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("x_lex", "docfreq"),
         ),
         "stem": NodeMapping(
             canonical="stem",
@@ -125,6 +193,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="Stem",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("x_lex", "docfreq"),
         ),
         "email_domain": NodeMapping(
             canonical="email_domain",
@@ -132,13 +201,47 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph="EmailDomain",
             memgraph_id_key="key",
             feature_strategy="str_len",
+            extra_attr_keys=("x_lex", "docfreq_sender", "docfreq_receiver"),
         ),
-        "body_cluster": NodeMapping(
-            canonical="body_cluster",
-            pyg="body_cluster",
-            memgraph="BodyCluster",
-            memgraph_id_key="cid",
-            feature_strategy="centroid",
+        "attachment": NodeMapping(
+            canonical="attachment",
+            pyg="attachment",
+            memgraph="Attachment",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
+        ),
+        "origin_ip": NodeMapping(
+            canonical="origin_ip",
+            pyg="origin_ip",
+            memgraph="OriginIp",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
+        ),
+        "received_host": NodeMapping(
+            canonical="received_host",
+            pyg="received_host",
+            memgraph="ReceivedHost",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
+        ),
+        "return_path_email": NodeMapping(
+            canonical="return_path_email",
+            pyg="return_path_email",
+            memgraph="ReturnPathEmail",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
+        ),
+        "return_path_domain": NodeMapping(
+            canonical="return_path_domain",
+            pyg="return_path_domain",
+            memgraph="ReturnPathDomain",
+            memgraph_id_key="key",
+            feature_strategy="str_len",
+            extra_attr_keys=("docfreq",),
         ),
     },
     edges={
@@ -152,6 +255,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Sender",
             memgraph_right_key="key",
+            edge_strategy="email_to_entity",
         ),
         "has_receiver": EdgeMapping(
             canonical="has_receiver",
@@ -163,6 +267,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Receiver",
             memgraph_right_key="key",
+            edge_strategy="email_to_entity",
         ),
         "in_week": EdgeMapping(
             canonical="in_week",
@@ -174,6 +279,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Week",
             memgraph_right_key="key",
+            edge_strategy="email_to_week_from_date",
         ),
         "has_url": EdgeMapping(
             canonical="has_url",
@@ -185,6 +291,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Url",
             memgraph_right_key="key",
+            edge_strategy="email_to_entity",
         ),
         "has_domain": EdgeMapping(
             canonical="has_domain",
@@ -196,6 +303,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Domain",
             memgraph_right_key="key",
+            edge_strategy="email_to_domain_from_urls",
         ),
         "has_stem": EdgeMapping(
             canonical="has_stem",
@@ -207,29 +315,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="eid",
             memgraph_right_label="Stem",
             memgraph_right_key="key",
-        ),
-        "has_body_cluster": EdgeMapping(
-            canonical="has_body_cluster",
-            src="email",
-            rel_pyg="has_body_cluster",
-            dst="body_cluster",
-            memgraph_type="HAS_BODY_CLUSTER",
-            memgraph_left_label="Email",
-            memgraph_left_key="eid",
-            memgraph_right_label="BodyCluster",
-            memgraph_right_key="cid",
-        ),
-        # Reverse edge for convenience/undirected use
-        "body_cluster_has_email": EdgeMapping(
-            canonical="body_cluster_has_email",
-            src="body_cluster",
-            rel_pyg="body_cluster_has_email",
-            dst="email",
-            memgraph_type="BODY_CLUSTER_HAS_EMAIL",
-            memgraph_left_label="BodyCluster",
-            memgraph_left_key="cid",
-            memgraph_right_label="Email",
-            memgraph_right_key="eid",
+            edge_strategy="email_to_stem_from_urls",
         ),
         "sender_from_domain": EdgeMapping(
             canonical="sender_from_domain",
@@ -241,6 +327,7 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="key",
             memgraph_right_label="EmailDomain",
             memgraph_right_key="key",
+            edge_strategy="entity_to_entity",
         ),
         "receiver_from_domain": EdgeMapping(
             canonical="receiver_from_domain",
@@ -252,14 +339,87 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_left_key="key",
             memgraph_right_label="EmailDomain",
             memgraph_right_key="key",
+            edge_strategy="entity_to_entity",
+        ),
+        "has_attachment": EdgeMapping(
+            canonical="has_attachment",
+            src="email",
+            rel_pyg="has_attachment",
+            dst="attachment",
+            memgraph_type="HAS_ATTACHMENT",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="Attachment",
+            memgraph_right_key="key",
+            edge_strategy="email_to_entity",
+        ),
+        "has_origin_ip": EdgeMapping(
+            canonical="has_origin_ip",
+            src="email",
+            rel_pyg="has_origin_ip",
+            dst="origin_ip",
+            memgraph_type="HAS_ORIGIN_IP",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="OriginIp",
+            memgraph_right_key="key",
+            edge_strategy="email_to_entity",
+        ),
+        "has_received_host": EdgeMapping(
+            canonical="has_received_host",
+            src="email",
+            rel_pyg="has_received_host",
+            dst="received_host",
+            memgraph_type="HAS_RECEIVED_HOST",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="ReceivedHost",
+            memgraph_right_key="key",
+            edge_strategy="email_to_entity",
+        ),
+        "has_return_path_email": EdgeMapping(
+            canonical="has_return_path_email",
+            src="email",
+            rel_pyg="has_return_path_email",
+            dst="return_path_email",
+            memgraph_type="HAS_RETURN_PATH_EMAIL",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="ReturnPathEmail",
+            memgraph_right_key="key",
+            edge_strategy="email_to_entity",
+        ),
+        "has_return_path_domain": EdgeMapping(
+            canonical="has_return_path_domain",
+            src="email",
+            rel_pyg="has_return_path_domain",
+            dst="return_path_domain",
+            memgraph_type="HAS_RETURN_PATH_DOMAIN",
+            memgraph_left_label="Email",
+            memgraph_left_key="eid",
+            memgraph_right_label="ReturnPathDomain",
+            memgraph_right_key="key",
+            edge_strategy="email_to_entity",
         ),
     },
+    collapse_rules=(
+        ("sender", "email_domain", "sender_from_domain"),
+        ("receiver", "email_domain", "receiver_from_domain"),
+        ("email", "sender", "has_sender"),
+        ("email", "receiver", "has_receiver"),
+        ("email", "url", "has_url"),
+        ("email", "domain", "has_domain"),
+        ("email", "stem", "has_stem"),
+    ),
 )
+
+validate_schema(DEFAULT_SCHEMA)
 
 
 __all__ = [
     "NodeMapping",
     "EdgeMapping",
     "GraphSchema",
+    "validate_schema",
     "DEFAULT_SCHEMA",
 ]

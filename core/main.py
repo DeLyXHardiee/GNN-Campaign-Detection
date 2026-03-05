@@ -1,37 +1,39 @@
 import json
-from preprocessing.misp.trec_to_misp import csv_to_misp
-from graph.graph_builder_pytorch import build_graph
-from graph.graph_builder_memgraph import build_memgraph
-from graph.graph_filter import NodeType
-from feature_set_extraction.feature_set_extraction import run_featureset_extraction
-from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
-from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
-from preprocessing.utils.filter_csv import filter_phishing_emails
+from pathlib import Path
+from preprocessing.data_parser import parse_incidents_with_email_bodies
+from preprocessing.misp_converter import incidents_to_misp_file
 
-def run_preprocessing():
+
+def run_preprocessing(limit: int | None = None):
     """
-    Run preprocessing steps to filter and prepare data.
-    Currently removes non-phishing emails from TREC-07 dataset.
+    Parse incident metadata and email body files, then convert to MISP JSON.
     """
+    project_root = Path(__file__).resolve().parent.parent
+    incidents_csv_path = project_root / "data" / "incidents_202602111435.csv"
+    bodies_dir = project_root / "data" / "POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026"
+    misp_json_path = project_root / "data" / "misp" / "incidents-20260211-misp.json"
 
-    #If you place this outside of the function, it will run on import
+    print(f"Parsing incidents from {incidents_csv_path}...")
+    incidents = parse_incidents_with_email_bodies(
+        str(incidents_csv_path),
+        str(bodies_dir),
+        limit=limit,
+    )
+    print(f"Parsed {len(incidents)} incidents with matched email body content.")
 
-    input_csv = "../data/csv/TREC-07.csv"
-    output_csv = "../data/csv/TREC-07-only-phishing-6m.csv"
-    
-    print(f"Filtering phishing emails from {input_csv}...")
-    phishing_count = filter_phishing_emails(input_csv, months=6)
-    print(f"Filtered dataset saved to {output_csv} ({phishing_count} phishing emails)")
+    print(f"Converting incidents to MISP and writing secure output at {misp_json_path}...")
+    incidents_to_misp_file(incidents, str(misp_json_path))
+    print("MISP conversion complete.")
+    return str(misp_json_path)
 
-def run_trec_misp_converter(csv_path="../data/csv/TREC-07-only-phishing-6m.csv", misp_json_path="../data/misp/TREC-07-misp.json"):
-    # input csv file --> Run MISP converter --> output MISP JSON file
-    csv_to_misp(csv_path, misp_json_path)
-
-def run_graph_creation(misp_json_path="../data/misp/TREC-07-misp.json", *, to_memgraph: bool = False,
+def run_graph_creation(misp_json_path="../data/misp/incidents-20260211-misp.json", *, to_memgraph: bool = False,
                        mg_uri: str = "bolt://localhost:7687",
                        mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
     # Also optionally mirror it into Memgraph for visualization
+    from graph.graph_builder_pytorch import build_graph
+    from graph.graph_builder_memgraph import build_memgraph
+    from graph.graph_filter import NodeType
 
     # Filter out selected node types (omit to include everything)
     # Toggle the list below to control which node types to EXCLUDE.
@@ -40,7 +42,7 @@ def run_graph_creation(misp_json_path="../data/misp/TREC-07-misp.json", *, to_me
 
     graph, graph_path, meta_path = build_graph(
         misp_json_path=misp_json_path,
-        out_dir="results",
+        out_dir="graph/output",
         exclude_nodes=excluded,
     )
     print(f"Graph created: {graph}")
@@ -63,6 +65,7 @@ def run_graph_creation(misp_json_path="../data/misp/TREC-07-misp.json", *, to_me
     return graph
 
 def create_feature_sets():
+    from feature_set_extraction.feature_set_extraction import run_featureset_extraction
     run_featureset_extraction()
 
 def run_featureset_clustering():
@@ -70,10 +73,13 @@ def run_featureset_clustering():
     Run DBSCAN and Mean Shift clustering with grid search over parameters.
     Tests different parameter combinations to find optimal homogeneity scores.
     """
+    from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
+    from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
+
     ground_truth_csv = "data/groundtruths/campaigns.csv"
     
-    eps_values = [2]#[0.5, 1, 1.5, 2, 2.5]
-    tfidf_values = [500]#[500,1000,5000]
+    eps_values = [0.5, 1, 1.5, 2, 2.5]
+    tfidf_values = [500,1000,5000]
     min_samples = 5
     n_components = 200
     
@@ -108,8 +114,8 @@ def run_featureset_clustering():
     print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
     print(f"{'='*80}\n")
     
-    quantile_values = [0.2]#[0.2,0.25,0.3]
-    tfidf_values_ms = [500]#[500,1000,5000]
+    quantile_values = [0.2,0.25,0.3]
+    tfidf_values_ms = [500,1000,5000]
     #n_components = 200
     n_samples = 500 
     
@@ -160,20 +166,19 @@ def run_metrics_evaluation():
     pass
 
 def run_pipeline():
-    run_preprocessing()
-    run_trec_misp_converter()
-    run_graph_creation()
+    misp_json_path = run_preprocessing()
+    run_graph_creation(misp_json_path)
     run_GNN()
     run_clustering()
     run_metrics_evaluation()
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    #run_preprocessing()
-    #run_trec_misp_converter()
-    run_featureset_extraction()
-    #run_featureset_clustering()
-    #run_graph_creation(to_memgraph=True)
+    misp_path = run_preprocessing(limit=100)
+    # create_feature_sets()
+    # run_featureset_clustering()
+    # misp_path = "../data/misp/incidents-20260211-misp.json"
+    # run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()

@@ -6,6 +6,8 @@ core/GNN/notebooks/data
 data/*
 core/results
 core/GNN/models
+core/graph/utils/results
+core/graph/output
 
 
 # Ignore Python cache files
@@ -28,3 +30,6 @@ venv/
 # Ignore system files
 .DS_Store
 Thumbs.db
+
+# Ignore cursorignore file
+.cursorignore
