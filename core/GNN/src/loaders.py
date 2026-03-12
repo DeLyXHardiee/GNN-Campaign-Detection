@@ -1,15 +1,31 @@
 import torch
-try:
-    import torch_sparse  # noqa: F401
-except ImportError:
-    try:
-        import pyg_lib  # noqa: F401
-    except ImportError:
-        raise ImportError(
-            "'NeighborSampler' requires either 'pyg-lib' or 'torch-sparse'. "
-            "Install with: pip install torch-sparse (see PyG installation docs for your PyTorch/CUDA version)."
-        ) from None
 
+_torch_sparse_err = None
+_pyg_lib_err = None
+except ImportError as e:
+    _torch_sparse_err = e
+try:
+    import pyg_lib  # noqa: F401
+except ImportError as e:
+    _pyg_lib_err = e
+
+if _torch_sparse_err is not None and _pyg_lib_err is not None:
+    import sys
+    msg = (
+        "NeighborSampler requires either 'pyg-lib' or 'torch-sparse'. Neither could be imported.\n"
+        "  - torch_sparse: %s\n"
+        "  - pyg_lib: %s\n"
+        "Install in this environment using the wheel index that matches your PyTorch/CUDA.\n"
+        "  Python: %s\n"
+        "  Command: \"%s\" -m pip install torch-sparse -f https://data.pyg.org/whl/torch-<TORCH>+<CUDA>.html\n"
+        "See core/GNN/docs/install_torch_sparse.md for TORCH/CUDA values."
+    ) % (
+        _torch_sparse_err,
+        _pyg_lib_err,
+        getattr(sys, "executable", "unknown"),
+        getattr(sys, "executable", "unknown"),
+    )
+    raise ImportError(msg) from _torch_sparse_err
 from torch_geometric.loader import LinkNeighborLoader, NeighborLoader
 
 def make_link_loaders(train_graph, full_graph, train_pos, val_pos, test_pos,
