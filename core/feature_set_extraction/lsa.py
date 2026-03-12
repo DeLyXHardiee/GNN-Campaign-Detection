@@ -15,7 +15,6 @@ def compute_body_lsa(body, lsa_model, vectorizer):
     return lsa_features
 
 def get_lsa_features(bodies):
-    print(bodies[:3])  # Debug: Print the first 3 email bodies to check their content
     print(f"Fitting LSA model on {len(bodies)} email bodies...")
     
     vectorizer = TfidfVectorizer()
