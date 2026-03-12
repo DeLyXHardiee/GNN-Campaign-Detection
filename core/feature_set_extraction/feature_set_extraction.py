@@ -579,11 +579,12 @@ def extract_features(misp_path, features):
                 feat.update(extract_recipient_based_features(email_fields.get("receiver")))
 
             elif feature_type == "urls":
-                body = email_fields.get("body", "") if email_fields.get("body", "") is not None else ""
-                extracted_urls = extract_urls_from_text(body) if body else []
                 explicit_urls = email_fields.get("urls", [])
+                extracted_urls = []
                 if isinstance(explicit_urls, list):
                     extracted_urls.extend([u for u in explicit_urls if isinstance(u, str) and u])
+                elif isinstance(explicit_urls, str) and explicit_urls:
+                    extracted_urls.append(explicit_urls)
                 extracted_urls = list(dict.fromkeys(extracted_urls))
                 feat.update(extract_url_based_features(extracted_urls))
         
@@ -660,7 +661,7 @@ def get_FS2(misp_path):
     return filtered_features
 
 def get_FS3(misp_path):
-    features_list = extract_features(misp_path, ["urls", "body", "origin"])
+    features_list = extract_features(misp_path, ["body", "urls", "origin"])
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
@@ -813,12 +814,12 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
                     results.append(result)
                     
                     if result[4]:
-                        print(f"âœ“ {result[0]} completed ({result[2]} emails)")
+                        print(f"✔ {result[0]} completed ({result[2]} emails)")
                     else:
-                        print(f"âœ— {result[0]} failed: {result[5]}")
+                        print(f"✖ {result[0]} failed: {result[5]}")
                 
                 except Exception as e:
-                    print(f"âœ— {fs_name} raised exception: {e}")
+                    print(f"✖ {fs_name} raised exception: {e}")
                     results.append((fs_name, "", 0, [], False, str(e)))
         
         print(f"\n{'='*80}")
@@ -832,10 +833,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
             print(f"\nSuccessful extractions ({len(successful)}):")
             for fs_name, output_path, num_emails, sample_keys, _, _ in successful:
                 print(f"  {fs_name}: {output_path}")
-                print(f"    - Emails: {num_emails}")
-                if sample_keys:
-                    print(f"    - Sample keys: {sample_keys[:5]}...")
-        
+                
         if failed:
             print(f"\nFailed extractions ({len(failed)}):")
             for fs_name, _, _, _, _, error_msg in failed:
