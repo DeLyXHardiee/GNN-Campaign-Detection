@@ -1,5 +1,6 @@
 torch
 torch-geometric
+pyg-lib
 pandas
 numpy
 networkx
