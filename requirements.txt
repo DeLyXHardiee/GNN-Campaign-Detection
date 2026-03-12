@@ -1,6 +1,7 @@
 torch
 torch-geometric
 torch-sparse
+torch_scatter
 pandas
 numpy
 networkx
