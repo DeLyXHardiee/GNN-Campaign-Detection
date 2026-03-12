@@ -26,7 +26,7 @@ def run_preprocessing(limit: int | None = None):
     print("MISP conversion complete.")
     return str(misp_json_path)
 
-def run_graph_creation(misp_json_path="../data/misp/incidents-20260211-misp.json", *, to_memgraph: bool = False,
+def run_graph_creation(misp_json_path="preprocessing/output/incidents-20260211-misp.json", *, to_memgraph: bool = False,
                        mg_uri: str = "bolt://localhost:7687",
                        mg_user: str | None = None, mg_password: str | None = None):
     # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     misp_path = run_preprocessing()
     # create_feature_sets()
     # run_featureset_clustering()
-    # misp_path = "../data/misp/incidents-20260211-misp.json"
+    # misp_path = "preprocessing/output/incidents-20260211-misp.json"
     # run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
     # run_clustering()
