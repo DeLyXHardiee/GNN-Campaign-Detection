@@ -15,14 +15,10 @@ def compute_body_lsa(body, lsa_model, vectorizer):
     return lsa_features
 
 def get_lsa_features(bodies):
+    print(bodies[:3])  # Debug: Print the first 3 email bodies to check their content
     print(f"Fitting LSA model on {len(bodies)} email bodies...")
     
-    vectorizer = TfidfVectorizer(
-        max_features=1000, 
-        stop_words='english', 
-        min_df=2, 
-        max_df=0.8
-    )
+    vectorizer = TfidfVectorizer()
     tfidf_matrix = vectorizer.fit_transform(bodies)
     
     lsa_model = TruncatedSVD(n_components=10, random_state=42)

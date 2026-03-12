@@ -7,6 +7,55 @@ categories = ["legitimate", "marketing", "spam", "phishing"]
 domains = ["example.com","store.com","mailservice.net","secure-bank.com","company.dk"]
 providers = ["gmail.com","yahoo.com","outlook.com","proton.me"]
 colors = ["#000000","#1a73e8","#ff6600","#0078d4","#2a9d8f"]
+body_rng = random.SystemRandom()
+english_words = [
+    "ability", "access", "account", "accuracy", "action", "adapter", "address", "adjustment", "admin", "alert",
+    "analysis", "analyst", "anchor", "answer", "api", "appeal", "application", "approve", "archive", "argument",
+    "array", "article", "asset", "assignment", "audit", "authority", "automation", "backup", "balance", "banner",
+    "base", "behavior", "benefit", "billing", "binary", "board", "bookmark", "bot", "branch", "brand",
+    "browser", "budget", "buffer", "build", "button", "cache", "calendar", "camera", "campaign", "candidate",
+    "capacity", "capture", "card", "carrier", "catalog", "category", "cell", "center", "certificate", "change",
+    "channel", "chart", "check", "cipher", "claim", "class", "client", "clock", "cloud", "cluster",
+    "code", "column", "command", "comment", "commerce", "communication", "company", "compare", "component", "compute",
+    "concept", "condition", "config", "confirmation", "connect", "connection", "console", "constraint", "contact", "container",
+    "content", "context", "contract", "control", "cookie", "copy", "core", "correction", "cost", "count",
+    "course", "coverage", "create", "credential", "credit", "criteria", "customer", "cycle", "dashboard", "data",
+    "dataset", "date", "debug", "decision", "default", "delay", "delivery", "delta", "density", "department",
+    "dependency", "deployment", "description", "design", "desktop", "detail", "device", "difference", "digest", "dimension",
+    "directory", "discount", "discovery", "display", "distribution", "document", "domain", "download", "driver", "edition",
+    "editor", "element", "email", "employee", "encoding", "endpoint", "engine", "entry", "environment", "episode",
+    "error", "estimate", "event", "evidence", "example", "exchange", "execution", "expense", "experiment", "exposure",
+    "extension", "factor", "failure", "feature", "feedback", "field", "file", "filter", "finance", "fingerprint",
+    "flag", "flow", "folder", "format", "form", "framework", "function", "gateway", "general", "graph",
+    "group", "guard", "guide", "handler", "hash", "header", "health", "help", "history", "home",
+    "host", "hour", "html", "hyperlink", "idea", "identifier", "image", "import", "incident", "index",
+    "indicator", "inference", "information", "infrastructure", "input", "inspection", "instance", "instruction", "integrity", "interface",
+    "inventory", "invoice", "item", "job", "journey", "kernel", "key", "keyword", "knowledge", "label",
+    "language", "latency", "layer", "layout", "ledger", "length", "letter", "level", "library", "license",
+    "limit", "link", "listener", "load", "local", "location", "logic", "login", "lookup", "mail",
+    "maintenance", "management", "manager", "map", "market", "matrix", "measure", "member", "memory", "message",
+    "metadata", "metric", "model", "module", "monitor", "month", "name", "namespace", "navigation", "network",
+    "node", "normalization", "notice", "notification", "number", "object", "observation", "office", "offset", "online",
+    "operation", "operator", "option", "order", "organization", "output", "overview", "owner", "package", "page",
+    "panel", "parameter", "parser", "partner", "password", "path", "pattern", "payment", "payload", "people",
+    "performance", "permission", "person", "phase", "phone", "pipeline", "pixel", "plan", "platform", "policy",
+    "portal", "position", "preference", "preparation", "presence", "preview", "price", "priority", "process", "processor",
+    "product", "profile", "project", "projection", "proof", "property", "proposal", "protect", "protocol", "provider",
+    "proxy", "quality", "queue", "quota", "range", "rate", "reader", "reason", "receipt", "record",
+    "recovery", "reference", "registry", "relationship", "release", "reminder", "report", "repository", "request", "requirement",
+    "research", "resolution", "resource", "response", "result", "retention", "review", "revision", "risk", "route",
+    "rule", "sample", "schedule", "schema", "scope", "screen", "script", "search", "season", "section",
+    "secure", "security", "segment", "selection", "sender", "sequence", "server", "service", "session", "setting",
+    "share", "sheet", "signal", "signature", "site", "size", "snapshot", "software", "solution", "source",
+    "specification", "speed", "stack", "stage", "standard", "state", "statement", "status", "storage", "store",
+    "strategy", "stream", "string", "structure", "style", "subject", "submission", "subscription", "success", "summary",
+    "support", "surface", "switch", "symbol", "system", "table", "tag", "target", "task", "team",
+    "template", "tenant", "terminal", "test", "theme", "thread", "ticket", "time", "token", "topic",
+    "trace", "tracking", "traffic", "training", "transaction", "transfer", "transform", "transport", "tree", "trend",
+    "trigger", "trust", "type", "update", "upload", "url", "usage", "user", "utility", "validation",
+    "value", "variable", "vector", "vendor", "verification", "verify", "version", "view", "visibility", "vision",
+    "volume", "warning", "web", "website", "window", "wire", "workflow", "workspace", "writer", "zone"
+]
 
 def rand_hash():
     return hashlib.sha256(str(random.random()).encode()).hexdigest()
@@ -19,11 +68,20 @@ def to_str(v):
 def rfc_timestamp():
     return formatdate(usegmt=True)
 
+
+def random_body(word_count=100, rng=None):
+    rng = rng or body_rng
+    if word_count <= len(english_words):
+        return " ".join(rng.sample(english_words, k=word_count))
+    unique_words = rng.sample(english_words, k=len(english_words))
+    remaining_words = rng.choices(english_words, k=word_count - len(english_words))
+    return " ".join(unique_words + remaining_words)
+
 events = []
 
 base_epoch = 1773100000
 
-for i in range(1, 51):
+for i in range(1, 1001):
     cat = random.choices(categories, weights=[0.55,0.25,0.15,0.05])[0]
     domain = random.choice(domains)
     to_domain = random.choice(providers)
@@ -45,6 +103,7 @@ for i in range(1, 51):
     }[cat]
     
     scl = {"legitimate":-1,"marketing":1,"spam":8,"phishing":7}[cat]
+    body_text = random_body(20, rng=body_rng)
     
     event = {
         "Event": {
@@ -56,7 +115,7 @@ for i in range(1, 51):
                 {"type":"to","value":[to_email]},
                 {"type":"subject","value":f"Sample email subject {i}"},
                 {"type":"date","value":to_str(base_epoch + i)},
-                {"type":"body","value":"This is synthetic email content generated for dataset testing."},
+                {"type":"body","value":body_text},
                 
                 {"type":"html","value":{
                     "tag_counts":{"html":1,"head":1,"meta":1,"style":random.randint(0,1),"body":1,"table":random.randint(0,2),
