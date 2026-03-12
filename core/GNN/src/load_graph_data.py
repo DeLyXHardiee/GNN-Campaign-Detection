@@ -11,14 +11,12 @@ def load_imdb(root: str = "data/IMDB"):
     dataset = IMDB(root=root)
     return dataset[0]
 
-def load_hetero_pt(path: str = "../../results/TREC-07-misp_hetero.pt"):
+def load_hetero_pt(path: str = "../../preprocessing/output/incidents-20260211-misp_hetero.pt"):
     """
     Load a saved HeteroData object from a .pt file.
     """
     path = str(Path(path).expanduser())
-    data = torch.load(path, map_location="cpu")
+    data = torch.load(path, map_location="cuda:0", weights_only=True)
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
     return data
-
-
