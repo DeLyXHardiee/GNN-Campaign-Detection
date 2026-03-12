@@ -11,7 +11,7 @@ def run_preprocessing(limit: int | None = None):
     project_root = Path(__file__).resolve().parent.parent
     incidents_csv_path = project_root / "data" / "incidents_202602111435.csv"
     bodies_dir = project_root / "data" / "POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026"
-    misp_json_path = project_root / "data" / "misp" / "incidents-20260211-misp.json"
+    misp_json_path = project_root / "preprocessing" / "output" / "incidents-20260211-misp.json"
 
     print(f"Parsing incidents from {incidents_csv_path}...")
     incidents = parse_incidents_with_email_bodies(
@@ -174,7 +174,7 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing(limit=100)
+    misp_path = run_preprocessing()
     # create_feature_sets()
     # run_featureset_clustering()
     # misp_path = "../data/misp/incidents-20260211-misp.json"
