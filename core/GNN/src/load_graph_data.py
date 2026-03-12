@@ -19,7 +19,7 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     Load a saved HeteroData object from a .pt file.
     """
     path = str(Path(path).expanduser())
-    data = torch.load(path, map_location="cuda:0", weights_only=True)
+    data = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
     return data
