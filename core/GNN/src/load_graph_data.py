@@ -2,6 +2,9 @@ from pathlib import Path
 from torch_geometric.datasets import IMDB
 import torch
 from torch_geometric.data import HeteroData
+from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
+
+torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 
 def load_imdb(root: str = "data/IMDB"):
     """
