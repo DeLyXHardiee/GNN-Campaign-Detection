@@ -1,0 +1,16 @@
+
+================================================================================
+DBSCAN Run - 2026-03-16 15:09:03
+Parameters: eps=0.5, min_samples=5, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS4: 0.8406 (clusters: 136)
+FS5: 0.8401 (clusters: 138)
+
+================================================================================
+DBSCAN Run - 2026-03-16 15:10:24
+Parameters: eps=0.5, min_samples=5, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS4: 0.8104 (clusters: 139)
+FS5: 0.8083 (clusters: 141)
