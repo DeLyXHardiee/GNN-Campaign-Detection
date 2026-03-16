@@ -12,9 +12,9 @@ from datetime import timezone
 import math
 import sys
 
-sys.path.append('../preprocessing/utils')
+sys.path.append('core/preprocessing/utils')
 
-from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
+from core.preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 from .misp_attribute_schema import DEFAULT_MISP_ATTRIBUTE_SCHEMA
 
 
