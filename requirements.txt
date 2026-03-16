@@ -10,3 +10,4 @@ sentence-transformers
 neo4j
 pytest
 mail-parser
+hdbscan
