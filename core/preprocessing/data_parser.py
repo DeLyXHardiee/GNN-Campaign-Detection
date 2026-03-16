@@ -10,10 +10,10 @@ import re
 import sys
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from preprocessing.body_parser import extract_body_html_css_without_headers
 from preprocessing.attachment_parser import extract_attachment_hashes_from_email
-from preprocessing.html_css_parser import parse_css_fast, parse_html_fast
+from preprocessing.html_css_parser import get_empty_html_structure, parse_css_fast, parse_html_fast
 from preprocessing.utils.url_extractor import extract_urls_from_text, deduplicate_urls
 
 try:
@@ -557,22 +557,41 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, Any]:
 
 def _parse_body_and_headers_with_mailparser(
     raw_bytes: bytes,
+    sample_id: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], Dict[str, Any]]:
+    """Extract body, HTML/CSS structure, and attachments; optionally headers via mailparser.
+    Never raises: on body/HTML parse failure returns empty body and empty structure, and logs.
+    """
+    empty_html = get_empty_html_structure()
+    default_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
     if not raw_bytes:
         return (
             "",
-            {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""},
+            empty_html,
             {"style_features": {}},
             [],
-            {field: _default_header_value(field) for field in HEADER_FIELDS},
+            default_headers,
         )
 
-    body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
-    html_structure = parse_html_fast(html_text)
-    css_structure = parse_css_fast(css_text)
-    attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
+    try:
+        body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
+        html_structure = parse_html_fast(html_text, sample_id=sample_id)
+        css_structure = parse_css_fast(css_text)
+        attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
+    except Exception as e:
+        logging.warning(
+            "Body/HTML extraction or parsing failed for sample %s: %s",
+            sample_id if sample_id is not None else "(unknown)",
+            e,
+            exc_info=False,
+        )
+        body_text = ""
+        html_structure = get_empty_html_structure()
+        css_structure = {"style_features": {}}
+        attachment_hashes = []
+
     if mailparser is None:
-        return body_text, html_structure, css_structure, attachment_hashes, {field: _default_header_value(field) for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, default_headers
 
     try:
         _configure_mailparser_logging()
@@ -581,7 +600,7 @@ def _parse_body_and_headers_with_mailparser(
         return body_text, html_structure, css_structure, attachment_hashes, headers
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_structure, css_structure, attachment_hashes, {field: _default_header_value(field) for field in HEADER_FIELDS}
+        return body_text, html_structure, css_structure, attachment_hashes, default_headers
 
 
 def _configure_mailparser_logging() -> None:
@@ -680,7 +699,9 @@ def parse_incidents_with_email_bodies(
             attachment_hashes: List[str] = []
             parser_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
             raw_body_bytes = _read_body_file_bytes(body_file)
-            body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(raw_body_bytes)
+            body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(
+                raw_body_bytes, sample_id=external_id
+            )
 
             headers_from_properties = _extract_selected_headers(_try_parse_mapping(properties.get("emailHeaders")))
             headers_raw = _normalize_scalar(row.get("emailHeaders"))

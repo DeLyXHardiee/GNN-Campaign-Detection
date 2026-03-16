@@ -174,7 +174,7 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing(limit=100)
+    misp_path = run_preprocessing()
     # create_feature_sets()
     # run_featureset_clustering()
     # misp_path = "../data/misp/incidents-20260211-misp.json"
