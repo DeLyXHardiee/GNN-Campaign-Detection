@@ -17,14 +17,12 @@ def get_models_dir() -> Path:
 
 def select_device(preferred=None):
     """
-    Auto-pick a device (cuda > mps > cpu) unless a preferred one is provided.
+    Auto-pick a device (cuda > cpu) unless a preferred one is provided.
     """
     if preferred is not None:
         return preferred
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return torch.device("mps")
     return torch.device("cpu")
 
 

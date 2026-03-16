@@ -248,7 +248,6 @@ def run_training(DEVICE, TORCH_SEED, data,
         data,
         primary_ntype=primary_ntype,
         direction='both',
-        supervised_edge_types=supervised_edge_types,
     )
     print("Supervised edge types:", sup_ets)
 

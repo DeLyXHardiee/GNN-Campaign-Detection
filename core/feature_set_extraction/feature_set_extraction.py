@@ -13,6 +13,7 @@ from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
+from graph.common import parse_misp_events
 
 
 '''
@@ -499,26 +500,37 @@ Main extraction program
 '''
 
 
-def extract_features(misp_path, features):
+def _load_raw_misp_events(misp_path):
+    """Load raw MISP events in the same shape expected by graph parsing."""
     with open(misp_path, 'r', encoding='utf-8') as f:
         misp_data = json.load(f)
-    events = []
 
-    #TODO Find out if this is necessary
     if isinstance(misp_data, list):
-        events = misp_data
-    elif isinstance(misp_data, dict):
-        events = misp_data.get('response', {}).get('Event', [])
-        if not isinstance(events, list):
-            events = [events]
-    else:
-        events = []
+        return misp_data
 
+    if isinstance(misp_data, dict):
+        events = misp_data.get('Events')
+        if isinstance(events, list):
+            return events
+
+        events = misp_data.get('response', {}).get('Event', [])
+        if isinstance(events, list):
+            return events
+        if isinstance(events, dict):
+            return [events]
+
+        if isinstance(misp_data.get('Event'), dict):
+            return [misp_data]
+
+    return []
+
+
+def extract_features(misp_path, features):
+    events = parse_misp_events(_load_raw_misp_events(misp_path))
     lsa_features_list = []
     if "body" in features: 
         bodies = []
-        for event in events:
-            email_fields = parse_misp_event_attributes(event.get('Event', {}))
+        for email_fields in events:
             body = email_fields.get("body", "")
             if not isinstance(body, str):
                 body = ""
@@ -528,10 +540,8 @@ def extract_features(misp_path, features):
 
     features_list = []
 
-    for event_idx, event in enumerate(events):
+    for event_idx, email_fields in enumerate(events):
         feat = {'email_index': event_idx}
-
-        email_fields = parse_misp_event_attributes(event.get('Event', {}))
         
         for feature_type in features:
             if feature_type == "time":
@@ -543,18 +553,18 @@ def extract_features(misp_path, features):
                     idf_dict = load_idf_dict(idf_path)
                 else:
                     subjects = []
-                    for evt in events:
-                        email_fields = parse_misp_event_attributes(evt.get('Event', {}))
-                        subject = email_fields.get("subject", "")
+                    for evt_fields in events:
+                        subject = evt_fields.get("subject", "")
                         if isinstance(subject, str):
                             subjects.append(subject)
                         else:
                             subjects.append("")
-                    
-                    get_idf(subjects, idf_path)
-                    idf_dict = load_idf_dict(idf_path)
+                    try:
+                        get_idf(subjects, idf_path)
+                        idf_dict = load_idf_dict(idf_path)
+                    except Exception:
+                        idf_dict = None
                 feat.update(extract_subject_features(email_fields.get("subject"), idf_dict))
-
             elif feature_type == "body":
                 feat.update(extract_body_based_features(email_fields.get("body")))
                 feat.update(lsa_features_list[event_idx])
@@ -569,8 +579,13 @@ def extract_features(misp_path, features):
                 feat.update(extract_recipient_based_features(email_fields.get("receiver")))
 
             elif feature_type == "urls":
-                body = email_fields.get("body", "") if email_fields.get("body", "") is not None else ""
-                extracted_urls = extract_urls_from_text(body) if body else []
+                explicit_urls = email_fields.get("urls", [])
+                extracted_urls = []
+                if isinstance(explicit_urls, list):
+                    extracted_urls.extend([u for u in explicit_urls if isinstance(u, str) and u])
+                elif isinstance(explicit_urls, str) and explicit_urls:
+                    extracted_urls.append(explicit_urls)
+                extracted_urls = list(dict.fromkeys(extracted_urls))
                 feat.update(extract_url_based_features(extracted_urls))
         
         features_list.append(feat)
@@ -578,30 +593,44 @@ def extract_features(misp_path, features):
     return features_list
 
 def parse_misp_event_attributes(event):
-    email_fields = {
-        'subject': '',
-        'body': '',
-        'sender': '',
-        'receiver': '',
-        'date': ''
+    """Backward-compatible shim that delegates to graph/common schema parser."""
+    normalized = parse_misp_events([{"Event": event}] if isinstance(event, dict) else [])
+    if not normalized:
+        return {
+            'subject': '',
+            'body': '',
+            'sender': '',
+            'receiver': '',
+            'date': '',
+            'urls': []
+        }
+
+    parsed = normalized[0]
+    senders = parsed.get('senders', [])
+    receivers = parsed.get('receivers', [])
+    return {
+        'subject': parsed.get('subject', ''),
+        'body': parsed.get('body', ''),
+        'sender': senders[0] if senders else '',
+        'receiver': receivers[0] if receivers else '',
+        'date': parsed.get('date', ''),
+        'urls': parsed.get('urls', []),
+        'attachments': parsed.get('attachments', []),
+        'html': parsed.get('html', {}),
+        'css': parsed.get('css', {}),
+        'received_hops': parsed.get('received_hops', []),
+        'return_path': parsed.get('return_path', {}),
+        'auth_spf': parsed.get('auth_spf', ''),
+        'auth_dkim': parsed.get('auth_dkim', ''),
+        'auth_dmarc': parsed.get('auth_dmarc', ''),
+        'cyrillic_domain': parsed.get('cyrillic_domain', ''),
+        'contains_symbols': parsed.get('contains_symbols', ''),
+        'body_has_tracking_url': parsed.get('body_has_tracking_url', ''),
+        'body_has_tracking_image': parsed.get('body_has_tracking_image', ''),
+        'body_has_tracking_pixel': parsed.get('body_has_tracking_pixel', ''),
+        'body_has_unsubscribe_link': parsed.get('body_has_unsubscribe_link', ''),
+        'domain_is_common_webprovided': parsed.get('domain_is_common_webprovided', ''),
     }
-    attributes = event.get('Attribute', [])
-    for attr in attributes:
-        attr_type = attr.get('type', '')
-        attr_value = attr.get('value', '')
-        
-        if attr_type in ('email-subject', 'subject'):
-            email_fields['subject'] = attr_value
-        elif attr_type in ('email-body', 'body'):
-            email_fields['body'] = attr_value
-        elif attr_type in ('email-src', 'from'):
-            email_fields['sender'] = attr_value
-        elif attr_type in ('email-dst', 'to'):
-            email_fields['receiver'] = attr_value
-        elif attr_type in ('email-date', 'date'):
-            email_fields['date'] = attr_value
-    
-    return email_fields
 
 def get_idf_path_for_misp(misp_path):
     dir_name = os.path.dirname(misp_path)
@@ -632,7 +661,7 @@ def get_FS2(misp_path):
     return filtered_features
 
 def get_FS3(misp_path):
-    features_list = extract_features(misp_path, ["urls", "body", "origin"])
+    features_list = extract_features(misp_path, ["body", "urls", "origin"])
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
@@ -743,7 +772,8 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     # This avoids multiple processes attempting to write the same idf file
     # concurrently on Windows which can cause Access Denied errors.
     try:
-        precompute_subject_idf(misp_path)
+        print(f"Precomputing subject IDF values for: {misp_path}")
+        print(precompute_subject_idf(misp_path))
     except Exception:
         # If precomputation fails, fall back to existing behavior in workers.
         pass
@@ -784,12 +814,12 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
                     results.append(result)
                     
                     if result[4]:
-                        print(f"✓ {result[0]} completed ({result[2]} emails)")
+                        print(f"✔ {result[0]} completed ({result[2]} emails)")
                     else:
-                        print(f"✗ {result[0]} failed: {result[5]}")
+                        print(f"✖ {result[0]} failed: {result[5]}")
                 
                 except Exception as e:
-                    print(f"✗ {fs_name} raised exception: {e}")
+                    print(f"✖ {fs_name} raised exception: {e}")
                     results.append((fs_name, "", 0, [], False, str(e)))
         
         print(f"\n{'='*80}")
@@ -803,10 +833,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
             print(f"\nSuccessful extractions ({len(successful)}):")
             for fs_name, output_path, num_emails, sample_keys, _, _ in successful:
                 print(f"  {fs_name}: {output_path}")
-                print(f"    - Emails: {num_emails}")
-                if sample_keys:
-                    print(f"    - Sample keys: {sample_keys[:5]}...")
-        
+                
         if failed:
             print(f"\nFailed extractions ({len(failed)}):")
             for fs_name, _, _, _, _, error_msg in failed:

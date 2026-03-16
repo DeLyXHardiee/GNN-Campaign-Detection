@@ -2,6 +2,9 @@ from pathlib import Path
 from torch_geometric.datasets import IMDB
 import torch
 from torch_geometric.data import HeteroData
+from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
+
+torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 
 def load_imdb(root: str = "data/IMDB"):
     """
@@ -11,14 +14,12 @@ def load_imdb(root: str = "data/IMDB"):
     dataset = IMDB(root=root)
     return dataset[0]
 
-def load_hetero_pt(path: str = "../../results/TREC-07-misp_hetero.pt"):
+def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_hetero.pt"):
     """
     Load a saved HeteroData object from a .pt file.
     """
     path = str(Path(path).expanduser())
-    data = torch.load(path, map_location="cpu")
+    data = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
     return data
-
-
