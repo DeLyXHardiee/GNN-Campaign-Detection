@@ -10,14 +10,28 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
     preprocess_for_clustering, 
     save_clusters_to_json,
     load_ground_truth_from_csv,
+    remove_outliers_from_matrix,
 )
 
 from clustering.clusteringMetrics import compute_silhouette_score, compute_homogeneity_from_clusters
 
-def cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_components=None):
+def cluster_with_ids(
+    records,
+    quantile,
+    n_samples,
+    max_tfidf_features=None,
+    n_components=None,
+    remove_outliers=False,
+    outlier_contamination=0.05,
+):
     idxs = [r["email_index"] for r in records]
 
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
+
+    if remove_outliers:
+        X, keep_mask, removed = remove_outliers_from_matrix(X, contamination=outlier_contamination)
+        idxs = [idx for idx, keep in zip(idxs, keep_mask) if keep]
+        print(f"Removed {removed} outliers before Mean Shift (contamination={outlier_contamination})")
 
     print(f"Feature matrix shape: {X.shape}")
     print(f"Feature range: [{X.min():.4f}, {X.max():.4f}]")
@@ -52,7 +66,16 @@ def compute_silhouette_score(X, labels):
         return None
 
 
-def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
+def meanshift_cluster_all(
+    quantile=0.3,
+    n_samples=500,
+    max_tfidf_features=None,
+    ground_truth_csv=None,
+    n_components=None,
+    remove_outliers=False,
+    outlier_contamination=0.05,
+    dataset_base="synthetic_email_dataset_50",
+):
     # read feature sets from package-local output/featuresets inside core/feature_set_extraction
     package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     featuresets_dir = os.path.join(package_dir, 'output', 'featuresets')
@@ -74,18 +97,26 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
     silhouette_file = os.path.join(results_dir, 'meanshift_silhouette_scores.txt')
     homogeneity_file = os.path.join(results_dir, 'meanshift_homogeneity_scores.txt') if ground_truth else None
     
-    feature_sets = ['FS1', 'FS2', ]#'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
     
     print(f"{'='*80}")
     print(f"Starting Mean Shift clustering on {len(feature_sets)} feature sets...")
-    print(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}")
+    print(
+        f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features=uncapped, "
+        f"n_components={n_components}, remove_outliers={remove_outliers}, "
+        f"outlier_contamination={outlier_contamination}"
+    )
     print(f"{'='*80}")
     
     with open(silhouette_file, 'a', encoding='utf-8') as sil_f:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sil_f.write("\n" + "="*80 + "\n")
         sil_f.write(f"Mean Shift Run - {timestamp}\n")
-        sil_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
+        sil_f.write(
+            f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features=uncapped, "
+            f"n_components={n_components}, remove_outliers={remove_outliers}, "
+            f"outlier_contamination={outlier_contamination}\n"
+        )
         sil_f.write("="*80 + "\n\n")
         
         hom_f = None
@@ -93,11 +124,15 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
             hom_f = open(homogeneity_file, 'a', encoding='utf-8')
             hom_f.write("\n" + "="*80 + "\n")
             hom_f.write(f"Mean Shift Run - {timestamp}\n")
-            hom_f.write(f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
+            hom_f.write(
+                f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features=uncapped, "
+                f"n_components={n_components}, remove_outliers={remove_outliers}, "
+                f"outlier_contamination={outlier_contamination}\n"
+            )
             hom_f.write("="*80 + "\n\n")
     
         for fs_name in feature_sets:
-            feature_set_path = os.path.join(featuresets_dir, f"TREC-07-misp-{fs_name}.json")
+            feature_set_path = os.path.join(featuresets_dir, f"{dataset_base}-{fs_name}.json")
             
             if not os.path.exists(feature_set_path):
                 print(f"\n✗ Skipping {fs_name}: File not found at {feature_set_path}")
@@ -113,7 +148,15 @@ def meanshift_cluster_all(quantile=0.3, n_samples=500, max_tfidf_features=500, g
             
             print(f"Loaded {len(records)} records")
             
-            clusters, labels, X = cluster_with_ids(records, quantile, n_samples, max_tfidf_features, n_components)
+            clusters, labels, X = cluster_with_ids(
+                records,
+                quantile,
+                n_samples,
+                max_tfidf_features,
+                n_components,
+                remove_outliers=remove_outliers,
+                outlier_contamination=outlier_contamination,
+            )
             
             silhouette_avg = compute_silhouette_score(X, labels)
             n_clusters = len(set(labels))
