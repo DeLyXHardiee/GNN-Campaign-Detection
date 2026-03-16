@@ -1,5 +1,7 @@
 torch
 torch-geometric
+torch-sparse
+torch_scatter
 pandas
 numpy
 networkx
@@ -8,3 +10,5 @@ sentence-transformers
 neo4j
 pytest
 mail-parser
+lxml
+hdbscan
