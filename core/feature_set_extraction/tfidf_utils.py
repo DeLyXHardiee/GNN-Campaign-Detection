@@ -9,6 +9,7 @@ except Exception:
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from graph.common import parse_misp_events
 
 
 def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range=(1, 2)):
@@ -20,8 +21,8 @@ def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range
     vec = TfidfVectorizer(
         max_features=max_features,
         stop_words=stop_words,
-        min_df=2,
-        max_df=0.8,
+        min_df=1,
+        max_df=1.0,
         ngram_range=ngram_range
     )
     vec.fit(texts)
@@ -88,26 +89,26 @@ def precompute_subject_idf(misp_path):
     except Exception:
         return idf_path
 
-    # extract events
+    # Extract raw events using the same envelope handling as graph loading.
     if isinstance(misp_data, list):
-        events = misp_data
+        raw_events = misp_data
     elif isinstance(misp_data, dict):
-        events = misp_data.get('response', {}).get('Event', [])
-        if not isinstance(events, list):
-            events = [events]
+        if isinstance(misp_data.get('Events'), list):
+            raw_events = misp_data.get('Events', [])
+        else:
+            raw_events = misp_data.get('response', {}).get('Event', [])
+            if isinstance(raw_events, dict):
+                raw_events = [raw_events]
+            elif not isinstance(raw_events, list):
+                raw_events = []
     else:
-        events = []
+        raw_events = []
+
+    events = parse_misp_events(raw_events)
 
     subjects = []
     for evt in events:
-        event = evt.get('Event', {}) if isinstance(evt, dict) else {}
-        # find attribute entries
-        attrs = event.get('Attribute', [])
-        subj = ''
-        for a in attrs:
-            if a.get('type') in ('email-subject', 'subject'):
-                subj = a.get('value', '')
-                break
+        subj = evt.get('subject', '') if isinstance(evt, dict) else ''
         subjects.append(subj if isinstance(subj, str) else "")
 
     if not any(s.strip() for s in subjects):

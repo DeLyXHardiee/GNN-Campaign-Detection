@@ -8,13 +8,52 @@ from sklearn.decomposition import TruncatedSVD
 from preprocessing.utils.defang import sanitize_for_json
 
 
-def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exclude_fields=None, n_components=None):
+def _normalize_token_list(value):
+    """Normalize list-like or whitespace-joined token fields into clean token lists."""
+    if value is None:
+        return []
+
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip().lower() for v in value if str(v).strip()]
+
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+
+        # Some pipelines store list-like content as JSON strings.
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    return [str(v).strip().lower() for v in parsed if str(v).strip()]
+            except Exception:
+                pass
+
+        return [tok.strip().lower() for tok in raw.split() if tok.strip()]
+
+    return [str(value).strip().lower()] if str(value).strip() else []
+
+
+def preprocess_for_clustering(
+    records,
+    max_tfidf_features,
+    text_fields=None,
+    exclude_fields=None,
+    n_components=None,
+    token_list_fields=None,
+    token_svd_components=32,
+):
 
     if not records:
         raise ValueError("Empty records list")
     
     if exclude_fields is None:
         exclude_fields = ['email_index']
+
+    if token_list_fields is None:
+        # Common URL list-like fields represented as token strings or arrays.
+        token_list_fields = ['hostnames', 'domains']
     
     sample_record = records[0]
     numeric_fields = []
@@ -33,9 +72,17 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
         text_fields = detected_text_fields
     else:
         text_fields = [f for f in text_fields if f in detected_text_fields]
+
+    # Route list-like/tokenized URL fields into dedicated processing.
+    token_list_fields = [
+        f for f in token_list_fields
+        if f in sample_record and f not in exclude_fields
+    ]
+    text_fields = [f for f in text_fields if f not in token_list_fields]
     
     print(f"Detected {len(numeric_fields)} numeric fields: {numeric_fields[:5]}...")
     print(f"Using {len(text_fields)} text fields for TF-IDF: {text_fields}")
+    print(f"Using {len(token_list_fields)} token-list fields: {token_list_fields}")
     
     X_numeric = []
     for record in records:
@@ -74,6 +121,53 @@ def preprocess_for_clustering(records, max_tfidf_features, text_fields=None, exc
                 print(f"  Skipping '{text_field}': no features extracted")
         except Exception as e:
             print(f"  Error processing '{text_field}': {e}")
+
+    # Dedicated processing for token-list style fields (e.g., multiple hostnames per email).
+    for token_field in token_list_fields:
+        token_docs = [" ".join(_normalize_token_list(record.get(token_field, ""))) for record in records]
+
+        if all(len(doc.strip()) == 0 for doc in token_docs):
+            print(f"  Skipping '{token_field}': all empty")
+            continue
+
+        try:
+            vectorizer = TfidfVectorizer(
+                max_features=max_tfidf_features,
+                min_df=1,
+                max_df=1.0,
+                token_pattern=r"(?u)\b[\w\.-]+\b",
+                lowercase=True,
+            )
+            X_tokens_sparse = vectorizer.fit_transform(token_docs)
+
+            # Compress very wide sparse hostname/domain spaces to stable dense features.
+            if token_svd_components is not None and X_tokens_sparse.shape[1] > 1:
+                max_components = min(
+                    int(token_svd_components),
+                    X_tokens_sparse.shape[0] - 1,
+                    X_tokens_sparse.shape[1] - 1,
+                )
+                if max_components >= 1 and X_tokens_sparse.shape[1] > max_components:
+                    token_svd = TruncatedSVD(n_components=max_components, random_state=42)
+                    X_tokens = token_svd.fit_transform(X_tokens_sparse)
+                    feature_parts.append(X_tokens)
+                    feature_names.extend([f"{token_field}_svd_{i}" for i in range(X_tokens.shape[1])])
+                    explained = token_svd.explained_variance_ratio_.sum()
+                    print(
+                        f"  {token_field}: {X_tokens_sparse.shape[1]} TF-IDF -> {X_tokens.shape[1]} SVD "
+                        f"({explained*100:.2f}% explained)"
+                    )
+                    continue
+
+            X_tokens = X_tokens_sparse.toarray()
+            if X_tokens.shape[1] > 0:
+                feature_parts.append(X_tokens)
+                feature_names.extend([f"{token_field}_tfidf_{i}" for i in range(X_tokens.shape[1])])
+                print(f"  {token_field}: extracted {X_tokens.shape[1]} TF-IDF token features")
+            else:
+                print(f"  Skipping '{token_field}': no features extracted")
+        except Exception as e:
+            print(f"  Error processing token-list field '{token_field}': {e}")
     
     # combine
     X = np.hstack(feature_parts)
