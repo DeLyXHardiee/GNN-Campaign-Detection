@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
@@ -188,7 +189,7 @@ def build_memgraph(
     clear: bool = True,
     create_indexes: bool = True,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType | str]] = None,
+    exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
 

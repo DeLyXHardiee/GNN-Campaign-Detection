@@ -1,0 +1,117 @@
+"""
+Pipeline configuration: load pipeline_config.json and resolve project-relative paths.
+Graph build settings are derived here; graph builders receive only explicit parameters.
+"""
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def load_pipeline_config(*, project_root: Path | None = None) -> dict[str, Any]:
+    root = project_root or _project_root()
+    config_path = root / "pipeline_config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def resolve_project_path(path_value: str | None, *, project_root: Path | None = None) -> str | None:
+    if not path_value:
+        return None
+    candidate = Path(path_value)
+    if candidate.is_absolute():
+        return str(candidate)
+    root = project_root or _project_root()
+    return str(root / candidate)
+
+
+@dataclass(frozen=True)
+class MemgraphSettings:
+    enabled: bool = False
+    uri: str = "bolt://localhost:7687"
+    user: str | None = None
+    password: str | None = None
+    clear: bool = True
+    create_indexes: bool = True
+
+
+@dataclass(frozen=True)
+class GraphBuildSettings:
+    """Resolved paths and options for MISP → PyG / Memgraph graph build."""
+
+    misp_json_path: str
+    output_dir: str
+    exclude_node_types: list[str]
+    embeddings_output_dir: str | None
+    memgraph: MemgraphSettings
+
+
+def graph_build_settings_from_pipeline(
+    cfg: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> GraphBuildSettings:
+    graph_cfg = cfg.get("graph") or {}
+    datasets_cfg = cfg.get("datasets") or {}
+
+    raw_misp = graph_cfg.get("misp_json_path")
+    if raw_misp is None or raw_misp == "":
+        raw_misp = datasets_cfg.get("misp_json_path")
+    if not raw_misp:
+        raise ValueError(
+            "pipeline_config: set graph.misp_json_path or datasets.misp_json_path for graph build."
+        )
+    misp_json_path = resolve_project_path(str(raw_misp), project_root=project_root)
+    if not misp_json_path:
+        raise ValueError("pipeline_config: misp_json_path resolved to empty path.")
+
+    out_dir = graph_cfg.get("output_dir") or "graph/output"
+    output_dir = resolve_project_path(str(out_dir), project_root=project_root) or str(out_dir)
+
+    exclude = graph_cfg.get("exclude_node_types")
+    if exclude is None:
+        exclude = ["week"]
+    if not isinstance(exclude, list):
+        raise TypeError("graph.exclude_node_types must be a list of strings.")
+    exclude_node_types = [str(x) for x in exclude]
+
+    emb_raw = graph_cfg.get("embeddings_output_dir")
+    embeddings_output_dir = (
+        resolve_project_path(str(emb_raw), project_root=project_root) if emb_raw else None
+    )
+
+    mg = graph_cfg.get("memgraph") or {}
+    memgraph = MemgraphSettings(
+        enabled=bool(mg.get("enabled", False)),
+        uri=str(mg.get("uri") or "bolt://localhost:7687"),
+        user=mg.get("user"),
+        password=mg.get("password"),
+        clear=bool(mg.get("clear", True)),
+        create_indexes=bool(mg.get("create_indexes", True)),
+    )
+
+    return GraphBuildSettings(
+        misp_json_path=misp_json_path,
+        output_dir=output_dir,
+        exclude_node_types=exclude_node_types,
+        embeddings_output_dir=embeddings_output_dir,
+        memgraph=memgraph,
+    )
+
+
+def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
+    """
+    Path to the hetero .pt file produced by build_graph for the current pipeline config
+    (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
+    """
+    cfg = load_pipeline_config(project_root=project_root)
+    s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
+    base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
+    return os.path.join(s.output_dir, f"{base}_hetero.pt")

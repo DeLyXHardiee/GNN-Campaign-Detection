@@ -70,3 +70,17 @@ The graph connects emails to their components and components to each other:
 - **PyTorch Geometric**: `core/graph/graph_builder_pytorch.py` converts the IR into a `HeteroData` object and applies normalization.
 - **Memgraph**: `core/graph/graph_builder_memgraph.py` mirrors the IR into a Memgraph database via Bolt.
 
+## Pipeline configuration (`pipeline_config.json` → `graph`)
+
+The graph build stage reads the `graph` object (paths relative to the repo root unless absolute):
+
+| Key | Description |
+|-----|-------------|
+| `misp_json_path` | Input MISP JSON. If `null`, uses `datasets.misp_json_path`. |
+| `output_dir` | Directory for `{misp_basename}_hetero.pt` and `.meta.json`. |
+| `exclude_node_types` | Node type names to drop from the IR (e.g. `week`, `url`, `domain`). |
+| `embeddings_output_dir` | Optional SBERT cache directory; omit for default under `core/graph/embeddings/output`. |
+| `memgraph` | `enabled`, `uri`, `user`, `password`, `clear`, `create_indexes`. |
+
+`core/main.py` `run_graph_creation()` uses these settings; pass `misp_json_path` to override after preprocessing. `core/config/pipeline_config.py` exposes `GraphBuildSettings` and `default_hetero_graph_pt_path()` for tools such as `core/GNN/src/load_graph_data.py`.
+
