@@ -1,12 +1,13 @@
 
 ================================================================================
-Mean Shift Run - 2026-03-16 15:09:40
+Mean Shift Run - 2026-03-18 14:01:09
 Parameters: quantile=0.25, n_samples=500, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
 ================================================================================
 
-
-================================================================================
-Mean Shift Run - 2026-03-16 15:12:44
-Parameters: quantile=0.25, n_samples=500, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
-================================================================================
-
+FS1: H=0.0000, C=1.0000, V=0.0000 (n=731, clusters=1)
+FS2: H=0.0000, C=1.0000, V=0.0000 (n=731, clusters=1)
+FS3: H=0.1039, C=0.9108, V=0.1865 (n=749, clusters=11)
+FS4: H=0.0000, C=1.0000, V=0.0000 (n=733, clusters=1)
+FS5: H=0.0000, C=1.0000, V=0.0000 (n=732, clusters=1)
+FS6: H=0.0000, C=1.0000, V=0.0000 (n=714, clusters=1)
+FS7: H=0.0000, C=1.0000, V=0.0000 (n=703, clusters=1)

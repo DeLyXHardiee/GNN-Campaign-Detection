@@ -12,3 +12,5 @@ pytest
 mail-parser
 lxml
 hdbscan
+beautifulsoup4
+tldextract

@@ -1,14 +1,14 @@
 {
   "preprocessing": {
-    "incidents_csv_path": "data/csv/TREC-07-only-phishing-6m.csv",
+    "incidents_csv_path": "data/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "data/misp/TREC-07-only-phishing-6m.json",
+    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
     "limit": 5000
   },
   "datasets": {
-    "misp_json_path": "data/misp/TREC-07-only-phishing-6m.json",
-    "ground_truth_csv": "data/groundtruths/campaigns.csv",
-    "featureset_base_name": "TREC-07-only-phishing-6m"
+    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
+    "ground_truth_json": "data/groundtruth/ground_truth.json",
+    "featureset_base_name": "incidents-20260211-misp"
   },
   "graph": {
     "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
