@@ -92,6 +92,7 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         row: Dict[str, Any] = {
             "eid": int(eid),
             "email_index": em.get("email_index", int(eid)),
+            "external_id": str(em.get("external_id") or ""),
             "date": em.get("date", ""),
             "ts": int(ts_raw[eid]) if eid < len(ts_raw) else 0,
             "n_urls": int(get_attr("n_urls")[eid]),
