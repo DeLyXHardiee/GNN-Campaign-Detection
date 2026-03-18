@@ -1,6 +1,7 @@
 # Ignore data files
 *.csv
-*.json
+*misp.json
+*clusters.json
 core/GNN/data
 core/GNN/notebooks/data
 data/*
