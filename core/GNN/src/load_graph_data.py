@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from torch_geometric.datasets import IMDB
 import torch
@@ -14,10 +15,23 @@ def load_imdb(root: str = "data/IMDB"):
     dataset = IMDB(root=root)
     return dataset[0]
 
-def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_hetero.pt"):
+def _default_hetero_pt_from_pipeline_config() -> str:
+    """Resolve default .pt path from repo-root pipeline_config.json (graph + datasets)."""
+    core_dir = Path(__file__).resolve().parent.parent.parent
+    repo_root = core_dir.parent
+    if str(core_dir) not in sys.path:
+        sys.path.insert(0, str(core_dir))
+    from config.pipeline_config import default_hetero_graph_pt_path
+
+    return default_hetero_graph_pt_path(project_root=repo_root)
+
+
+def load_hetero_pt(path: str | None = None):
     """
     Load a saved HeteroData object from a .pt file.
+    When path is None, uses graph.output_dir and MISP basename from pipeline_config.json.
     """
+    path = path or _default_hetero_pt_from_pipeline_config()
     path = str(Path(path).expanduser())
     data = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(data, HeteroData):

@@ -10,6 +10,20 @@
     "ground_truth_csv": "data/groundtruths/campaigns.csv",
     "featureset_base_name": "TREC-07-only-phishing-6m"
   },
+  "graph": {
+    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
+    "output_dir": "graph/output",
+    "exclude_node_types": ["week"],
+    "embeddings_output_dir": null,
+    "memgraph": {
+      "enabled": false,
+      "uri": "bolt://localhost:7687",
+      "user": null,
+      "password": null,
+      "clear": true,
+      "create_indexes": true
+    }
+  },
   "featureset-clustering": {
     "max_tfidf_features": 5000,
     "n_components_values": [
