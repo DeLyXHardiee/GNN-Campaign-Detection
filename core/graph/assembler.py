@@ -575,12 +575,15 @@ def materialize_edges(
 
     for email_idx, em in enumerate(emails):
         urls = _as_email_list(em.get("urls"))
+        # external_id: MISP id for joining to ground truth; not used in feature matrix
+        ext_id = em.get("external_id")
         email_meta.append(
             {
                 "info": em.get("email_info", ""),
                 "index": email_idx,
                 "email_index": em.get("email_index", email_idx),
                 "date": em.get("date", ""),
+                "external_id": str(ext_id) if ext_id is not None else "",
             }
         )
         email_attrs_raw["ts"].append(to_unix_ts(em.get("date", "")))
@@ -825,6 +828,7 @@ def _assemble_email_attrs(
         out[k] = email_attrs_raw.get(k, [])
     for k in AUTH_ATTR_KEYS:
         out[k] = email_attrs_raw.get(k, [])
+    out["external_id"] = [str(m.get("external_id") or "") for m in email_meta]
     return out
 
 

@@ -10,7 +10,8 @@ core/GNN/models
 core/graph/utils/results
 core/graph/output
 core/feature_set_extraction/output/featuresets
-
+core/GNN/notebooks/models
+core/graph/embeddings/output
 
 # Ignore Python cache files
 __pycache__/
