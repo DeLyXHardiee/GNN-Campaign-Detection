@@ -2,10 +2,35 @@ import json
 import os
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, normalize
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction import DictVectorizer
 from sklearn.decomposition import TruncatedSVD
+from sklearn.ensemble import IsolationForest
+from sentence_transformers import SentenceTransformer
 from preprocessing.utils.defang import sanitize_for_json
+
+
+_SBERT_MODEL = None
+
+
+def _get_sbert_model(model_name="intfloat/multilingual-e5-large"):
+    global _SBERT_MODEL
+    if _SBERT_MODEL is None:
+        _SBERT_MODEL = SentenceTransformer(model_name)
+    return _SBERT_MODEL
+
+
+def _encode_texts_with_sbert(texts, model_name="intfloat/multilingual-e5-large", batch_size=64):
+    model = _get_sbert_model(model_name=model_name)
+    embeddings = model.encode(
+        texts,
+        batch_size=batch_size,
+        show_progress_bar=False,
+        convert_to_numpy=True,
+        normalize_embeddings=False,
+    )
+    return np.asarray(embeddings, dtype=float)
 
 
 def _normalize_token_list(value):
@@ -35,6 +60,90 @@ def _normalize_token_list(value):
     return [str(value).strip().lower()] if str(value).strip() else []
 
 
+def _normalize_numeric_dict(value):
+    """Normalize dict-like features into str->float mapping for vectorization."""
+    if value is None:
+        return {}
+
+    raw_dict = None
+    if isinstance(value, dict):
+        raw_dict = value
+    elif isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return {}
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, dict):
+                raw_dict = parsed
+        except Exception:
+            return {}
+    else:
+        return {}
+
+    norm = {}
+    for key, val in raw_dict.items():
+        if key is None:
+            continue
+        k = str(key).strip().lower()
+        if not k:
+            continue
+        try:
+            norm[k] = float(val)
+        except Exception:
+            continue
+    return norm
+
+
+def _scale_and_normalize_matrix(X, scaler_type="robust", l2_normalize=True):
+    """Apply feature scaling and optional row-wise L2 normalization."""
+    if scaler_type == "robust":
+        scaler = RobustScaler()
+    elif scaler_type == "standard":
+        scaler = StandardScaler()
+    elif scaler_type == "minmax":
+        scaler = MinMaxScaler()
+    elif scaler_type in (None, "none"):
+        scaler = None
+    else:
+        raise ValueError(f"Unsupported scaler_type: {scaler_type}")
+
+    if scaler is not None:
+        X = scaler.fit_transform(X)
+
+    if l2_normalize:
+        X = normalize(X, norm="l2", axis=1)
+
+    return X
+
+
+def remove_outliers_from_matrix(X, contamination=0.05, random_state=42):
+    """Remove outlier rows from feature matrix using IsolationForest."""
+    if X is None or len(X) == 0:
+        return X, np.array([], dtype=bool), 0
+
+    if contamination is None or contamination <= 0:
+        keep_mask = np.ones(X.shape[0], dtype=bool)
+        return X, keep_mask, 0
+
+    contamination = min(float(contamination), 0.5)
+    model = IsolationForest(
+        contamination=contamination,
+        random_state=random_state,
+        n_estimators=200,
+    )
+    pred = model.fit_predict(X)
+    keep_mask = pred == 1
+    removed = int((~keep_mask).sum())
+
+    if keep_mask.sum() == 0:
+        # Safety fallback: never drop all rows.
+        keep_mask = np.ones(X.shape[0], dtype=bool)
+        return X, keep_mask, 0
+
+    return X[keep_mask], keep_mask, removed
+
+
 def preprocess_for_clustering(
     records,
     max_tfidf_features,
@@ -43,6 +152,10 @@ def preprocess_for_clustering(
     n_components=None,
     token_list_fields=None,
     token_svd_components=32,
+    dict_feature_fields=None,
+    scaler_type="robust",
+    l2_normalize=True,
+    sbert_model_name="all-MiniLM-L6-v2",
 ):
 
     if not records:
@@ -54,10 +167,15 @@ def preprocess_for_clustering(
     if token_list_fields is None:
         # Common URL list-like fields represented as token strings or arrays.
         token_list_fields = ['hostnames', 'domains']
+
+    if dict_feature_fields is None:
+        # Structured sparse dictionaries produced by feature extraction.
+        dict_feature_fields = ['subject_term_frequency']
     
     sample_record = records[0]
     numeric_fields = []
     detected_text_fields = []
+    detected_dict_fields = []
     
     for key, value in sample_record.items():
         if key in exclude_fields:
@@ -67,6 +185,8 @@ def preprocess_for_clustering(
             numeric_fields.append(key)
         elif isinstance(value, str) and len(value) > 0:
             detected_text_fields.append(key)
+        elif isinstance(value, dict):
+            detected_dict_fields.append(key)
     
     if text_fields is None:
         text_fields = detected_text_fields
@@ -78,11 +198,18 @@ def preprocess_for_clustering(
         f for f in token_list_fields
         if f in sample_record and f not in exclude_fields
     ]
+
+    dict_feature_fields = [
+        f for f in dict_feature_fields
+        if f in sample_record and f not in exclude_fields
+    ]
     text_fields = [f for f in text_fields if f not in token_list_fields]
+    text_fields = [f for f in text_fields if f not in dict_feature_fields]
     
     print(f"Detected {len(numeric_fields)} numeric fields: {numeric_fields[:5]}...")
-    print(f"Using {len(text_fields)} text fields for TF-IDF: {text_fields}")
+    print(f"Using {len(text_fields)} text fields: {text_fields}")
     print(f"Using {len(token_list_fields)} token-list fields: {token_list_fields}")
+    print(f"Using {len(dict_feature_fields)} dict feature fields: {dict_feature_fields}")
     
     X_numeric = []
     for record in records:
@@ -104,6 +231,13 @@ def preprocess_for_clustering(
             continue
         
         try:
+            if text_field in {"subject", "body"}:
+                X_text = _encode_texts_with_sbert(texts, model_name=sbert_model_name)
+                feature_parts.append(X_text)
+                feature_names.extend([f"{text_field}_sbert_{i}" for i in range(X_text.shape[1])])
+                print(f"  {text_field}: extracted {X_text.shape[1]} SBERT features")
+                continue
+
             tfidf = TfidfVectorizer(
                 max_features=max_tfidf_features,
                 stop_words='english',
@@ -139,26 +273,6 @@ def preprocess_for_clustering(
                 lowercase=True,
             )
             X_tokens_sparse = vectorizer.fit_transform(token_docs)
-
-            # Compress very wide sparse hostname/domain spaces to stable dense features.
-            if token_svd_components is not None and X_tokens_sparse.shape[1] > 1:
-                max_components = min(
-                    int(token_svd_components),
-                    X_tokens_sparse.shape[0] - 1,
-                    X_tokens_sparse.shape[1] - 1,
-                )
-                if max_components >= 1 and X_tokens_sparse.shape[1] > max_components:
-                    token_svd = TruncatedSVD(n_components=max_components, random_state=42)
-                    X_tokens = token_svd.fit_transform(X_tokens_sparse)
-                    feature_parts.append(X_tokens)
-                    feature_names.extend([f"{token_field}_svd_{i}" for i in range(X_tokens.shape[1])])
-                    explained = token_svd.explained_variance_ratio_.sum()
-                    print(
-                        f"  {token_field}: {X_tokens_sparse.shape[1]} TF-IDF -> {X_tokens.shape[1]} SVD "
-                        f"({explained*100:.2f}% explained)"
-                    )
-                    continue
-
             X_tokens = X_tokens_sparse.toarray()
             if X_tokens.shape[1] > 0:
                 feature_parts.append(X_tokens)
@@ -168,6 +282,27 @@ def preprocess_for_clustering(
                 print(f"  Skipping '{token_field}': no features extracted")
         except Exception as e:
             print(f"  Error processing token-list field '{token_field}': {e}")
+
+    # Dedicated processing for sparse dict features (e.g., subject_term_frequency).
+    for dict_field in dict_feature_fields:
+        dict_docs = [_normalize_numeric_dict(record.get(dict_field, {})) for record in records]
+
+        if all(len(d) == 0 for d in dict_docs):
+            print(f"  Skipping '{dict_field}': all empty")
+            continue
+
+        try:
+            vectorizer = DictVectorizer(sparse=True)
+            X_dict_sparse = vectorizer.fit_transform(dict_docs)
+            X_dict = X_dict_sparse.toarray()
+            if X_dict.shape[1] > 0:
+                feature_parts.append(X_dict)
+                feature_names.extend([f"{dict_field}_dict_{i}" for i in range(X_dict.shape[1])])
+                print(f"  {dict_field}: extracted {X_dict.shape[1]} dict features")
+            else:
+                print(f"  Skipping '{dict_field}': no features extracted")
+        except Exception as e:
+            print(f"  Error processing dict field '{dict_field}': {e}")
     
     # combine
     X = np.hstack(feature_parts)
@@ -182,9 +317,9 @@ def preprocess_for_clustering(
         explained_variance = svd.explained_variance_ratio_.sum()
         print(f"  Explained variance ratio: {explained_variance:.4f} ({explained_variance*100:.2f}%)")
         print(f"  Reduced to {X.shape[1]} features")
-    
-    scaler = RobustScaler()
-    X = scaler.fit_transform(X)
+
+    print(f"Applying scaler: {scaler_type}, l2_normalize={l2_normalize}")
+    X = _scale_and_normalize_matrix(X, scaler_type=scaler_type, l2_normalize=l2_normalize)
     
     return X, feature_names
 
