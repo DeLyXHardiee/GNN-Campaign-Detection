@@ -1,35 +1,23 @@
 import json
 import ast
 from pathlib import Path
+from config.pipeline_config import (
+    graph_build_settings_from_pipeline,
+    load_pipeline_config,
+    resolve_project_path,
+)
 from preprocessing.data_parser import parse_incidents_with_email_bodies
 from preprocessing.misp_converter import incidents_to_misp_file
-
-
-def _load_pipeline_config() -> dict:
-    project_root = Path(__file__).resolve().parent.parent
-    config_path = project_root / "pipeline_config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _resolve_project_path(path_value: str | None) -> str | None:
-    if not path_value:
-        return None
-    candidate = Path(path_value)
-    if candidate.is_absolute():
-        return str(candidate)
-    project_root = Path(__file__).resolve().parent.parent
-    return str(project_root / candidate)
 
 def run_preprocessing_trec():
     """
     Loads the TREC-07-only-phishing-6m.csv path from config and creates a MISP JSON file from it.
     """
-    cfg = _load_pipeline_config()
+    cfg = load_pipeline_config()
     prep_cfg = cfg.get("preprocessing", {})
     # Force the incidents_csv_path to the TREC-07-only-phishing-6m.csv from config
-    incidents_csv_path = _resolve_project_path("data/csv/TREC-07-only-phishing-6m.csv")
-    misp_json_path = _resolve_project_path(prep_cfg.get("misp_json_path"))
+    incidents_csv_path = resolve_project_path("data/csv/TREC-07-only-phishing-6m.csv")
+    misp_json_path = resolve_project_path(prep_cfg.get("misp_json_path"))
     limit = prep_cfg.get("limit")
 
     print(f"Parsing TREC-07-only-phishing-6m incidents from {incidents_csv_path}...")
@@ -112,14 +100,13 @@ def run_preprocessing():
     """
     Parse incident metadata and email body files, then convert to MISP JSON.
     """
-    cfg = _load_pipeline_config()
+    cfg = load_pipeline_config()
     prep_cfg = cfg.get("preprocessing", {})
     limit = prep_cfg.get("limit")
-    
 
-    incidents_csv_path = _resolve_project_path(prep_cfg.get("incidents_csv_path"))
-    bodies_dir = _resolve_project_path(prep_cfg.get("bodies_dir"))
-    misp_json_path = _resolve_project_path(prep_cfg.get("misp_json_path"))
+    incidents_csv_path = resolve_project_path(prep_cfg.get("incidents_csv_path"))
+    bodies_dir = resolve_project_path(prep_cfg.get("bodies_dir"))
+    misp_json_path = resolve_project_path(prep_cfg.get("misp_json_path"))
 
     print(f"Parsing incidents from {incidents_csv_path}...")
     incidents = parse_incidents_with_email_bodies(
@@ -134,38 +121,47 @@ def run_preprocessing():
     print("MISP conversion complete.")
     return misp_json_path
 
-def run_graph_creation(misp_json_path="../data/misp/incidents-20260211-misp.json", *, to_memgraph: bool = False,
-                       mg_uri: str = "bolt://localhost:7687",
-                       mg_user: str | None = None, mg_password: str | None = None):
-    # input MISP JSON file --> Run graph creation --> output PyTorch Geometric graph
-    # Also optionally mirror it into Memgraph for visualization
+def run_graph_creation(
+    misp_json_path: str | None = None,
+    *,
+    to_memgraph: bool | None = None,
+    mg_uri: str | None = None,
+    mg_user: str | None = None,
+    mg_password: str | None = None,
+):
+    """
+    MISP JSON → PyTorch Geometric graph (and optionally Memgraph).
+    Paths and exclusions come from pipeline_config.json ``graph`` (and ``datasets`` for MISP).
+    Pass misp_json_path to override (e.g. output of run_preprocessing).
+    """
     from graph.graph_builder_pytorch import build_graph
     from graph.graph_builder_memgraph import build_memgraph
-    from graph.graph_filter import NodeType
 
-    # Filter out selected node types (omit to include everything)
-    # Toggle the list below to control which node types to EXCLUDE.
-    # e.g., exclude URL + DOMAIN related nodes to build a smaller graph:
-    excluded: list[NodeType] = [NodeType.WEEK]  # [NodeType.URL, NodeType.DOMAIN, NodeType.STEM]
+    cfg = load_pipeline_config()
+    settings = graph_build_settings_from_pipeline(cfg)
+    path = misp_json_path or settings.misp_json_path
 
     graph, graph_path, meta_path = build_graph(
-        misp_json_path=misp_json_path,
-        out_dir="graph/output",
-        exclude_nodes=excluded,
+        misp_json_path=path,
+        out_dir=settings.output_dir,
+        exclude_nodes=settings.exclude_node_types,
+        embeddings_output_dir=settings.embeddings_output_dir,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
     print(f"Saved metadata to: {meta_path}")
 
-    if to_memgraph:
+    use_memgraph = settings.memgraph.enabled if to_memgraph is None else to_memgraph
+    if use_memgraph:
+        mg = settings.memgraph
         summary = build_memgraph(
-            misp_json_path=misp_json_path,
-            mg_uri=mg_uri,
-            mg_user=mg_user,
-            mg_password=mg_password,
-            clear=True,
-            create_indexes=True,
-            exclude_nodes=excluded,
+            misp_json_path=path,
+            mg_uri=mg_uri if mg_uri is not None else mg.uri,
+            mg_user=mg_user if mg_user is not None else mg.user,
+            mg_password=mg_password if mg_password is not None else mg.password,
+            clear=mg.clear,
+            create_indexes=mg.create_indexes,
+            exclude_nodes=settings.exclude_node_types,
         )
         print("Memgraph load summary:")
         print(json.dumps(summary, indent=2))
@@ -174,8 +170,8 @@ def run_graph_creation(misp_json_path="../data/misp/incidents-20260211-misp.json
 
 def create_feature_sets():
     from feature_set_extraction.feature_set_extraction import run_featureset_extraction
-    cfg = _load_pipeline_config()
-    misp_path = _resolve_project_path(cfg.get("datasets", {}).get("misp_json_path"))
+    cfg = load_pipeline_config()
+    misp_path = resolve_project_path(cfg.get("datasets", {}).get("misp_json_path"))
     run_featureset_extraction(misp_path=misp_path)
 
 def run_featureset_clustering():
@@ -186,13 +182,13 @@ def run_featureset_clustering():
     from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
     from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
 
-    cfg = _load_pipeline_config()
+    cfg = load_pipeline_config()
     clustering_cfg = cfg.get("featureset-clustering", cfg.get("clustering", {}))
     dbscan_cfg = clustering_cfg.get("dbscan", {})
     meanshift_cfg = clustering_cfg.get("meanshift", {})
     outlier_cfg = clustering_cfg.get("outlier_removal", {})
 
-    ground_truth_csv = _resolve_project_path(cfg.get("datasets", {}).get("ground_truth_csv"))
+    ground_truth_csv = resolve_project_path(cfg.get("datasets", {}).get("ground_truth_csv"))
     dataset_base = cfg.get("datasets", {}).get("featureset_base_name", "synthetic_email_dataset_50")
 
     eps_values = dbscan_cfg.get("eps_values", [1, 1.5, 2])
@@ -305,8 +301,7 @@ if __name__ == "__main__":
     # misp_path = run_preprocessing_trec()
     # create_feature_sets()
     # run_featureset_clustering()
-    misp_path = "preprocessing/output/incidents-20260211-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
+    run_graph_creation()
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
