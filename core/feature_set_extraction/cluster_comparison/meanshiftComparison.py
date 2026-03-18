@@ -7,9 +7,10 @@ from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import silhouette_score
 
 from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
-    preprocess_for_clustering, 
+    preprocess_for_clustering,
+    record_cluster_id,
     save_clusters_to_json,
-    load_ground_truth_from_csv,
+    load_ground_truth_from_json,
     remove_outliers_from_matrix,
 )
 
@@ -24,7 +25,7 @@ def cluster_with_ids(
     remove_outliers=False,
     outlier_contamination=0.05,
 ):
-    idxs = [r["email_index"] for r in records]
+    idxs = [record_cluster_id(r) for r in records]
 
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
 
@@ -70,7 +71,7 @@ def meanshift_cluster_all(
     quantile=0.3,
     n_samples=500,
     max_tfidf_features=None,
-    ground_truth_csv=None,
+    ground_truth_json=None,
     n_components=None,
     remove_outliers=False,
     outlier_contamination=0.05,
@@ -84,19 +85,19 @@ def meanshift_cluster_all(
     os.makedirs(results_dir, exist_ok=True)
     
     ground_truth = None
-    if ground_truth_csv:
-        if not os.path.isabs(ground_truth_csv):
-            ground_truth_csv = os.path.join(package_dir, ground_truth_csv)
-        if os.path.exists(ground_truth_csv):
-            print(f"Loading ground truth from: {ground_truth_csv}")
-            ground_truth = load_ground_truth_from_csv(ground_truth_csv)
+    if ground_truth_json:
+        if not os.path.isabs(ground_truth_json):
+            ground_truth_json = os.path.join(package_dir, ground_truth_json)
+        if os.path.exists(ground_truth_json):
+            print(f"Loading ground truth from: {ground_truth_json}")
+            ground_truth = load_ground_truth_from_json(ground_truth_json)
             print(f"Ground truth loaded: {len(ground_truth)} emails in {len(set(ground_truth.values()))} clusters")
         else:
-            print(f"Warning: Ground truth file not found: {ground_truth_csv}")
+            print(f"Warning: Ground truth file not found: {ground_truth_json}")
     
     scores_file = os.path.join(results_dir, 'meanshift_scores.txt')
     
-    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']#['FS4', 'FS5']
     
     print(f"{'='*80}")
     print(f"Starting Mean Shift clustering on {len(feature_sets)} feature sets...")

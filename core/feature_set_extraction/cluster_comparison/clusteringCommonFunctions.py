@@ -162,7 +162,7 @@ def preprocess_for_clustering(
         raise ValueError("Empty records list")
     
     if exclude_fields is None:
-        exclude_fields = ['email_index']
+        exclude_fields = ["external_id"]
 
     if token_list_fields is None:
         # Common URL list-like fields represented as token strings or arrays.
@@ -324,6 +324,20 @@ def preprocess_for_clustering(
     return X, feature_names
 
 
+def record_cluster_id(record):
+    """
+    Stable id for clustering outputs and ground-truth alignment (matches
+    :func:`load_ground_truth_from_json` keys).
+    """
+    ext = record.get("external_id")
+    if ext is None:
+        raise ValueError("Feature record missing external_id")
+    s = str(ext).strip()
+    if not s:
+        raise ValueError("Feature record has empty external_id")
+    return s
+
+
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
     # write cluster outputs to package-local `core/feature_set_extraction/output/fsclusters`
     package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -333,38 +347,44 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
     input_base = os.path.splitext(os.path.basename(feature_set_path))[0]
     output_path = os.path.join(output_dir, f"{input_base}_{algorithm_name}_clusters.json")
     
-    record_lookup = {r["email_index"]: r for r in records}
-    
+    record_lookup = {}
+    for r in records:
+        rid = record_cluster_id(r)
+        record_lookup.setdefault(rid, r)
+
     has_noise = -1 in clusters
-    
+
     cluster_data = {
         "metadata": {
             "total_emails": len(records),
             "num_clusters": len([c for c in clusters.keys() if c != -1]),
             "algorithm": algorithm_name,
-            "feature_set_source": feature_set_path
+            "feature_set_source": feature_set_path,
+            "member_id_key": "external_id",
         },
-        "clusters": {}
+        "clusters": {},
     }
-    
+
     if has_noise:
         cluster_data["metadata"]["noise_points"] = len(clusters.get(-1, []))
-    
-    for cluster_id, email_indices in clusters.items():
+
+    for cluster_id, member_ids in clusters.items():
         cluster_name = "noise" if cluster_id == -1 else f"cluster_{cluster_id}"
-        
+
         cluster_data["clusters"][cluster_name] = {
-            "size": len(email_indices),
-            "email_indices": email_indices
+            "size": len(member_ids),
+            "external_ids": member_ids,
         }
-        
+
         if cluster_id != -1:
             cluster_data["clusters"][cluster_name]["emails"] = []
-            
-            for email_idx in email_indices:
-                if email_idx in record_lookup:
-                    email_record = record_lookup[email_idx].copy()
-                    cluster_data["clusters"][cluster_name]["emails"].append(email_record)
+
+            for mid in member_ids:
+                if mid in record_lookup:
+                    email_record = record_lookup[mid].copy()
+                    cluster_data["clusters"][cluster_name]["emails"].append(
+                        email_record
+                    )
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(sanitize_for_json(cluster_data), f, indent=2, ensure_ascii=False)
@@ -372,18 +392,66 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
     print(f"Saved cluster results to: {output_path}")
     return output_path
 
-def load_ground_truth_from_csv(path):
+
+def _ground_truth_cluster_id_from_key(raw_key):
+    """Derive cluster/campaign id from a JSON cluster key (e.g. label_store_1/49)."""
+    if raw_key == "noise":
+        return -1
+    tail = raw_key.split("/")[-1] if isinstance(raw_key, str) and "/" in raw_key else raw_key
+    try:
+        return int(tail)
+    except (ValueError, TypeError):
+        return raw_key
+
+
+def load_ground_truth_from_json(path):
     """
-        email_id (int) -> true_cluster_id
+    Load ground truth from a JSON file.
+
+    Expects a top-level ``clusters`` object. Each entry is either a list of
+    records with ``external_id``, or a dict containing ``emails`` or ``records``
+    (same shape as outputs from MISP / :func:`save_clusters_to_json`).
+
+    Returns:
+        dict: ``external_id`` (int if numeric, else str) -> true cluster id
+        (int when parsable from the cluster key, else str; noise -> -1).
     """
-    df = pd.read_csv(path)
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
     mapping = {}
-    for idx, row in df.iterrows():
-        email_ids = str(row["email_ids"]).split(",")
-        for e in email_ids:
-            e = e.strip()
-            if e:
-                mapping[int(e)] = idx
+    clusters = data.get("clusters", {})
+    for raw_key, payload in clusters.items():
+        cluster_id = _ground_truth_cluster_id_from_key(raw_key)
+        records = None
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict):
+            records = payload.get("emails") or payload.get("records")
+            if not records and payload.get("external_ids"):
+                records = [
+                    {"external_id": str(e).strip()}
+                    for e in payload["external_ids"]
+                    if str(e).strip()
+                ]
+            if not records:
+                records = []
+
+        if not records:
+            print(f"Warning: No records found for cluster {raw_key}")
+            continue
+
+        for rec in records:
+            if not isinstance(rec, dict):
+                print(f"Warning: Record {rec} is not a dictionary")
+                continue
+            ext = rec.get("external_id")
+            if ext is None:
+                print(f"Warning: Record {rec} has no external_id")
+                continue
+            ext_s = str(ext).strip()
+            if not ext_s:
+                continue
+            mapping[ext_s] = cluster_id
 
     return mapping

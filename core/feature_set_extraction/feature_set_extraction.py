@@ -662,7 +662,13 @@ def extract_features(misp_path, features, events=None):
     features_list = []
 
     for event_idx, email_fields in enumerate(events):
-        feat = {'email_index': event_idx}
+        ext = email_fields.get("external_id")
+        ext_s = str(ext).strip() if ext is not None else ""
+        if not ext_s:
+            raise ValueError(
+                f"Event at index {event_idx} has no external_id; required for feature rows"
+            )
+        feat = {"external_id": ext_s}
         
         for feature_type in features:
             if feature_type == "time":

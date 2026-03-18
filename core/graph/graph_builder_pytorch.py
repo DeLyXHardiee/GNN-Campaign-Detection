@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Sequence
 from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -225,7 +226,7 @@ def build_hetero_graph_from_misp(
     misp_events: List[dict],
     *,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType | str]] = None,
+    exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
@@ -303,7 +304,7 @@ def build_graph(
     out_dir: str = "results",
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
-    exclude_nodes: Optional[list[NodeType | str]] = None,
+    exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
 ) -> Tuple[Any, str, str]:
    
