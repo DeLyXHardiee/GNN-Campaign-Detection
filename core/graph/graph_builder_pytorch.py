@@ -148,6 +148,10 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
             other_out_dim=32,
         )
         data[N["email"].pyg].x = proj(raw)
+        email_meta = ir.nodes["email"].index_to_meta or []
+        data[N["email"].pyg].external_id = [
+            str(m.get("external_id") or "") for m in email_meta
+        ]
     else:
         data[N["email"].pyg].num_nodes = 0
 

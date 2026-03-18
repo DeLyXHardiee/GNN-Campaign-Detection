@@ -11,6 +11,7 @@ from pathlib import Path
 from .embedder import (
     DEFAULT_OUTPUT_DIR,
     MODEL_NAME,
+    external_ids_for_email_order,
     get_embeddings,
     run_standalone,
 )
@@ -18,6 +19,7 @@ from .embedder import (
 __all__ = [
     "DEFAULT_OUTPUT_DIR",
     "MODEL_NAME",
+    "external_ids_for_email_order",
     "get_embeddings",
     "run_standalone",
 ]
