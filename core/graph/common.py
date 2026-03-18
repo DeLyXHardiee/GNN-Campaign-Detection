@@ -10,12 +10,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
 import math
+
+#TODO Fix this import stuff
 try:
     # Works when running as a package, e.g. `python -m core.main`.
     from core.preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 except ModuleNotFoundError:
     # Works when running as a script from `core`, e.g. `python core/main.py`.
     from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
+import sys
+
+sys.path.append('../../preprocessing/utils')
+
+from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 from .misp_attribute_schema import DEFAULT_MISP_ATTRIBUTE_SCHEMA
 
 
