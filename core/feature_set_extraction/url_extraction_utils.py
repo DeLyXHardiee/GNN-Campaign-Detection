@@ -99,6 +99,7 @@ def contains_popular_in_subdomain(url, popular_domains):
 def extract_url_features(
     urls,
     popular_domains=None,
+    webhost_domains=None,
     phishing_target_domains=None,
     blacklist=None,
     domain_metadata=None,
@@ -107,6 +108,7 @@ def extract_url_features(
     """
     urls: list[str]
     popular_domains: set[str] (top 10k etc.)
+    webhost_domains: set[str] (known web-hosting-like domains)
     phishing_target_domains: set[str]
     blacklist: set[str]
     domain_metadata: dict[domain] -> {
@@ -119,6 +121,7 @@ def extract_url_features(
     """
 
     popular_domains = popular_domains or set()
+    webhost_domains = webhost_domains or set()
     phishing_target_domains = phishing_target_domains or set()
     blacklist = blacklist or set()
     domain_metadata = domain_metadata or {}
@@ -170,8 +173,8 @@ def extract_url_features(
     ev_domains = {d for d in unique_domains if domain_metadata.get(d, {}).get("ev")}
     any_ev_cert = len(ev_domains) > 0
 
-    # simple heuristic for web-host domain: hostname starts with www.
-    any_www_host = any((d["hostname"] or "").lower().startswith("www.") for d in per_url)
+    # Match against caller-provided web-host domain list.
+    any_is_web_hosting_domain = any((d.get("domain") or "") in webhost_domains for d in per_url)
 
     # heuristic for multi-part TLDs (e.g., co.uk)
     any_multi_part_tld = any((d.get("tld") or "").count(".") >= 1 for d in per_url)
@@ -207,11 +210,10 @@ def extract_url_features(
         "subdomain_counts": subdomain_counts,
         "hyphen_counts": hyphen_counts,
         
-        
         "any_ev_cert": any_ev_cert,
         "any_has_extra_http": any_has_extra_http,
         "any_multi_part_tld": any_multi_part_tld,
-        "any_www_host": any_www_host,
+        "any_is_web_hosting_domain": any_is_web_hosting_domain,
         "any_has_at_symbol": any_has_at_symbol,
         "any_has_non_ascii": any_has_non_ascii,
         "any_typo_popular_domains": any_typo_popular,

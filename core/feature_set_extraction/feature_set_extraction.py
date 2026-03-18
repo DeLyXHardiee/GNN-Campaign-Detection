@@ -10,6 +10,7 @@ from feature_set_extraction.tfidf_utils import build_vectorizer, precompute_subj
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
+from preprocessing.RDAP_processor import process_received_headers
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from graph.common import parse_misp_events
@@ -354,7 +355,7 @@ This function extracts only the sender name and email from the FROM header.
 The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
-def extract_origin_based_features(sender):
+def extract_origin_based_features(sender, received_hops=None):
     def _parse_sender_entry(sender_entry):
         if not isinstance(sender_entry, str) or not sender_entry.strip():
             return "", ""
@@ -387,8 +388,54 @@ def extract_origin_based_features(sender):
         if email:
             sender_names.append(name)
             sender_emails.append(email)
+    '''
+    if not isinstance(received_hops, list):
+        received_hops = []
 
-    return {"sender_name": sender_names, "sender_email": sender_emails}
+    rdap_results = []
+    try:
+        rdap_results = process_received_headers(received_hops)
+        if not isinstance(rdap_results, list):
+            rdap_results = []
+    except Exception:
+        rdap_results = []
+
+    header_received_domains = []
+    domain_registrars = []
+    domain_registration_dates = []
+    registrar_locations = []
+
+    for item in rdap_results:
+        if not isinstance(item, dict):
+            continue
+
+        domain = item.get("domain")
+        if isinstance(domain, str) and domain:
+            header_received_domains.append(domain)
+        else:
+            continue
+
+        registrar = item.get("registrar")
+        registration_date = item.get("registration_date")
+        registrar_location = item.get("registrar_location")
+
+        domain_registrars.append(registrar if isinstance(registrar, str) else "")
+        domain_registration_dates.append(registration_date if isinstance(registration_date, str) else "")
+        registrar_locations.append(registrar_location if isinstance(registrar_location, str) else "")
+
+    return {
+        "sender_name": sender_names,
+        "sender_email": sender_emails,
+        "header_received_domains": header_received_domains,
+        "domain_registrars": domain_registrars,
+        "domain_registration_dates": domain_registration_dates,
+        "registrar_locations": registrar_locations,
+    }
+    '''
+    return {
+    "sender_name": sender_names,
+    "sender_email": sender_emails,
+    }
 
 '''
 Recipient features concern the target users which only
@@ -434,7 +481,7 @@ def extract_recipient_based_features(recipient):
             recipient_names.append(name)
             recipient_emails.append(email)
 
-    return {"recipient_name": recipient_names, "recipient_email": recipient_emails}
+    return {"recipient_name": recipient_names, "recipient_email": recipient_emails, "recipient_count": len(recipient_emails)}
 
 '''
 URL-based features are one of the most important features in
@@ -633,7 +680,12 @@ def extract_features(misp_path, features, events=None):
                 feat.update(extract_attachment_features(email_fields.get("attachments")))
 
             elif feature_type == "origin":
-                feat.update(extract_origin_based_features(email_fields.get("senders")))
+                feat.update(
+                    extract_origin_based_features(
+                        email_fields.get("senders"),
+                        email_fields.get("received_hops", []),
+                    )
+                )
 
             elif feature_type == "receiver":
                 feat.update(extract_recipient_based_features(email_fields.get("receivers")))
