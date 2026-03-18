@@ -77,6 +77,14 @@ def random_body(word_count=100, rng=None):
     remaining_words = rng.choices(english_words, k=word_count - len(english_words))
     return " ".join(unique_words + remaining_words)
 
+
+def random_subject(min_words=3, max_words=7, rng=None):
+    """Create a subject by sampling from the shared english_words dictionary."""
+    rng = rng or body_rng
+    pick_count = min(rng.randint(min_words, max_words), len(english_words))
+    picked = rng.sample(english_words, k=pick_count)
+    return " ".join(picked)
+
 events = []
 
 base_epoch = 1773100000
@@ -104,6 +112,7 @@ for i in range(1, 1001):
     
     scl = {"legitimate":-1,"marketing":1,"spam":8,"phishing":7}[cat]
     body_text = random_body(20, rng=body_rng)
+    subject_text = random_subject(rng=body_rng)
     
     event = {
         "Event": {
@@ -113,7 +122,7 @@ for i in range(1, 1001):
             "Attribute": [
                 {"type":"from","value":[from_email]},
                 {"type":"to","value":[to_email]},
-                {"type":"subject","value":f"Sample email subject {i}"},
+                {"type":"subject","value":subject_text},
                 {"type":"date","value":to_str(base_epoch + i)},
                 {"type":"body","value":body_text},
                 

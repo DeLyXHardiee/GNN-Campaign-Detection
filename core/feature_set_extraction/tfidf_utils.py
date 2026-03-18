@@ -66,7 +66,8 @@ def save_idf_csv(path, vectorizer):
 def precompute_subject_idf(misp_path):
     """Compute and save subject IDF CSV for a given MISP JSON path.
 
-    Returns the path to the idf CSV. Does nothing if the CSV already exists.
+    Returns the path to the idf CSV.
+    Always recomputes to ensure full-term coverage from the current input data.
     """
     # compute project root relative to this file (core/feature_set_extraction)
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -79,9 +80,6 @@ def precompute_subject_idf(misp_path):
         csv_base = base_name + '-only-phishing'
 
     idf_path = os.path.join(project_root, 'data', 'csv', f"{csv_base}_subject_idf.csv")
-    if os.path.exists(idf_path):
-        return idf_path
-
     # try to load MISP JSON and extract all subjects
     try:
         with open(misp_path, 'r', encoding='utf-8') as f:
@@ -115,9 +113,10 @@ def precompute_subject_idf(misp_path):
         return idf_path
 
     try:
-        # use unigrams only here so the resulting CSV contains single words
-        # (no multi-word terms like "word1 word2").
-        vec = build_vectorizer(subjects, ngram_range=(1, 1))
+        # Use unigrams only and include all terms:
+        # - max_features=None (no cap)
+        # - stop_words=None (do not filter vocabulary)
+        vec = build_vectorizer(subjects, max_features=None, stop_words=None, ngram_range=(1, 1))
         save_idf_csv(idf_path, vec)
     except Exception:
         # ignore errors; caller will fallback to worker-side computation
