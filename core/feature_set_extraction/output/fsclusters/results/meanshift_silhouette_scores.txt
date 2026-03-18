@@ -1,12 +1,13 @@
 
 ================================================================================
-Mean Shift Run - 2026-03-16 15:09:40
+Mean Shift Run - 2026-03-18 14:01:09
 Parameters: quantile=0.25, n_samples=500, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
 ================================================================================
 
-
-================================================================================
-Mean Shift Run - 2026-03-16 15:12:44
-Parameters: quantile=0.25, n_samples=500, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
-================================================================================
-
+FS1: N/A (only 1 cluster(s) found)
+FS2: N/A (only 1 cluster(s) found)
+FS3: 0.9739 (clusters: 11)
+FS4: N/A (only 1 cluster(s) found)
+FS5: N/A (only 1 cluster(s) found)
+FS6: N/A (only 1 cluster(s) found)
+FS7: N/A (only 1 cluster(s) found)

@@ -188,7 +188,7 @@ def run_featureset_clustering():
     meanshift_cfg = clustering_cfg.get("meanshift", {})
     outlier_cfg = clustering_cfg.get("outlier_removal", {})
 
-    ground_truth_csv = resolve_project_path(cfg.get("datasets", {}).get("ground_truth_csv"))
+    ground_truth_json = resolve_project_path(cfg.get("datasets", {}).get("ground_truth_json"))
     dataset_base = cfg.get("datasets", {}).get("featureset_base_name", "synthetic_email_dataset_50")
 
     eps_values = dbscan_cfg.get("eps_values", [1, 1.5, 2])
@@ -224,7 +224,7 @@ def run_featureset_clustering():
                 n_components=n_components,
                 remove_outliers=remove_outliers,
                 outlier_contamination=outlier_contamination,
-                ground_truth_csv=ground_truth_csv,
+                ground_truth_json=ground_truth_json,
                 dataset_base=dataset_base,
             )
     
@@ -261,7 +261,7 @@ def run_featureset_clustering():
                 n_components=n_components,
                 remove_outliers=remove_outliers,
                 outlier_contamination=outlier_contamination,
-                ground_truth_csv=ground_truth_csv,
+                ground_truth_json=ground_truth_json,
                 dataset_base=dataset_base,
             )
     
@@ -300,8 +300,8 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # misp_path = run_preprocessing_trec()
     # create_feature_sets()
-    # run_featureset_clustering()
-    run_graph_creation()
+    run_featureset_clustering()
+    # run_graph_creation()
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
