@@ -1,0 +1,56 @@
+{
+  "device": "cpu",
+  "to_undirected": true,
+
+  "graph_path": "",
+  "checkpoint_path": "",
+  "ground_truth_path": "",
+  "output_dir": "outputs/run_test_pipeline",
+
+  "training": {
+    "torch_seed": 42,
+    "primary_ntype": "email",
+    "hidden": 64,
+    "out_dim": 64,
+    "layers": 2,
+    "dropout": 0.1,
+    "neg_ratio": 1.0,
+    "batch_size": 1024,
+    "fanout": [15, 10],
+    "val_ratio": 0.1,
+    "test_ratio": 0.1,
+    "epochs": 1,
+    "lr": 0.001,
+    "wd": 0.0001,
+    "score_head": "dot",
+    "early_stopping_patience": 5,
+    "lr_reduce_patience": 5,
+    "lr_reduce_factor": 0.5,
+    "lr_reduce_min": 0.0,
+    "supervised_edge_types": null,
+    "model_save_name": "best_model.pt",
+    "contrastive_edges": null,
+    "contrastive_weight": 0.2
+  },
+
+  "evaluation": {
+    "auroc_ap": {},
+    "recall_at_k": {
+      "K_list": [1, 10, 20],
+      "use_dot": false
+    }
+  },
+
+  "clustering": {
+    "model_name": "model_test",
+    "config": {
+      "cluster_algorithm": "dbscan",
+      "epsilon_values": [0.5],
+      "min_samples": 5,
+      "quantile_values": [0.25],
+      "n_samples": 500,
+      "min_cluster_size_values": [10]
+    }
+  }
+}
+

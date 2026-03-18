@@ -176,7 +176,8 @@ def run_training(DEVICE, TORCH_SEED, data,
                  supervised_edge_types=None,
                  model_save_name="best_model.pt",
                  contrastive_edges=None,
-                 contrastive_weight=0.2):
+                 contrastive_weight=0.2,
+                 run_dir=None):
     import os
     import csv
     import json
@@ -187,33 +188,14 @@ def run_training(DEVICE, TORCH_SEED, data,
     models_dir = Path("models")
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("run-%Y-%m-%d_%H-%M-%S")
-    run_dir = models_dir / f"run-{timestamp}"
+    if run_dir is None:
+        timestamp = datetime.now().strftime("run-%Y-%m-%d_%H-%M-%S")
+        run_dir = models_dir / f"run-{timestamp}"
+    else:
+        run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"🔖 Saving run artifacts to: {run_dir}")
-
-    config_path = os.path.join(run_dir, "config.json")
-    with open(config_path, 'w') as f:
-        json.dump({
-            "primary_ntype": primary_ntype,
-            "hidden": hidden,
-            "out_dim": out_dim,
-            "layers": layers,
-            "dropout": dropout,
-            "neg_ratio": neg_ratio,
-            "batch_size": batch_size,
-            "fanout": fanout,
-            "val_ratio": val_ratio,
-            "test_ratio": test_ratio,
-            "epochs": epochs,
-            "learning_rate": lr,
-            "weight_decay": wd,
-            "score_head": score_head,
-            "contrastive_edges": contrastive_edges,
-            "supervised_edges": supervised_edge_types,
-            "contrastive_weight": contrastive_weight
-        }, f, indent=2)
 
     metrics_csv = os.path.join(run_dir, "metrics.csv")
     with open(metrics_csv, mode='w', newline='') as f:
@@ -327,7 +309,7 @@ def run_training(DEVICE, TORCH_SEED, data,
                 save_dir=run_dir,
                 filename=f"best_model.pt"
             )
-            print(f"Best-accuracy model saved to {os.path.join(run_dir, 'model_best_val.pt')}")
+            print(f"Best val-loss checkpoint saved to {os.path.join(run_dir, 'best_model.pt')}")
         else:
             patience_counter += 1
 
