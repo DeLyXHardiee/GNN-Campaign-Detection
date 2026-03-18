@@ -1,7 +1,6 @@
 """Utilities for GNN training and evaluation."""
 
 from .load_graph_data import load_hetero_pt, load_imdb
-from .graph_diagnostics import print_connectivity_report
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 
 # Lazy imports: train, model_io, embed, loaders require torch-sparse/pyg-lib.
@@ -24,7 +23,6 @@ def __getattr__(name):
 __all__ = [
     "load_hetero_pt",
     "load_imdb",
-    "print_connectivity_report",
     "run_training",
     "HeteroSAGE",
     "DotPredictor",

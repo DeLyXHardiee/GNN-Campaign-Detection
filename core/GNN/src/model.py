@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch_geometric.nn import SAGEConv, to_hetero
 import torch.nn.functional as F
+import math
 
 class SAGEBackbone(nn.Module):
     def __init__(self, hidden=128, out=128, layers=2, dropout=0.1):
@@ -51,11 +52,6 @@ class MLPredictor(nn.Module):
         self.net = nn.Sequential(*layers)
     def forward(self, src, dst):
         return self.net(torch.cat([src, dst], dim=-1)).squeeze(-1)
-    
-
-import math
-import torch
-from torch import nn
 
 class DistMultPredictor(nn.Module):
     def __init__(self, dim, edge_types):
