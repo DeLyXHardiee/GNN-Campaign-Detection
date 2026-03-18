@@ -13,6 +13,7 @@ from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
+from graph.common import parse_misp_events
 
 
 '''
@@ -66,42 +67,24 @@ def extract_subject_features(subject, idf_dict):
     num_chars = len(subject)
     num_whitespace = sum(c.isspace() for c in subject)
 
-    dict = {
+    # Match sklearn's default tokenization behavior used during IDF precompute
+    # so punctuation-suffixed tokens (e.g., "pills?") become "pills".
+    terms = re.findall(r"(?u)\b\w\w+\b", subject.lower())
+    n_terms = len(terms)
+    term_counts = Counter(terms)
+    tfidf_vector = {}
+
+    for term, count in term_counts.items():
+        tf = count / n_terms if n_terms > 0 else 0.0
+        idf = idf_dict.get(term, 0.0) if isinstance(idf_dict, dict) else 1.0
+        tfidf_vector[term] = round(float(tf * idf), 6)
+
+    return {
         "subject_length": num_chars,
         "subject_whitespace_count": num_whitespace,
-        "subject": subject
+        "subject": subject,
+        "subject_term_frequency": tfidf_vector,
     }
-
-    # add summary stats
-    #dict.update(get_term_frequency_information(subject, idf_dict))
-    # add per-term TF-IDF mapping (uses idf_dict when provided)
-    dict.update(get_term_frequency_information(subject.lower(), idf_dict=idf_dict))
-
-    return dict
-
-def get_term_frequency_information(subject, idf_dict=None):
-    if not isinstance(subject, str):
-        subject = ""
-    terms = subject.lower().split()
-    n_terms = len(terms)
-    if n_terms == 0:
-        return {
-            "subject_avg_idf": 0.0,
-            "subject_max_idf": 0.0,
-            "subject_n_terms": 0
-        }
-    if idf_dict is None:
-        idfs = [1.0 for _ in terms]
-    else:
-        idfs = [idf_dict.get(term, 0.0) for term in terms]
-    avg_idf = sum(idfs) / n_terms
-    max_idf = max(idfs)
-    return {
-        "subject_avg_idf": avg_idf,
-        "subject_max_idf": max_idf,
-        "subject_n_terms": n_terms
-    }
-
 
 def get_term_frequencies(subject, vectorizer=None, max_features=None, idf_dict=None, idf_csv_path=None):
     """Return a dict mapping terms -> TF-IDF values for `subject`.
@@ -125,7 +108,7 @@ def get_term_frequencies(subject, vectorizer=None, max_features=None, idf_dict=N
 
     # If idf_dict is provided, use simple TF * IDF calculation
     if idf_dict is not None:
-        terms = subject.lower().split()
+        terms = re.findall(r"(?u)\b\w\w+\b", subject.lower())
         n_terms = len(terms)
         if n_terms == 0:
             return {}
@@ -203,8 +186,8 @@ def extract_body_based_features(body):
     #bow = compute_body_bow(body)
 
     return {
-        "num_urls": len(extracted_urls),
-        "has_urls": 1 if len(extracted_urls) > 0 else 0,
+        "num_urls_in_body": len(extracted_urls),
+        "has_urls_in_body": 1 if len(extracted_urls) > 0 else 0,
         "body_word_count": num_words,
         "num_lines": num_lines,
         "avg_word_length": avg_word_length,
@@ -270,7 +253,7 @@ def extract_body_features(body: str) -> dict:
         has_html
         num_html_tags
         num_images
-        num_urls
+        num_urls_in_body
         has_script
         has_css
         num_css_rules
@@ -307,7 +290,7 @@ def extract_body_features(body: str) -> dict:
         raw_urls = re.findall(r'https?://\S+', body)
         urls.update(raw_urls)
 
-        num_urls = len(urls)
+        num_urls_in_body = len(urls)
 
         # -------- Scripts --------
         has_script = int(bool(soup.find_all("script")))
@@ -333,7 +316,7 @@ def extract_body_features(body: str) -> dict:
         # Plain text handling
         num_html_tags = 0
         num_images = 0
-        num_urls = len(re.findall(r'https?://\S+', body))
+        num_urls_in_body = len(re.findall(r'https?://\S+', body))
         has_script = 0
         has_css = 0
         num_css_rules = 0
@@ -351,7 +334,7 @@ def extract_body_features(body: str) -> dict:
         "has_html": has_html,
         "num_html_tags": num_html_tags,
         "num_images": num_images,
-        "num_urls": num_urls,
+        "num_urls_in_body": num_urls_in_body,
         "has_script": has_script,
         "has_css": has_css,
         "num_css_rules": num_css_rules,
@@ -372,7 +355,16 @@ For the TREC dataset this is irrelevant so not implemented
 '''
 
 def extract_attachment_features(attachments):
-    return
+    if isinstance(attachments, list):
+        cleaned = [a for a in attachments if isinstance(a, str) and a]
+    elif isinstance(attachments, str) and attachments:
+        cleaned = [attachments]
+    else:
+        cleaned = []
+
+    return {
+        "attachments": cleaned,
+    }
 
 '''
 The origin feature category is mostly about the sender of
@@ -393,24 +385,40 @@ The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
 def extract_origin_based_features(sender):
-    if not isinstance(sender, str) or not sender.strip():
-        return {"sender_name": "", "sender_email": ""}
-    
-    sender = sender.strip()
-    
-    angle_match = re.search(r'^(.+?)\s*<(.+?)>', sender)
-    if angle_match:
-        name = angle_match.group(1).strip()
-        email = angle_match.group(2).strip()
-        name = name.strip('"')
-        return {"sender_name": name if name else "", "sender_email": email}
-    
-    email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', sender)
-    if email_match:
-        name = email_match.group(1)
-        return {"sender_name": name, "sender_email": sender}
-    
-    return {"sender_name": "", "sender_email": ""}
+    def _parse_sender_entry(sender_entry):
+        if not isinstance(sender_entry, str) or not sender_entry.strip():
+            return "", ""
+
+        sender_entry = sender_entry.strip()
+
+        angle_match = re.search(r'^(.+?)\s*<(.+?)>', sender_entry)
+        if angle_match:
+            name = angle_match.group(1).strip().strip('"')
+            email = angle_match.group(2).strip()
+            return (name if name else ""), email
+
+        email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', sender_entry)
+        if email_match:
+            return email_match.group(1), sender_entry
+
+        return "", ""
+
+    if isinstance(sender, list):
+        sender_entries = sender
+    elif isinstance(sender, str):
+        sender_entries = [sender]
+    else:
+        sender_entries = []
+
+    sender_names = []
+    sender_emails = []
+    for sender_entry in sender_entries:
+        name, email = _parse_sender_entry(sender_entry)
+        if email:
+            sender_names.append(name)
+            sender_emails.append(email)
+
+    return {"sender_name": sender_names, "sender_email": sender_emails}
 
 '''
 Recipient features concern the target users which only
@@ -423,23 +431,40 @@ No idea what recipient counts means.
 '''
 
 def extract_recipient_based_features(recipient):
-    if not isinstance(recipient, str) or not recipient.strip():
-        return {"recipient_name": "", "recipient_email": ""}
-    
-    recipient = recipient.strip()
-    
-    angle_match = re.search(r'^(.+?)\s*<(.+?)>', recipient)
-    if angle_match:
-        name = angle_match.group(1).strip()
-        email = angle_match.group(2).strip()
-        return {"recipient_name": name if name else "", "recipient_email": email}
-    
-    email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', recipient)
-    if email_match:
-        name = email_match.group(1)
-        return {"recipient_name": name, "recipient_email": recipient}
-    
-    return {"recipient_name": "", "recipient_email": ""}
+    def _parse_recipient_entry(recipient_entry):
+        if not isinstance(recipient_entry, str) or not recipient_entry.strip():
+            return "", ""
+
+        recipient_entry = recipient_entry.strip()
+
+        angle_match = re.search(r'^(.+?)\s*<(.+?)>', recipient_entry)
+        if angle_match:
+            name = angle_match.group(1).strip().strip('"')
+            email = angle_match.group(2).strip()
+            return (name if name else ""), email
+
+        email_match = re.match(r'^([\w\.-]+)@[\w\.-]+\.\w+$', recipient_entry)
+        if email_match:
+            return email_match.group(1), recipient_entry
+
+        return "", ""
+
+    if isinstance(recipient, list):
+        recipient_entries = recipient
+    elif isinstance(recipient, str):
+        recipient_entries = [recipient]
+    else:
+        recipient_entries = []
+
+    recipient_names = []
+    recipient_emails = []
+    for recipient_entry in recipient_entries:
+        name, email = _parse_recipient_entry(recipient_entry)
+        if email:
+            recipient_names.append(name)
+            recipient_emails.append(email)
+
+    return {"recipient_name": recipient_names, "recipient_email": recipient_emails}
 
 '''
 URL-based features are one of the most important features in
@@ -499,26 +524,59 @@ Main extraction program
 '''
 
 
-def extract_features(misp_path, features):
+def _load_raw_misp_events(misp_path):
+    """Load raw MISP events in the same shape expected by graph parsing."""
     with open(misp_path, 'r', encoding='utf-8') as f:
         misp_data = json.load(f)
-    events = []
 
-    #TODO Find out if this is necessary
     if isinstance(misp_data, list):
-        events = misp_data
-    elif isinstance(misp_data, dict):
-        events = misp_data.get('response', {}).get('Event', [])
-        if not isinstance(events, list):
-            events = [events]
-    else:
-        events = []
+        return misp_data
 
+    if isinstance(misp_data, dict):
+        events = misp_data.get('Events')
+        if isinstance(events, list):
+            return events
+
+        events = misp_data.get('response', {}).get('Event', [])
+        if isinstance(events, list):
+            return events
+        if isinstance(events, dict):
+            return [events]
+
+        if isinstance(misp_data.get('Event'), dict):
+            return [misp_data]
+
+    return []
+
+
+def ensure_subject_idf(misp_path, events):
+    """Ensure subject IDF values exist and return them as a dict."""
+    idf_path = get_idf_path_for_misp(misp_path)
+    if os.path.exists(idf_path):
+        try:
+            return load_idf_dict(idf_path)
+        except Exception:
+            return None
+
+    subjects = []
+    for evt_fields in events:
+        subject = evt_fields.get("subject", "") if isinstance(evt_fields, dict) else ""
+        subjects.append(subject if isinstance(subject, str) else "")
+
+    try:
+        get_idf(subjects, idf_path)
+        return load_idf_dict(idf_path)
+    except Exception:
+        return None
+
+
+def extract_features(misp_path, features):
+    events = parse_misp_events(_load_raw_misp_events(misp_path))
+    subject_idf_dict = ensure_subject_idf(misp_path, events) if "subject" in features else None
     lsa_features_list = []
     if "body" in features: 
         bodies = []
-        for event in events:
-            email_fields = parse_misp_event_attributes(event.get('Event', {}))
+        for email_fields in events:
             body = email_fields.get("body", "")
             if not isinstance(body, str):
                 body = ""
@@ -528,49 +586,37 @@ def extract_features(misp_path, features):
 
     features_list = []
 
-    for event_idx, event in enumerate(events):
+    for event_idx, email_fields in enumerate(events):
         feat = {'email_index': event_idx}
-
-        email_fields = parse_misp_event_attributes(event.get('Event', {}))
         
         for feature_type in features:
             if feature_type == "time":
                 feat.update(extract_time_features(email_fields.get("date")))
 
             elif feature_type == "subject":
-                idf_path = get_idf_path_for_misp(misp_path)
-                if os.path.exists(idf_path):
-                    idf_dict = load_idf_dict(idf_path)
-                else:
-                    subjects = []
-                    for evt in events:
-                        email_fields = parse_misp_event_attributes(evt.get('Event', {}))
-                        subject = email_fields.get("subject", "")
-                        if isinstance(subject, str):
-                            subjects.append(subject)
-                        else:
-                            subjects.append("")
-                    
-                    get_idf(subjects, idf_path)
-                    idf_dict = load_idf_dict(idf_path)
-                feat.update(extract_subject_features(email_fields.get("subject"), idf_dict))
+                feat.update(extract_subject_features(email_fields.get("subject"), subject_idf_dict))
 
             elif feature_type == "body":
                 feat.update(extract_body_based_features(email_fields.get("body")))
                 feat.update(lsa_features_list[event_idx])
 
             elif feature_type == "attachments":
-                continue
+                feat.update(extract_attachment_features(email_fields.get("attachments")))
 
             elif feature_type == "origin":
-                feat.update(extract_origin_based_features(email_fields.get("sender")))
+                feat.update(extract_origin_based_features(email_fields.get("senders")))
 
             elif feature_type == "receiver":
-                feat.update(extract_recipient_based_features(email_fields.get("receiver")))
+                feat.update(extract_recipient_based_features(email_fields.get("receivers")))
 
             elif feature_type == "urls":
-                body = email_fields.get("body", "") if email_fields.get("body", "") is not None else ""
-                extracted_urls = extract_urls_from_text(body) if body else []
+                explicit_urls = email_fields.get("urls", [])
+                extracted_urls = []
+                if isinstance(explicit_urls, list):
+                    extracted_urls.extend([u for u in explicit_urls if isinstance(u, str) and u])
+                elif isinstance(explicit_urls, str) and explicit_urls:
+                    extracted_urls.append(explicit_urls)
+                extracted_urls = list(dict.fromkeys(extracted_urls))
                 feat.update(extract_url_based_features(extracted_urls))
         
         features_list.append(feat)
@@ -578,30 +624,44 @@ def extract_features(misp_path, features):
     return features_list
 
 def parse_misp_event_attributes(event):
-    email_fields = {
-        'subject': '',
-        'body': '',
-        'sender': '',
-        'receiver': '',
-        'date': ''
+    """Backward-compatible shim that delegates to graph/common schema parser."""
+    normalized = parse_misp_events([{"Event": event}] if isinstance(event, dict) else [])
+    if not normalized:
+        return {
+            'subject': '',
+            'body': '',
+            'sender': '',
+            'receiver': '',
+            'date': '',
+            'urls': []
+        }
+
+    parsed = normalized[0]
+    senders = parsed.get('senders', [])
+    receivers = parsed.get('receivers', [])
+    return {
+        'subject': parsed.get('subject', ''),
+        'body': parsed.get('body', ''),
+        'sender': senders[0] if senders else '',
+        'receiver': receivers[0] if receivers else '',
+        'date': parsed.get('date', ''),
+        'urls': parsed.get('urls', []),
+        'attachments': parsed.get('attachments', []),
+        'html': parsed.get('html', {}),
+        'css': parsed.get('css', {}),
+        'received_hops': parsed.get('received_hops', []),
+        'return_path': parsed.get('return_path', {}),
+        'auth_spf': parsed.get('auth_spf', ''),
+        'auth_dkim': parsed.get('auth_dkim', ''),
+        'auth_dmarc': parsed.get('auth_dmarc', ''),
+        'cyrillic_domain': parsed.get('cyrillic_domain', ''),
+        'contains_symbols': parsed.get('contains_symbols', ''),
+        'body_has_tracking_url': parsed.get('body_has_tracking_url', ''),
+        'body_has_tracking_image': parsed.get('body_has_tracking_image', ''),
+        'body_has_tracking_pixel': parsed.get('body_has_tracking_pixel', ''),
+        'body_has_unsubscribe_link': parsed.get('body_has_unsubscribe_link', ''),
+        'domain_is_common_webprovided': parsed.get('domain_is_common_webprovided', ''),
     }
-    attributes = event.get('Attribute', [])
-    for attr in attributes:
-        attr_type = attr.get('type', '')
-        attr_value = attr.get('value', '')
-        
-        if attr_type in ('email-subject', 'subject'):
-            email_fields['subject'] = attr_value
-        elif attr_type in ('email-body', 'body'):
-            email_fields['body'] = attr_value
-        elif attr_type in ('email-src', 'from'):
-            email_fields['sender'] = attr_value
-        elif attr_type in ('email-dst', 'to'):
-            email_fields['receiver'] = attr_value
-        elif attr_type in ('email-date', 'date'):
-            email_fields['date'] = attr_value
-    
-    return email_fields
 
 def get_idf_path_for_misp(misp_path):
     dir_name = os.path.dirname(misp_path)
@@ -632,7 +692,7 @@ def get_FS2(misp_path):
     return filtered_features
 
 def get_FS3(misp_path):
-    features_list = extract_features(misp_path, ["urls", "body", "origin"])
+    features_list = extract_features(misp_path, ["body", "urls", "origin"])
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
@@ -649,7 +709,7 @@ def get_FS4(misp_path):
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
-                        if k not in ["num_urls", "has_urls", "body_word_count",  "num_lines", "avg_word_length", "greeting",
+                        if k not in ["num_urls_in_body", "has_urls_in_body", "body_word_count",  "num_lines", "avg_word_length", "greeting",
                                      "subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms",]
                         }
         filtered_features.append(filtered_feat)
@@ -663,7 +723,7 @@ def get_FS5(misp_path):
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items() 
                         if k not in ["subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms", 
-                                     "num_urls", "has_urls", "body_word_count", "num_lines", "avg_word_length", "greeting", 
+                                     "num_urls_in_body", "has_urls_in_body", "body_word_count", "num_lines", "avg_word_length", "greeting", 
                                      "recipient_email", "domain_categories","registrar_locations",
                                      "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
                                      "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
@@ -677,7 +737,7 @@ def get_FS5(misp_path):
 
 #Maybe should not include some of the body features, unsure based on description
 def get_FS6(misp_path):
-    features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls"])
+    features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls", "attachments"])
     
     filtered_features = []
     for feat in features_list:
@@ -743,7 +803,8 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     # This avoids multiple processes attempting to write the same idf file
     # concurrently on Windows which can cause Access Denied errors.
     try:
-        precompute_subject_idf(misp_path)
+        print(f"Precomputing subject IDF values for: {misp_path}")
+        print(precompute_subject_idf(misp_path))
     except Exception:
         # If precomputation fails, fall back to existing behavior in workers.
         pass
@@ -784,12 +845,12 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
                     results.append(result)
                     
                     if result[4]:
-                        print(f"✓ {result[0]} completed ({result[2]} emails)")
+                        print(f"✔ {result[0]} completed ({result[2]} emails)")
                     else:
-                        print(f"✗ {result[0]} failed: {result[5]}")
+                        print(f"✖ {result[0]} failed: {result[5]}")
                 
                 except Exception as e:
-                    print(f"✗ {fs_name} raised exception: {e}")
+                    print(f"✖ {fs_name} raised exception: {e}")
                     results.append((fs_name, "", 0, [], False, str(e)))
         
         print(f"\n{'='*80}")
@@ -803,10 +864,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
             print(f"\nSuccessful extractions ({len(successful)}):")
             for fs_name, output_path, num_emails, sample_keys, _, _ in successful:
                 print(f"  {fs_name}: {output_path}")
-                print(f"    - Emails: {num_emails}")
-                if sample_keys:
-                    print(f"    - Sample keys: {sample_keys[:5]}...")
-        
+                
         if failed:
             print(f"\nFailed extractions ({len(failed)}):")
             for fs_name, _, _, _, _, error_msg in failed:

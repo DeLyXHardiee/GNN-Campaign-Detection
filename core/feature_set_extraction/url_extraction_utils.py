@@ -162,9 +162,9 @@ def extract_url_features(
         if reg_loc:
             registrar_location_map[d] = reg_loc
 
-    # ---------- subdomain / hyphen counts per URL ----------
-    subdomain_counts = [d.get("subdomain_count", 0) for d in per_url]
-    hyphen_counts = [d.get("hyphen_count", 0) for d in per_url]
+    # ---------- accumulated subdomain / hyphen counts ----------
+    subdomain_counts = sum(d.get("subdomain_count", 0) for d in per_url)
+    hyphen_counts = sum(d.get("hyphen_count", 0) for d in per_url)
 
     # ---------- EV certs and web-host heuristics ----------
     ev_domains = {d for d in unique_domains if domain_metadata.get(d, {}).get("ev")}
@@ -195,13 +195,13 @@ def extract_url_features(
             if text.startswith("http") and text != actual:
                 mismatch_count += 1
 
-    # represent lists as space-joined strings for CSV-friendly output
-    domain_list_str = " ".join(sorted(unique_domains))
-    hostname_list_str = " ".join([h for h in (d.get("hostname") for d in per_url) if h])
+    # keep domain/hostname values as lists for downstream set/text processing
+    domain_list = sorted(unique_domains)
+    hostname_list = [h for h in (d.get("hostname") for d in per_url) if h]
 
     return {
-        "domains": domain_list_str,
-        "hostnames": hostname_list_str,
+        "domains": domain_list,
+        "hostnames": hostname_list,
         "domain_categories": domain_category_map,
         "registrar_locations": registrar_location_map,
         "subdomain_counts": subdomain_counts,

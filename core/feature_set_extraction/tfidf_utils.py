@@ -9,6 +9,7 @@ except Exception:
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+from graph.common import parse_misp_events
 
 
 def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range=(1, 2)):
@@ -20,8 +21,8 @@ def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range
     vec = TfidfVectorizer(
         max_features=max_features,
         stop_words=stop_words,
-        min_df=2,
-        max_df=0.8,
+        min_df=1,
+        max_df=1.0,
         ngram_range=ngram_range
     )
     vec.fit(texts)
@@ -65,7 +66,8 @@ def save_idf_csv(path, vectorizer):
 def precompute_subject_idf(misp_path):
     """Compute and save subject IDF CSV for a given MISP JSON path.
 
-    Returns the path to the idf CSV. Does nothing if the CSV already exists.
+    Returns the path to the idf CSV.
+    Always recomputes to ensure full-term coverage from the current input data.
     """
     # compute project root relative to this file (core/feature_set_extraction)
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -78,9 +80,6 @@ def precompute_subject_idf(misp_path):
         csv_base = base_name + '-only-phishing'
 
     idf_path = os.path.join(project_root, 'data', 'csv', f"{csv_base}_subject_idf.csv")
-    if os.path.exists(idf_path):
-        return idf_path
-
     # try to load MISP JSON and extract all subjects
     try:
         with open(misp_path, 'r', encoding='utf-8') as f:
@@ -88,35 +87,36 @@ def precompute_subject_idf(misp_path):
     except Exception:
         return idf_path
 
-    # extract events
+    # Extract raw events using the same envelope handling as graph loading.
     if isinstance(misp_data, list):
-        events = misp_data
+        raw_events = misp_data
     elif isinstance(misp_data, dict):
-        events = misp_data.get('response', {}).get('Event', [])
-        if not isinstance(events, list):
-            events = [events]
+        if isinstance(misp_data.get('Events'), list):
+            raw_events = misp_data.get('Events', [])
+        else:
+            raw_events = misp_data.get('response', {}).get('Event', [])
+            if isinstance(raw_events, dict):
+                raw_events = [raw_events]
+            elif not isinstance(raw_events, list):
+                raw_events = []
     else:
-        events = []
+        raw_events = []
+
+    events = parse_misp_events(raw_events)
 
     subjects = []
     for evt in events:
-        event = evt.get('Event', {}) if isinstance(evt, dict) else {}
-        # find attribute entries
-        attrs = event.get('Attribute', [])
-        subj = ''
-        for a in attrs:
-            if a.get('type') in ('email-subject', 'subject'):
-                subj = a.get('value', '')
-                break
+        subj = evt.get('subject', '') if isinstance(evt, dict) else ''
         subjects.append(subj if isinstance(subj, str) else "")
 
     if not any(s.strip() for s in subjects):
         return idf_path
 
     try:
-        # use unigrams only here so the resulting CSV contains single words
-        # (no multi-word terms like "word1 word2").
-        vec = build_vectorizer(subjects, ngram_range=(1, 1))
+        # Use unigrams only and include all terms:
+        # - max_features=None (no cap)
+        # - stop_words=None (do not filter vocabulary)
+        vec = build_vectorizer(subjects, max_features=None, stop_words=None, ngram_range=(1, 1))
         save_idf_csv(idf_path, vec)
     except Exception:
         # ignore errors; caller will fallback to worker-side computation

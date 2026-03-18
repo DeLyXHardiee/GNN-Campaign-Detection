@@ -8,14 +8,28 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
     preprocess_for_clustering, 
     save_clusters_to_json,
     load_ground_truth_from_csv,
+    remove_outliers_from_matrix,
 )
 
 from clustering.clusteringMetrics import compute_silhouette_score, compute_homogeneity_from_clusters
 
-def cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components=None):
+def cluster_with_ids(
+    records,
+    eps,
+    min_samples,
+    max_tfidf_features=10000,
+    n_components=None,
+    remove_outliers=False,
+    outlier_contamination=0.05,
+):
     idxs = [r["email_index"] for r in records]
 
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
+
+    if remove_outliers:
+        X, keep_mask, removed = remove_outliers_from_matrix(X, contamination=outlier_contamination)
+        idxs = [idx for idx, keep in zip(idxs, keep_mask) if keep]
+        print(f"Removed {removed} outliers before DBSCAN (contamination={outlier_contamination})")
 
     labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
 
@@ -37,7 +51,16 @@ def compute_silhouette_score(X, labels):
     else:
         return None
 
-def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_truth_csv=None, n_components=None):
+def dbscan_cluster_all(
+    eps=2,
+    min_samples=5,
+    max_tfidf_features=None,
+    ground_truth_csv=None,
+    n_components=None,
+    remove_outliers=False,
+    outlier_contamination=0.05,
+    dataset_base="synthetic_email_dataset_50",
+):
     # read feature sets from package-local output/featuresets inside core/feature_set_extraction
     package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     featuresets_dir = os.path.join(package_dir, 'output', 'featuresets')
@@ -59,18 +82,26 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
     silhouette_file = os.path.join(results_dir, 'dbscan_silhouette_scores.txt')
     homogeneity_file = os.path.join(results_dir, 'dbscan_homogeneity_scores.txt') if ground_truth else None
     
-    feature_sets = ['FS1', 'FS2', ]#'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    feature_sets = ['FS4', 'FS5']#['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
     
     print(f"{'='*80}")
     print(f"Starting DBSCAN clustering on {len(feature_sets)} feature sets...")
-    print(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}")
+    print(
+        f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features=uncapped, "
+        f"n_components={n_components}, remove_outliers={remove_outliers}, "
+        f"outlier_contamination={outlier_contamination}"
+    )
     print(f"{'='*80}")
     
     with open(silhouette_file, 'a', encoding='utf-8') as sil_f:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sil_f.write("\n" + "="*80 + "\n")
         sil_f.write(f"DBSCAN Run - {timestamp}\n")
-        sil_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
+        sil_f.write(
+            f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features=uncapped, "
+            f"n_components={n_components}, remove_outliers={remove_outliers}, "
+            f"outlier_contamination={outlier_contamination}\n"
+        )
         sil_f.write("="*80 + "\n\n")
         
         hom_f = None
@@ -78,11 +109,15 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             hom_f = open(homogeneity_file, 'a', encoding='utf-8')
             hom_f.write("\n" + "="*80 + "\n")
             hom_f.write(f"DBSCAN Run - {timestamp}\n")
-            hom_f.write(f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features={max_tfidf_features}, n_components={n_components}\n")
+            hom_f.write(
+                f"Parameters: eps={eps}, min_samples={min_samples}, max_tfidf_features=uncapped, "
+                f"n_components={n_components}, remove_outliers={remove_outliers}, "
+                f"outlier_contamination={outlier_contamination}\n"
+            )
             hom_f.write("="*80 + "\n\n")
     
         for fs_name in feature_sets:
-            feature_set_path = os.path.join(featuresets_dir, f"TREC-07-misp-{fs_name}.json")
+            feature_set_path = os.path.join(featuresets_dir, f"{dataset_base}-{fs_name}.json")
             
             if not os.path.exists(feature_set_path):
                 print(f"\n✗ Skipping {fs_name}: File not found at {feature_set_path}")
@@ -94,11 +129,20 @@ def dbscan_cluster_all(eps=2, min_samples=5, max_tfidf_features=500, ground_trut
             print(f"{'='*80}")
             
             with open(feature_set_path, 'r', encoding='utf-8') as f:
-                records = json.load(f)
+                #cap at 5000 records
+                records = json.load(f)[:5000]
             
             print(f"Loaded {len(records)} records")
             
-            clusters, labels, X = cluster_with_ids(records, eps, min_samples, max_tfidf_features, n_components)
+            clusters, labels, X = cluster_with_ids(
+                records,
+                eps,
+                min_samples,
+                max_tfidf_features,
+                n_components,
+                remove_outliers=remove_outliers,
+                outlier_contamination=outlier_contamination,
+            )
             
             silhouette_avg = compute_silhouette_score(X, labels)
             n_clusters = len(set(labels)) - (1 if -1 in labels else 0)

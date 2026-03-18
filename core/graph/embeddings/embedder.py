@@ -52,11 +52,19 @@ def _save_cache(
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / _CACHE_FILENAME
+    # Ground-truth join key (same as cache key: external_id or str(email_index))
+    serializable = {}
+    for k, v in by_key.items():
+        if isinstance(v, dict):
+            e = {**v, "external_id": v.get("external_id") or k}
+            serializable[k] = e
+        else:
+            serializable[k] = v
     payload = {
         "model": MODEL_NAME,
         "subj_dim": subj_dim,
         "body_dim": body_dim,
-        "by_key": by_key,
+        "by_key": serializable,
     }
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=0, separators=(",", ":"))
@@ -102,6 +110,9 @@ def get_embeddings(
     Each email is identified by external_id (or email_index). Cached embeddings are loaded;
     for emails without a cache entry, embeddings are computed and then saved to the cache.
     Returns (subj_vecs, body_vecs, subj_dim, body_dim) with vectors in the same order as `emails`.
+
+    To align with ground truth, same order as `external_ids_for_email_order(emails)`;
+    each ``embeddings.json`` ``by_key`` entry includes ``external_id`` (join key).
     """
     out = Path(output_dir) if output_dir else DEFAULT_OUTPUT_DIR
     keys = [_email_key(em, i) for i, em in enumerate(emails)]
@@ -139,6 +150,7 @@ def get_embeddings(
             entry = {
                 "subj": new_subj[idx] if idx < len(new_subj) else [],
                 "body": new_body[idx] if idx < len(new_body) else [],
+                "external_id": keys[pos],
             }
             cache[keys[pos]] = entry
             subj_vecs[pos] = entry["subj"]
@@ -183,3 +195,8 @@ def run_standalone(
     if not emails:
         return [], [], 0, 0
     return get_embeddings(emails, output_dir=output_dir)
+
+
+def external_ids_for_email_order(emails: List[Dict[str, Any]]) -> List[str]:
+    """Stable id per row, matching ``get_embeddings`` order and ``embeddings.json`` cache keys."""
+    return [_email_key(em, i) for i, em in enumerate(emails)]
