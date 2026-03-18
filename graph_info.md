@@ -12,6 +12,7 @@ This document describes the current heterogeneous graph schema used in the GNN C
         - `len_subject`: Character count of the subject (float).
         - `x_text`: TF-IDF vector of `subject + body` (optional, configurable dims).
     - **Note**: In the PyTorch pipeline, these features are normalized (z-score/minmax) via `core/graph/normalizer.py`.
+    - **Metadata** (not in `x`, not normalized): `external_id` — list on `data["email"].external_id` (same order as email nodes); also in graph `.meta.json` (`node_maps.email.index_to_meta[].external_id`, `email_attrs.external_id`). SBERT cache `embeddings.json` stores `external_id` on each `by_key` entry for ground-truth joins.
 
 2. **sender** — The sender's email address.
     - **Features (x)**: `[length_of_address]`
