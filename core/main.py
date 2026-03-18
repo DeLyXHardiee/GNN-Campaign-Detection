@@ -303,10 +303,10 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # misp_path = run_preprocessing_trec()
-    # create_feature_sets()
-    # run_featureset_clustering()
-    misp_path = "preprocessing/output/incidents-20260211-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
+    create_feature_sets()
+    #run_featureset_clustering()
+    #misp_path = "preprocessing/output/incidents-20260211-misp.json"
+    #run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
