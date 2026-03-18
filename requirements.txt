@@ -12,3 +12,4 @@ pytest
 mail-parser
 lxml
 hdbscan
+tqdm

@@ -1,10 +1,12 @@
 import json
+import csv
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import torch
-from sklearn.cluster import DBSCAN
+import hdbscan
+from sklearn.cluster import DBSCAN, MeanShift, estimate_bandwidth
 from sklearn.metrics import (
     calinski_harabasz_score,
     completeness_score,
@@ -13,6 +15,8 @@ from sklearn.metrics import (
     silhouette_score,
     v_measure_score,
 )
+
+from src.model_io import load_model_checkpoint
 
 @torch.no_grad()
 def extract_email_embeddings(model, data, device):
@@ -224,8 +228,6 @@ def run_db_scan_analysis(id_to_embedding_map, ground_truth_labels, epsilon, min_
 
 
 def run_meanshift_analysis(id_to_embedding_map, ground_truth_labels, quantile, n_samples=None):
-    from sklearn.cluster import MeanShift, estimate_bandwidth
-
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
     clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
@@ -240,8 +242,6 @@ def run_meanshift_analysis(id_to_embedding_map, ground_truth_labels, quantile, n
 
 
 def run_hdbscan_analysis(id_to_embedding_map, ground_truth_labels, min_cluster_size, min_samples=None):
-    import hdbscan  # local import to keep dbscan/meanshift usable without hdbscan installed
-
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=int(min_cluster_size),
@@ -296,17 +296,46 @@ def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, 
 
 
 def save_metrics_csv(rows, path):
-    import csv
-    from pathlib import Path
-
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
         raise ValueError("No rows to save.")
 
     all_keys = set().union(*(r.keys() for r in rows))
+    preferred_order = [
+        # Identifiers / algorithm
+        "model",
+        "clustering_type",
+        # DBSCAN
+        "epsilon",
+        "min_samples",
+        # MeanShift
+        "quantile",
+        "n_samples",
+        "bandwidth",
+        # HDBSCAN
+        "min_cluster_size",
+        # Internal metrics
+        "silhouette",
+        "db_index",
+        "ch_index",
+        # External metrics
+        "homogeneity",
+        "completeness",
+        "v_measure",
+        # Coverage / size
+        "n_embeddings",
+        "n_clusters",
+        "n_noise",
+        "coverage",
+        # External alignment counts
+        "n_samples_external",
+    ]
+
+    remaining = sorted(k for k in all_keys if k not in preferred_order)
+    fieldnames = [k for k in preferred_order if k in all_keys] + remaining
     with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=sorted(all_keys))
+        w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
         w.writerows(rows)
     return str(path)
@@ -320,13 +349,14 @@ def sweep_clustering_for_one_model(
     clustering_config,
     output_dir,
     model_name="model",
+    model_column_name=None,
 ):
     id_to_emb = extract_email_embeddings(model, data, device)
     cfg = dict(clustering_config)
 
     rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
     for r in rows:
-        r["model"] = model_name
+        r["model"] = model_column_name if model_column_name is not None else model_name
 
     algo = str(cfg["cluster_algorithm"]).lower()
     output_dir = Path(output_dir)
@@ -348,8 +378,6 @@ def sweep_clustering_for_many_models(
 
     `checkpoints` should be an iterable of full paths to `.pt` files.
     """
-    from src.model_io import load_model_checkpoint
-
     output_dir = Path(output_dir)
     results = []
     for ckpt in sorted(checkpoints, key=lambda p: str(p)):

@@ -1,11 +1,7 @@
 {
   "device": "cpu",
   "to_undirected": true,
-
-  "graph_path": "",
-  "checkpoint_path": "",
-  "ground_truth_path": "",
-  "output_dir": "outputs/run_test_pipeline",
+  "run_id": "default_experiment",
 
   "training": {
     "torch_seed": 42,

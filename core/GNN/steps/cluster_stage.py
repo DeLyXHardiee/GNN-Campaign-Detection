@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -10,34 +11,38 @@ from src.load_graph_data import load_hetero_pt
 from src.model_io import load_model_checkpoint, select_device
 
 
-def run_clustering_stage(*, config_path: str | Path) -> dict:
-    cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+def run_clustering_stage(
+    *,
+    graph_path: str | Path,
+    ground_truth_path: str | Path,
+    checkpoint_path: str | Path,
+    output_dir: str | Path,
+    clustering_cfg: dict[str, Any],
+    model_name: str,
+    device_pref: str | None,
+    to_undirected: bool,
+) -> dict[str, Any]:
+    graph_path = str(graph_path)
+    ground_truth_path = str(ground_truth_path)
+    checkpoint_path = str(checkpoint_path)
 
-    graph_path = cfg["graph_path"]
-    ground_truth_path = cfg["ground_truth_path"]
     if not graph_path:
-        raise ValueError("cfg.graph_path is empty. Fill it in core/GNN/gnn_stage_pipeline_config.json.")
+        raise ValueError("GRAPH_PATH is empty in core/GNN/run_pipeline.py.")
     if not ground_truth_path:
-        raise ValueError("cfg.ground_truth_path is empty. Fill it in core/GNN/gnn_stage_pipeline_config.json.")
+        raise ValueError("GROUND_TRUTH_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
+    if not checkpoint_path:
+        raise ValueError("CHECKPOINT_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
 
-    output_dir = Path(cfg["output_dir"])
+    output_dir = Path(output_dir)
     clustering_out = output_dir / "clustering"
     clustering_out.mkdir(parents=True, exist_ok=True)
 
-    checkpoint_path = cfg.get("checkpoint_path") or ""
-    if not checkpoint_path:
-        training_cfg = cfg["training"]
-        checkpoint_path = str(output_dir / "training" / training_cfg["model_save_name"])
-    if not checkpoint_path:
-        raise ValueError("checkpoint_path is empty and could not be derived from output_dir/training.")
-
-    device_pref = cfg.get("device")
     pref = torch.device(device_pref) if isinstance(device_pref, str) and device_pref else None
     device = select_device(pref)
 
     data = load_hetero_pt(
         path=str(Path(graph_path).expanduser()),
-        to_undirected=bool(cfg["to_undirected"]),
+        to_undirected=bool(to_undirected),
     )
     ground_truth = extract_ground_truth_labels(ground_truth_path)
 
@@ -46,20 +51,25 @@ def run_clustering_stage(*, config_path: str | Path) -> dict:
     )
     _ = predictor, checkpoint
 
-    clustering_cfg = cfg["clustering"]
-    model_name = clustering_cfg["model_name"]
-
     sweep_clustering_for_one_model(
         model=model,
         data=data,
         device=device,
         ground_truth_labels=ground_truth,
-        clustering_config=clustering_cfg["config"],
+        clustering_config=clustering_cfg,
         output_dir=clustering_out,
         model_name=model_name,
+        model_column_name=Path(checkpoint_path).stem,
     )
 
-    algo = str(clustering_cfg["config"]["cluster_algorithm"]).lower()
-    csv_path = clustering_out / model_name / f"{algo}_sweep.csv"
-    return {"csv_path": str(csv_path), "output_dir": str(clustering_out)}
+    algo = str(clustering_cfg["cluster_algorithm"]).lower()
+    model_dir = clustering_out / model_name
+    csv_path = model_dir / f"{algo}_sweep.csv"
+
+    result = {"csv_path": str(csv_path), "output_dir": str(clustering_out), "model_column_name": Path(checkpoint_path).stem}
+    (model_dir / "stage_result.json").write_text(
+        json.dumps(result, indent=2),
+        encoding="utf-8",
+    )
+    return result
 
