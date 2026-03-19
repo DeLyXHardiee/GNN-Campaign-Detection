@@ -1,0 +1,68 @@
+{
+  "mailservice.net": {
+    "domain": "mailservice.net",
+    "registrar": "Annulet LLC",
+    "registration_date": "2003-07-12T18:11:22Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:38.801934",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/mailservice.net"
+  },
+  "outlook.com": {
+    "domain": "outlook.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "1994-08-18T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:38.861068",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/outlook.com"
+  },
+  "secure-bank.com": {
+    "domain": "secure-bank.com",
+    "registrar": "Name.com, Inc.",
+    "registration_date": "2018-12-18T19:20:10Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:38.921000",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/secure-bank.com"
+  },
+  "proton.me": {
+    "domain": "proton.me",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/proton.me",
+    "fetched_at": "2026-03-19T11:46:38.945239"
+  },
+  "store.com": {
+    "domain": "store.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "1994-02-02T05:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:39.004240",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/store.com"
+  },
+  "gmail.com": {
+    "domain": "gmail.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "1995-08-13T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:39.050966",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/gmail.com"
+  },
+  "yahoo.com": {
+    "domain": "yahoo.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "1995-01-18T05:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:39.101113",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/yahoo.com"
+  },
+  "example.com": {
+    "domain": "example.com",
+    "registrar": "RESERVED-Internet Assigned Numbers Authority",
+    "registration_date": "1995-08-14T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T11:46:39.174072",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/example.com"
+  },
+  "company.dk": {
+    "domain": "company.dk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/company.dk",
+    "fetched_at": "2026-03-19T11:46:39.227589"
+  }
+}

@@ -503,7 +503,6 @@ def extract_origin_based_features(sender, received_hops=None):
         if email:
             sender_names.append(name)
             sender_emails.append(email)
-    '''
     if not isinstance(received_hops, list):
         received_hops = []
 
@@ -546,7 +545,6 @@ def extract_origin_based_features(sender, received_hops=None):
         "domain_registration_dates": domain_registration_dates,
         "registrar_locations": registrar_locations,
     }
-    '''
     return {
     "sender_name": sender_names,
     "sender_email": sender_emails,
