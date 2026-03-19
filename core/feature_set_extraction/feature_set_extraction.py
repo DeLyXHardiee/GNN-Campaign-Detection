@@ -142,7 +142,89 @@ There are no HTML tags or attachments in the TREC data.
 
 '''
 
-def extract_body_based_features(body):
+def extract_body_markup_presence_features(body, html=None, css=None):
+    if not isinstance(body, str):
+        body = ""
+
+    tag_counts = {}
+    tree_stats = {}
+    style_features = {}
+    if isinstance(html, dict):
+        if isinstance(html.get("tag_counts"), dict):
+            tag_counts = html.get("tag_counts")
+        if isinstance(html.get("tree_stats"), dict):
+            tree_stats = html.get("tree_stats")
+    if isinstance(css, dict) and isinstance(css.get("style_features"), dict):
+        style_features = css.get("style_features")
+
+    has_structured_markup = bool(tag_counts or tree_stats or style_features)
+
+    if has_structured_markup:
+        html_tag_total = 0
+        for v in tag_counts.values():
+            try:
+                iv = int(v)
+            except Exception:
+                iv = 0
+            if iv > 0:
+                html_tag_total += iv
+
+        num_images = 0
+        try:
+            num_images = int(tag_counts.get("img", 0))
+        except Exception:
+            num_images = 0
+        if num_images <= 0:
+            try:
+                num_images = int(tree_stats.get("images", 0))
+            except Exception:
+                num_images = 0
+
+        script_count = 0
+        try:
+            script_count = int(tag_counts.get("script", 0))
+        except Exception:
+            script_count = 0
+        if script_count <= 0:
+            try:
+                script_count = int(tree_stats.get("external_scripts", 0))
+            except Exception:
+                script_count = 0
+
+        style_tag_count = 0
+        try:
+            style_tag_count = int(tag_counts.get("style", 0))
+        except Exception:
+            style_tag_count = 0
+
+        has_html_tags = int(html_tag_total > 0)
+        has_script = int(script_count > 0)
+        has_css_specs = int(style_tag_count > 0 or any(bool(v) for v in style_features.values()))
+
+    else:
+        has_html_tags = int(bool(re.search(r"<[^>]+>", body)))
+        num_images = 0
+        has_script = 0
+        has_css_specs = 0
+
+        if has_html_tags:
+            soup = BeautifulSoup(body, "html.parser")
+            num_images = len(soup.find_all("img"))
+            has_script = int(bool(soup.find_all("script")))
+            has_css_specs = int(bool(soup.find_all("style") or soup.find_all(style=True)))
+
+    return {
+        "has_html_tags": has_html_tags,
+        "has_images": int(num_images > 0),
+        "num_images": num_images,
+        "has_script": has_script,
+        "has_css_specs": has_css_specs,
+    }
+
+
+def extract_body_based_features(body, html=None, css=None):
+    if not isinstance(body, str):
+        body = ""
     extracted_urls = extract_urls_from_text(body) if body else []
     
     num_lines = len(body.splitlines())
@@ -153,8 +235,7 @@ def extract_body_based_features(body):
     avg_word_length = round(sum(len(word) for word in words) / num_words,1) if num_words > 0 else 0
 
     greeting_features = extract_greeting_features(body)
-
-    #bow = compute_body_bow(body)
+    bow = compute_body_bow(body)
 
     return {
         "num_urls_in_body": len(extracted_urls),
@@ -164,7 +245,8 @@ def extract_body_based_features(body):
         "avg_word_length": avg_word_length,
         "greeting": greeting_features.get("greeting", ""),
         "body": body,
-        #"bow": bow
+        "bow": bow,
+        **extract_body_markup_presence_features(body, html=html, css=css),
     }
 
 def compute_body_bow(body):
@@ -711,7 +793,13 @@ def extract_features(misp_path, features, events=None):
                 feat.update(extract_subject_features(email_fields.get("subject"), subject_idf_dict))
 
             elif feature_type == "body":
-                feat.update(extract_body_based_features(email_fields.get("body")))
+                feat.update(
+                    extract_body_based_features(
+                        email_fields.get("body"),
+                        email_fields.get("html", {}),
+                        email_fields.get("css", {}),
+                    )
+                )
                 if event_idx < len(lsa_features_list) and isinstance(lsa_features_list[event_idx], dict):
                     feat.update(lsa_features_list[event_idx])
 
