@@ -12,7 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from preprocessing.body_parser import extract_body_html_css_without_headers
-from preprocessing.attachment_parser import extract_attachment_hashes_from_email
+from preprocessing.attachment_parser import extract_attachment_metadata_from_email
 from preprocessing.html_css_parser import get_empty_html_structure, parse_css_fast, parse_html_fast
 from preprocessing.utils.url_extractor import extract_urls_from_text, deduplicate_urls
 
@@ -558,7 +558,7 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, Any]:
 def _parse_body_and_headers_with_mailparser(
     raw_bytes: bytes,
     sample_id: Optional[str] = None,
-) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], Dict[str, Any]]:
+) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Any]]:
     """Extract body, HTML/CSS structure, and attachments; optionally headers via mailparser.
     Never raises: on body/HTML parse failure returns empty body and empty structure, and logs.
     """
@@ -570,6 +570,7 @@ def _parse_body_and_headers_with_mailparser(
             empty_html,
             {"style_features": {}},
             [],
+            [],
             default_headers,
         )
 
@@ -577,7 +578,12 @@ def _parse_body_and_headers_with_mailparser(
         body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
         html_structure = parse_html_fast(html_text, sample_id=sample_id)
         css_structure = parse_css_fast(css_text)
-        attachment_hashes = extract_attachment_hashes_from_email(raw_bytes)
+        attachment_metadata = extract_attachment_metadata_from_email(raw_bytes)
+        attachment_hashes = [
+            str(item.get("sha256", "")).strip()
+            for item in attachment_metadata
+            if str(item.get("sha256", "")).strip()
+        ]
     except Exception as e:
         logging.warning(
             "Body/HTML extraction or parsing failed for sample %s: %s",
@@ -589,18 +595,19 @@ def _parse_body_and_headers_with_mailparser(
         html_structure = get_empty_html_structure()
         css_structure = {"style_features": {}}
         attachment_hashes = []
+        attachment_metadata = []
 
     if mailparser is None:
-        return body_text, html_structure, css_structure, attachment_hashes, default_headers
+        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, default_headers
 
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
         headers = _extract_headers_from_mailparser(parsed_mail)
-        return body_text, html_structure, css_structure, attachment_hashes, headers
+        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, headers
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_structure, css_structure, attachment_hashes, default_headers
+        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, default_headers
 
 
 def _configure_mailparser_logging() -> None:
@@ -697,9 +704,10 @@ def parse_incidents_with_email_bodies(
             html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
             css_text: Dict[str, Any] = {"style_features": {}}
             attachment_hashes: List[str] = []
+            attachment_metadata: List[Dict[str, Any]] = []
             parser_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
             raw_body_bytes = _read_body_file_bytes(body_file)
-            body_text, html_text, css_text, attachment_hashes, parser_headers = _parse_body_and_headers_with_mailparser(
+            body_text, html_text, css_text, attachment_hashes, attachment_metadata, parser_headers = _parse_body_and_headers_with_mailparser(
                 raw_body_bytes, sample_id=external_id
             )
 
@@ -727,6 +735,7 @@ def parse_incidents_with_email_bodies(
                 "email_html": html_text,
                 "email_css": css_text,
                 "email_attachments": attachment_hashes,
+                "email_attachment_metadata": attachment_metadata,
                 "email_headers": selected_headers,
                 "email_urls": email_urls,
             }

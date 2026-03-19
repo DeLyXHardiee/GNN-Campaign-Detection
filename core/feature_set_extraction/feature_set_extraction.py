@@ -325,7 +325,7 @@ For the TREC dataset this is irrelevant so not implemented
 
 '''
 
-def extract_attachment_features(attachments):
+def extract_attachment_features(attachments, attachment_metadata=None):
     if isinstance(attachments, list):
         cleaned = [a for a in attachments if isinstance(a, str) and a]
     elif isinstance(attachments, str) and attachments:
@@ -333,8 +333,41 @@ def extract_attachment_features(attachments):
     else:
         cleaned = []
 
+    if isinstance(attachment_metadata, dict):
+        metadata_items = [attachment_metadata]
+    elif isinstance(attachment_metadata, list):
+        metadata_items = [item for item in attachment_metadata if isinstance(item, dict)]
+    else:
+        metadata_items = []
+
+    sizes = []
+    content_types = []
+    top_level_types = []
+    for item in metadata_items:
+        raw_size = item.get("size_bytes")
+        try:
+            size_bytes = int(raw_size)
+            if size_bytes >= 0:
+                sizes.append(size_bytes)
+        except Exception:
+            pass
+
+        raw_ct = item.get("content_type", "")
+        content_type = str(raw_ct).strip().lower()
+        if content_type:
+            content_types.append(content_type)
+            top_level_types.append(content_type.split("/", 1)[0])
+
+    unique_content_types = sorted(set(content_types))
+    unique_top_level_types = sorted(set(top_level_types))
+
     return {
         "attachments": cleaned,
+        "has_attachments": int(len(cleaned) > 0 or len(metadata_items) > 0),
+        "num_attachments": int(max(len(cleaned), len(metadata_items))),
+        "attachment_sizes_bytes": sizes,
+        "attachment_types": unique_content_types,
+        "attachment_top_level_types": " ".join(unique_top_level_types),
     }
 
 '''
@@ -683,7 +716,12 @@ def extract_features(misp_path, features, events=None):
                     feat.update(lsa_features_list[event_idx])
 
             elif feature_type == "attachments":
-                feat.update(extract_attachment_features(email_fields.get("attachments")))
+                feat.update(
+                    extract_attachment_features(
+                        email_fields.get("attachments"),
+                        email_fields.get("attachment_metadata", []),
+                    )
+                )
 
             elif feature_type == "origin":
                 feat.update(
@@ -733,6 +771,7 @@ def parse_misp_event_attributes(event):
         'date': parsed.get('date', ''),
         'urls': parsed.get('urls', []),
         'attachments': parsed.get('attachments', []),
+        'attachment_metadata': parsed.get('attachment_metadata', []),
         'html': parsed.get('html', {}),
         'css': parsed.get('css', {}),
         'received_hops': parsed.get('received_hops', []),
