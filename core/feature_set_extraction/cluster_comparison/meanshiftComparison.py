@@ -7,9 +7,10 @@ from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn.metrics import silhouette_score
 
 from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
-    preprocess_for_clustering, 
+    preprocess_for_clustering,
+    record_cluster_id,
     save_clusters_to_json,
-    load_ground_truth_from_csv,
+    load_ground_truth_from_json,
     remove_outliers_from_matrix,
 )
 
@@ -24,7 +25,7 @@ def cluster_with_ids(
     remove_outliers=False,
     outlier_contamination=0.05,
 ):
-    idxs = [r["email_index"] for r in records]
+    idxs = [record_cluster_id(r) for r in records]
 
     X, feature_names = preprocess_for_clustering(records, max_tfidf_features, n_components=n_components)
 
@@ -70,7 +71,7 @@ def meanshift_cluster_all(
     quantile=0.3,
     n_samples=500,
     max_tfidf_features=None,
-    ground_truth_csv=None,
+    ground_truth_json=None,
     n_components=None,
     remove_outliers=False,
     outlier_contamination=0.05,
@@ -84,20 +85,19 @@ def meanshift_cluster_all(
     os.makedirs(results_dir, exist_ok=True)
     
     ground_truth = None
-    if ground_truth_csv:
-        if not os.path.isabs(ground_truth_csv):
-            ground_truth_csv = os.path.join(package_dir, ground_truth_csv)
-        if os.path.exists(ground_truth_csv):
-            print(f"Loading ground truth from: {ground_truth_csv}")
-            ground_truth = load_ground_truth_from_csv(ground_truth_csv)
+    if ground_truth_json:
+        if not os.path.isabs(ground_truth_json):
+            ground_truth_json = os.path.join(package_dir, ground_truth_json)
+        if os.path.exists(ground_truth_json):
+            print(f"Loading ground truth from: {ground_truth_json}")
+            ground_truth = load_ground_truth_from_json(ground_truth_json)
             print(f"Ground truth loaded: {len(ground_truth)} emails in {len(set(ground_truth.values()))} clusters")
         else:
-            print(f"Warning: Ground truth file not found: {ground_truth_csv}")
+            print(f"Warning: Ground truth file not found: {ground_truth_json}")
     
-    silhouette_file = os.path.join(results_dir, 'meanshift_silhouette_scores.txt')
-    homogeneity_file = os.path.join(results_dir, 'meanshift_homogeneity_scores.txt') if ground_truth else None
+    scores_file = os.path.join(results_dir, 'meanshift_scores.txt')
     
-    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']
+    feature_sets = ['FS1', 'FS2', 'FS3', 'FS4', 'FS5', 'FS6', 'FS7']#['FS4', 'FS5']
     
     print(f"{'='*80}")
     print(f"Starting Mean Shift clustering on {len(feature_sets)} feature sets...")
@@ -108,35 +108,23 @@ def meanshift_cluster_all(
     )
     print(f"{'='*80}")
     
-    with open(silhouette_file, 'a', encoding='utf-8') as sil_f:
+    with open(scores_file, 'a', encoding='utf-8') as score_f:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        sil_f.write("\n" + "="*80 + "\n")
-        sil_f.write(f"Mean Shift Run - {timestamp}\n")
-        sil_f.write(
+        score_f.write("\n" + "="*80 + "\n")
+        score_f.write(f"Mean Shift Run - {timestamp}\n")
+        score_f.write(
             f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features=uncapped, "
             f"n_components={n_components}, remove_outliers={remove_outliers}, "
             f"outlier_contamination={outlier_contamination}\n"
         )
-        sil_f.write("="*80 + "\n\n")
-        
-        hom_f = None
-        if homogeneity_file:
-            hom_f = open(homogeneity_file, 'a', encoding='utf-8')
-            hom_f.write("\n" + "="*80 + "\n")
-            hom_f.write(f"Mean Shift Run - {timestamp}\n")
-            hom_f.write(
-                f"Parameters: quantile={quantile}, n_samples={n_samples}, max_tfidf_features=uncapped, "
-                f"n_components={n_components}, remove_outliers={remove_outliers}, "
-                f"outlier_contamination={outlier_contamination}\n"
-            )
-            hom_f.write("="*80 + "\n\n")
+        score_f.write("="*80 + "\n\n")
     
         for fs_name in feature_sets:
             feature_set_path = os.path.join(featuresets_dir, f"{dataset_base}-{fs_name}.json")
             
             if not os.path.exists(feature_set_path):
                 print(f"\n✗ Skipping {fs_name}: File not found at {feature_set_path}")
-                sil_f.write(f"{fs_name}: SKIPPED (file not found)\n")
+                score_f.write(f"{fs_name}: SKIPPED (file not found)\n")
                 continue
             
             print(f"\n{'='*80}")
@@ -163,25 +151,29 @@ def meanshift_cluster_all(
             
             if silhouette_avg is not None:
                 print(f"Silhouette Score: {silhouette_avg:.4f}")
-                sil_f.write(f"{fs_name}: {silhouette_avg:.4f} (clusters: {n_clusters})\n")
+                silhouette_text = f"{silhouette_avg:.4f}"
             else:
                 if n_clusters < 2:
                     print(f"Silhouette Score: N/A (only {n_clusters} cluster(s) found)")
-                    sil_f.write(f"{fs_name}: N/A (only {n_clusters} cluster(s) found)\n")
+                    silhouette_text = f"N/A (only {n_clusters} cluster(s) found)"
                 else:
                     print(f"Silhouette Score: N/A")
-                    sil_f.write(f"{fs_name}: N/A\n")
-            
-            if ground_truth and hom_f:
+                    silhouette_text = "N/A"
+
+            metric_text = f"{fs_name}: silhouette={silhouette_text}, clusters={n_clusters}"
+            if ground_truth:
                 homogeneity_scores = compute_homogeneity_from_clusters(clusters, ground_truth)
                 print(f"Homogeneity: {homogeneity_scores['homogeneity']:.4f}, "
                       f"Completeness: {homogeneity_scores['completeness']:.4f}, "
                       f"V-measure: {homogeneity_scores['v_measure']:.4f} "
                       f"({homogeneity_scores['n_samples']} samples)")
-                hom_f.write(f"{fs_name}: H={homogeneity_scores['homogeneity']:.4f}, "
-                           f"C={homogeneity_scores['completeness']:.4f}, "
-                           f"V={homogeneity_scores['v_measure']:.4f} "
-                           f"(n={homogeneity_scores['n_samples']}, clusters={n_clusters})\n")
+                metric_text += (
+                    f", H={homogeneity_scores['homogeneity']:.4f}, "
+                    f"C={homogeneity_scores['completeness']:.4f}, "
+                    f"V={homogeneity_scores['v_measure']:.4f}, "
+                    f"n={homogeneity_scores['n_samples']}"
+                )
+            score_f.write(metric_text + "\n")
             
             output_path = save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="meanshift")
             
@@ -192,12 +184,8 @@ def meanshift_cluster_all(
             
             print(f"✓ {fs_name} clustering complete")
         
-        if hom_f:
-            hom_f.close()
-    
+
     print(f"\n{'='*80}")
     print("All feature sets clustered successfully!")
-    print(f"Silhouette scores saved to: {silhouette_file}")
-    if homogeneity_file:
-        print(f"Homogeneity scores saved to: {homogeneity_file}")
+    print(f"Combined scores saved to: {scores_file}")
     print(f"{'='*80}")

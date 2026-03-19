@@ -1,16 +1,16 @@
 from email.utils import parsedate_to_datetime
 import pandas as pd
 import os
-import csv
 from collections import Counter
 import json
 import re
 from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
-from feature_set_extraction.tfidf_utils import build_vectorizer, save_idf_csv, precompute_subject_idf
+from feature_set_extraction.tfidf_utils import build_vectorizer, precompute_subject_idf
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
+from preprocessing.RDAP_processor import process_received_headers
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from graph.common import parse_misp_events
@@ -86,60 +86,31 @@ def extract_subject_features(subject, idf_dict):
         "subject_term_frequency": tfidf_vector,
     }
 
-def get_term_frequencies(subject, vectorizer=None, max_features=None, idf_dict=None, idf_csv_path=None):
-    """Return a dict mapping terms -> TF-IDF values for `subject`.
+def load_idf_dict(idf_path):
+    with open(idf_path, 'r', encoding='utf-8') as f:
+        raw = json.load(f)
 
-    If `idf_dict` (or `idf_csv_path`) is provided, compute TF as
-    term_count / total_terms using simple whitespace splitting and
-    multiply by the provided IDF values (missing terms use 0.0).
+    if not isinstance(raw, dict):
+        return {}
 
-    If `idf_dict` is None, fall back to using a scikit-learn
-    `TfidfVectorizer` (best-effort) and return non-zero entries.
-    """
-    if not isinstance(subject, str):
-        subject = ""
-
-    # If an idf csv path is provided but no dict, try to load it
-    if idf_dict is None and idf_csv_path:
-        try:
-            idf_dict = load_idf_dict(idf_csv_path)
-        except Exception:
-            idf_dict = None
-
-    # If idf_dict is provided, use simple TF * IDF calculation
-    if idf_dict is not None:
-        terms = re.findall(r"(?u)\b\w\w+\b", subject.lower())
-        n_terms = len(terms)
-        if n_terms == 0:
-            return {}
-        counts = Counter(terms)
-        tfidf_map = {}
-        for term, cnt in counts.items():
-            tf = cnt / n_terms
-            idf = idf_dict.get(term, 0.0)
-            val = tf * idf
-            if val != 0.0:
-                tfidf_map[term] = float(val)
-        return tfidf_map
-
-    return {}
-
-def load_idf_dict(csv_path):
     idf_dict = {}
-    with open(csv_path, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            term = row['term']
-            try:
-                idf = round(float(row['idf']), 3)
-            except Exception:
-                idf = 0.0
-            idf_dict[term] = idf
+    for term, value in raw.items():
+        try:
+            idf_dict[str(term)] = float(value)
+        except Exception:
+            idf_dict[str(term)] = 0.0
     return idf_dict
  
-def get_idf(subjects, output_path, max_features=None):
-    vectorizer = build_vectorizer(subjects, max_features=max_features)
-    save_idf_csv(output_path, vectorizer)
+def get_idf(subjects, output_path):
+    vectorizer = build_vectorizer(subjects)
+    terms = vectorizer.get_feature_names_out()
+    idfs = vectorizer.idf_
+    idf_dict = {str(term): float(idf) for term, idf in zip(terms, idfs)}
+
+    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(idf_dict, f, indent=2, ensure_ascii=False)
+
     print(f"Saved IDF values to: {output_path}")
     return vectorizer
 
@@ -384,7 +355,7 @@ This function extracts only the sender name and email from the FROM header.
 The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
-def extract_origin_based_features(sender):
+def extract_origin_based_features(sender, received_hops=None):
     def _parse_sender_entry(sender_entry):
         if not isinstance(sender_entry, str) or not sender_entry.strip():
             return "", ""
@@ -417,8 +388,54 @@ def extract_origin_based_features(sender):
         if email:
             sender_names.append(name)
             sender_emails.append(email)
+    '''
+    if not isinstance(received_hops, list):
+        received_hops = []
 
-    return {"sender_name": sender_names, "sender_email": sender_emails}
+    rdap_results = []
+    try:
+        rdap_results = process_received_headers(received_hops)
+        if not isinstance(rdap_results, list):
+            rdap_results = []
+    except Exception:
+        rdap_results = []
+
+    header_received_domains = []
+    domain_registrars = []
+    domain_registration_dates = []
+    registrar_locations = []
+
+    for item in rdap_results:
+        if not isinstance(item, dict):
+            continue
+
+        domain = item.get("domain")
+        if isinstance(domain, str) and domain:
+            header_received_domains.append(domain)
+        else:
+            continue
+
+        registrar = item.get("registrar")
+        registration_date = item.get("registration_date")
+        registrar_location = item.get("registrar_location")
+
+        domain_registrars.append(registrar if isinstance(registrar, str) else "")
+        domain_registration_dates.append(registration_date if isinstance(registration_date, str) else "")
+        registrar_locations.append(registrar_location if isinstance(registrar_location, str) else "")
+
+    return {
+        "sender_name": sender_names,
+        "sender_email": sender_emails,
+        "header_received_domains": header_received_domains,
+        "domain_registrars": domain_registrars,
+        "domain_registration_dates": domain_registration_dates,
+        "registrar_locations": registrar_locations,
+    }
+    '''
+    return {
+    "sender_name": sender_names,
+    "sender_email": sender_emails,
+    }
 
 '''
 Recipient features concern the target users which only
@@ -464,7 +481,7 @@ def extract_recipient_based_features(recipient):
             recipient_names.append(name)
             recipient_emails.append(email)
 
-    return {"recipient_name": recipient_names, "recipient_email": recipient_emails}
+    return {"recipient_name": recipient_names, "recipient_email": recipient_emails, "recipient_count": len(recipient_emails)}
 
 '''
 URL-based features are one of the most important features in
@@ -550,44 +567,108 @@ def _load_raw_misp_events(misp_path):
 
 
 def ensure_subject_idf(misp_path, events):
-    """Ensure subject IDF values exist and return them as a dict."""
+    """Ensure subject IDF JSON exists on disk for this MISP input."""
     idf_path = get_idf_path_for_misp(misp_path)
     if os.path.exists(idf_path):
-        try:
-            return load_idf_dict(idf_path)
-        except Exception:
-            return None
-
-    subjects = []
-    for evt_fields in events:
-        subject = evt_fields.get("subject", "") if isinstance(evt_fields, dict) else ""
-        subjects.append(subject if isinstance(subject, str) else "")
+        return idf_path
 
     try:
-        get_idf(subjects, idf_path)
-        return load_idf_dict(idf_path)
+        precompute_subject_idf(misp_path, events)
+        return idf_path
     except Exception:
-        return None
+        return idf_path
 
 
-def extract_features(misp_path, features):
-    events = parse_misp_events(_load_raw_misp_events(misp_path))
-    subject_idf_dict = ensure_subject_idf(misp_path, events) if "subject" in features else None
-    lsa_features_list = []
-    if "body" in features: 
-        bodies = []
-        for email_fields in events:
-            body = email_fields.get("body", "")
-            if not isinstance(body, str):
-                body = ""
-            bodies.append(body)
+def get_subject_idf_for_misp(misp_path):
+    """Load cached subject IDF dict for a MISP input."""
+    idf_path = get_idf_path_for_misp(misp_path)
+    if not os.path.exists(idf_path):
+        return {}
 
-        lsa_features_list = get_lsa_features(bodies)
+    try:
+        loaded = load_idf_dict(idf_path)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def ensure_lsa_features(events):
+    """Return precomputed LSA feature dicts for all event bodies."""
+    bodies = []
+    for email_fields in events:
+        body = email_fields.get("body", "") if isinstance(email_fields, dict) else ""
+        bodies.append(body if isinstance(body, str) else "")
+
+    try:
+        return get_lsa_features(bodies)
+    except Exception:
+        return []
+
+
+def get_helpers_output_dir():
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(package_dir, 'output', 'helpers')
+
+
+def get_lsa_path_for_misp(misp_path):
+    base_name = os.path.splitext(os.path.basename(misp_path))[0]
+    return os.path.join(get_helpers_output_dir(), f"{base_name}_lsa.json")
+
+
+def ensure_lsa_features_for_misp(misp_path, events):
+    """Ensure LSA features JSON exists on disk for this MISP input."""
+    lsa_path = get_lsa_path_for_misp(misp_path)
+
+    if os.path.exists(lsa_path):
+        return lsa_path
+
+    lsa_features = ensure_lsa_features(events)
+    try:
+        os.makedirs(os.path.dirname(lsa_path) or '.', exist_ok=True)
+        with open(lsa_path, 'w', encoding='utf-8') as f:
+            json.dump(sanitize_for_json(lsa_features), f, indent=2, ensure_ascii=False)
+        print(f"Saved LSA features to: {lsa_path}")
+    except Exception:
+        pass
+
+    return lsa_path
+
+
+def get_lsa_features_for_misp(misp_path, events_count=None):
+    """Load cached LSA feature dicts for a MISP input."""
+    lsa_path = get_lsa_path_for_misp(misp_path)
+    if not os.path.exists(lsa_path):
+        return []
+
+    try:
+        with open(lsa_path, 'r', encoding='utf-8') as f:
+            cached = json.load(f)
+        if not isinstance(cached, list) or not all(isinstance(item, dict) for item in cached):
+            return []
+        if events_count is not None and len(cached) != events_count:
+            return []
+        return cached
+    except Exception:
+        return []
+
+
+def extract_features(misp_path, features, events=None):
+    if events is None:
+        events = parse_misp_events(_load_raw_misp_events(misp_path))
+
+    subject_idf_dict = get_subject_idf_for_misp(misp_path) if "subject" in features else {}
+    lsa_features_list = get_lsa_features_for_misp(misp_path, events_count=len(events)) if "body" in features else []
 
     features_list = []
 
     for event_idx, email_fields in enumerate(events):
-        feat = {'email_index': event_idx}
+        ext = email_fields.get("external_id")
+        ext_s = str(ext).strip() if ext is not None else ""
+        if not ext_s:
+            raise ValueError(
+                f"Event at index {event_idx} has no external_id; required for feature rows"
+            )
+        feat = {"external_id": ext_s}
         
         for feature_type in features:
             if feature_type == "time":
@@ -598,13 +679,19 @@ def extract_features(misp_path, features):
 
             elif feature_type == "body":
                 feat.update(extract_body_based_features(email_fields.get("body")))
-                feat.update(lsa_features_list[event_idx])
+                if event_idx < len(lsa_features_list) and isinstance(lsa_features_list[event_idx], dict):
+                    feat.update(lsa_features_list[event_idx])
 
             elif feature_type == "attachments":
                 feat.update(extract_attachment_features(email_fields.get("attachments")))
 
             elif feature_type == "origin":
-                feat.update(extract_origin_based_features(email_fields.get("senders")))
+                feat.update(
+                    extract_origin_based_features(
+                        email_fields.get("senders"),
+                        email_fields.get("received_hops", []),
+                    )
+                )
 
             elif feature_type == "receiver":
                 feat.update(extract_recipient_based_features(email_fields.get("receivers")))
@@ -620,7 +707,6 @@ def extract_features(misp_path, features):
                 feat.update(extract_url_based_features(extracted_urls))
         
         features_list.append(feat)
-
     return features_list
 
 def parse_misp_event_attributes(event):
@@ -664,66 +750,56 @@ def parse_misp_event_attributes(event):
     }
 
 def get_idf_path_for_misp(misp_path):
-    dir_name = os.path.dirname(misp_path)
     base_name = os.path.splitext(os.path.basename(misp_path))[0]
-    
-    if base_name.endswith('-misp'):
-        csv_base = base_name.replace('-misp', '-only-phishing')
-    else:
-        csv_base = base_name + '-only-phishing'
-    
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    csv_path = os.path.join(project_root, 'data', 'csv', f"{csv_base}_subject_idf.csv")
-    return csv_path
+    return os.path.join(get_helpers_output_dir(), f"{base_name}_subject_idf.json")
 
-def get_FS1(misp_path):
-    features_list = extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls"])
-    return features_list
+def get_FS1(misp_path, events):
+    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls"], events=events)
 
-def get_FS2(misp_path):
-    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin"])
+def get_FS2(misp_path, events):
+    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin"], events=events)
 
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
+        filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["sender_email",]
                         }
         filtered_features.append(filtered_feat)
     return filtered_features
 
-def get_FS3(misp_path):
-    features_list = extract_features(misp_path, ["body", "urls", "origin"])
+def get_FS3(misp_path, events):
+    features_list = extract_features(misp_path, ["body", "urls", "origin"], events=events)
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
+        filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["body_word_count",  "num_lines", "avg_word_length", "greeting","body",
                                      "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4",
                                      "lsa_topic_5", "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
                         }
         filtered_features.append(filtered_feat)
-    
+
     return filtered_features
 
-def get_FS4(misp_path):
-    features_list = extract_features(misp_path, ["subject", "body"])
+def get_FS4(misp_path, events):
+    features_list = extract_features(misp_path, ["subject", "body"], events=events)
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
+        filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["num_urls_in_body", "has_urls_in_body", "body_word_count",  "num_lines", "avg_word_length", "greeting",
                                      "subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms",]
                         }
         filtered_features.append(filtered_feat)
-    
+
     return filtered_features
 
-def get_FS5(misp_path):
-    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls"])
-    
+def get_FS5(misp_path, events):
+    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls"], events=events)
+
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
-                        if k not in ["subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms", 
-                                     "num_urls_in_body", "has_urls_in_body", "body_word_count", "num_lines", "avg_word_length", "greeting", 
+        filtered_feat = {k: v for k, v in feat.items()
+                        if k not in ["subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms",
+                                     "num_urls_in_body", "has_urls_in_body", "body_word_count", "num_lines", "avg_word_length", "greeting",
                                      "recipient_email", "domain_categories","registrar_locations",
                                      "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
                                      "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
@@ -731,40 +807,40 @@ def get_FS5(misp_path):
                                      "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",]
                         }
         filtered_features.append(filtered_feat)
-    
+
     return filtered_features
 
 
 #Maybe should not include some of the body features, unsure based on description
-def get_FS6(misp_path):
-    features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls", "attachments"])
-    
+def get_FS6(misp_path, events):
+    features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls", "attachments"], events=events)
+
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
+        filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject",
                                          "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5",
                                          "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
                         }
         filtered_features.append(filtered_feat)
-    
+
     return filtered_features
 
-def get_FS7(misp_path):
-    features_list = extract_features(misp_path, ["subject", "body", "origin", "urls"])
-    
+def get_FS7(misp_path, events):
+    features_list = extract_features(misp_path, ["subject", "body", "origin", "urls"], events=events)
+
     filtered_features = []
     for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items() 
+        filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["bow", "sender_email", "body"]
                         }
-        
+
         filtered_features.append(filtered_feat)
     return filtered_features
 
-def get_test_set(misp_path):
-    features_list = extract_features(misp_path, ["subject", "origin", "receiver", "urls"])
-    
+def get_test_set(misp_path, events):
+    features_list = extract_features(misp_path, ["subject", "origin", "receiver", "urls"], events=events)
+
     filtered_features = []
     for feat in features_list:
         filtered_feat = {k: v for k, v in feat.items()
@@ -774,10 +850,10 @@ def get_test_set(misp_path):
 
 
 def _extract_and_save_featureset(args):
-    fs_name, fs_function, misp_path, output_path = args
+    fs_name, fs_function, misp_path, events, output_path = args
     
     try:
-        fs_features = fs_function(misp_path)
+        fs_features = fs_function(misp_path, events)
         # ensure output directory exists (worker processes may run before directory created)
         output_dir = os.path.dirname(output_path)
         if output_dir:
@@ -802,11 +878,13 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     # Ensure subject IDF CSV exists before any worker processes start.
     # This avoids multiple processes attempting to write the same idf file
     # concurrently on Windows which can cause Access Denied errors.
+    events_for_precompute = parse_misp_events(_load_raw_misp_events(misp_path))
+
     try:
-        print(f"Precomputing subject IDF values for: {misp_path}")
-        print(precompute_subject_idf(misp_path))
+        ensure_subject_idf(misp_path, events_for_precompute)
+        ensure_lsa_features_for_misp(misp_path, events_for_precompute)
     except Exception:
-        # If precomputation fails, fall back to existing behavior in workers.
+        # If ensure fails, workers will compute artifacts on demand.
         pass
     
     fs_extractors = {
@@ -825,7 +903,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     package_dir = os.path.dirname(os.path.abspath(__file__))
     for fs_name, fs_function in fs_extractors.items():
         output_path = os.path.join(package_dir, 'output', 'featuresets', f"{input_base}-{fs_name}.json")
-        extraction_args.append((fs_name, fs_function, misp_path, output_path))
+        extraction_args.append((fs_name, fs_function, misp_path, events_for_precompute, output_path))
     
     if parallel:
         print(f"\n{'='*80}")
@@ -876,7 +954,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         print(f"{'='*80}")
         
         for args in extraction_args:
-            fs_name, fs_function, misp_path, output_path = args
+            fs_name, fs_function, misp_path, events_for_precompute, output_path = args
             
             print(f"\n{'='*80}")
             print(f"Extracting {fs_name}...")

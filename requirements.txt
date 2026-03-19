@@ -13,3 +13,5 @@ mail-parser
 lxml
 hdbscan
 tqdm
+beautifulsoup4
+tldextract

@@ -9,7 +9,6 @@ except Exception:
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from graph.common import parse_misp_events
 
 
 def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range=(1, 2)):
@@ -63,46 +62,16 @@ def save_idf_csv(path, vectorizer):
     os.replace(tmp, path)
 
 
-def precompute_subject_idf(misp_path):
-    """Compute and save subject IDF CSV for a given MISP JSON path.
+def precompute_subject_idf(misp_path, events):
+    """Compute and save subject IDF JSON for a given MISP JSON path.
 
-    Returns the path to the idf CSV.
+    Returns the path to the idf JSON.
     Always recomputes to ensure full-term coverage from the current input data.
     """
-    # compute project root relative to this file (core/feature_set_extraction)
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    dir_name = os.path.dirname(misp_path)
     base_name = os.path.splitext(os.path.basename(misp_path))[0]
-    if base_name.endswith('-misp'):
-        csv_base = base_name.replace('-misp', '-only-phishing')
-    else:
-        csv_base = base_name + '-only-phishing'
-
-    idf_path = os.path.join(project_root, 'data', 'csv', f"{csv_base}_subject_idf.csv")
-    # try to load MISP JSON and extract all subjects
-    try:
-        with open(misp_path, 'r', encoding='utf-8') as f:
-            misp_data = json.load(f)
-    except Exception:
-        return idf_path
-
-    # Extract raw events using the same envelope handling as graph loading.
-    if isinstance(misp_data, list):
-        raw_events = misp_data
-    elif isinstance(misp_data, dict):
-        if isinstance(misp_data.get('Events'), list):
-            raw_events = misp_data.get('Events', [])
-        else:
-            raw_events = misp_data.get('response', {}).get('Event', [])
-            if isinstance(raw_events, dict):
-                raw_events = [raw_events]
-            elif not isinstance(raw_events, list):
-                raw_events = []
-    else:
-        raw_events = []
-
-    events = parse_misp_events(raw_events)
+    package_dir = os.path.dirname(os.path.abspath(__file__))
+    helpers_dir = os.path.join(package_dir, 'output', 'helpers')
+    idf_path = os.path.join(helpers_dir, f"{base_name}_subject_idf.json")
 
     subjects = []
     for evt in events:
@@ -113,11 +82,16 @@ def precompute_subject_idf(misp_path):
         return idf_path
 
     try:
-        # Use unigrams only and include all terms:
-        # - max_features=None (no cap)
-        # - stop_words=None (do not filter vocabulary)
         vec = build_vectorizer(subjects, max_features=None, stop_words=None, ngram_range=(1, 1))
-        save_idf_csv(idf_path, vec)
+        terms = vec.get_feature_names_out()
+        idfs = vec.idf_
+        idf_dict = {str(term): float(idf) for term, idf in zip(terms, idfs)}
+
+        os.makedirs(os.path.dirname(idf_path) or '.', exist_ok=True)
+        tmp = idf_path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(idf_dict, f, indent=2, ensure_ascii=False)
+        os.replace(tmp, idf_path)
     except Exception:
         # ignore errors; caller will fallback to worker-side computation
         pass
