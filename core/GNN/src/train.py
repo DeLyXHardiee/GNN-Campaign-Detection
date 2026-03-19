@@ -1,3 +1,9 @@
+import csv
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
 import torch
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 from .loaders import make_link_loaders
@@ -6,10 +12,7 @@ from .model_io import save_model_checkpoint, load_training_state
 from torch import nn
 import time
 
-try:
-    from tqdm import tqdm
-except Exception:
-    tqdm = None
+from tqdm import tqdm
 
 import torch.nn.functional as F
 
@@ -55,9 +58,6 @@ def batch_loss_contrastive(model, predictor, batch, edge_type,
       where for each positive edge i, the denominator sums over
       {that positive} U {all negatives in the batch}.
     """
-    import torch
-    import torch.nn.functional as F
-
     # Forward pass to get embeddings and logits
     h_dict = model(batch.x_dict, batch.edge_index_dict)
     e_store = batch[edge_type]
@@ -176,44 +176,38 @@ def run_training(DEVICE, TORCH_SEED, data,
                  supervised_edge_types=None,
                  model_save_name="best_model.pt",
                  contrastive_edges=None,
-                 contrastive_weight=0.2):
-    import os
-    import csv
-    import json
-    from datetime import datetime
+                 contrastive_weight=0.2,
+                 run_dir=None,
+                 runs_parent=None):
+    """
+    If ``run_dir`` is set, that directory is used (pipeline: ``<RUNS_PARENT>/<run_id>/``).
 
-    from pathlib import Path
+    If ``run_dir`` is None, creates ``<runs_parent>/run_<timestamp>/`` (default parent
+    ``outputs``) — handy for ad-hoc notebooks.
 
-    models_dir = Path("models")
-    models_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("run-%Y-%m-%d_%H-%M-%S")
-    run_dir = models_dir / f"run-{timestamp}"
+    Checkpoints go under ``<run_dir>/models/`` (``ckpt_dir``). Metrics and
+    ``training_config.json`` live at ``run_dir``.
+    """
+    if run_dir is None:
+        parent = Path(runs_parent) if runs_parent is not None else Path("outputs")
+        parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_dir = parent / f"run_{timestamp}"
+    else:
+        run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_dir = run_dir / "models"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"🔖 Saving run artifacts to: {run_dir}")
+    ckpt_path = ckpt_dir / model_save_name
+    if ckpt_path.is_file():
+        print(
+            f"⚠️  Checkpoint already exists at {ckpt_path}; training will overwrite "
+            f"if a new best is found. Use a fresh run_id to keep separate runs."
+        )
 
-    config_path = os.path.join(run_dir, "config.json")
-    with open(config_path, 'w') as f:
-        json.dump({
-            "primary_ntype": primary_ntype,
-            "hidden": hidden,
-            "out_dim": out_dim,
-            "layers": layers,
-            "dropout": dropout,
-            "neg_ratio": neg_ratio,
-            "batch_size": batch_size,
-            "fanout": fanout,
-            "val_ratio": val_ratio,
-            "test_ratio": test_ratio,
-            "epochs": epochs,
-            "learning_rate": lr,
-            "weight_decay": wd,
-            "score_head": score_head,
-            "contrastive_edges": contrastive_edges,
-            "supervised_edges": supervised_edge_types,
-            "contrastive_weight": contrastive_weight
-        }, f, indent=2)
+    print(f"🔖 Run directory: {run_dir}")
+    print(f"   Checkpoints: {ckpt_dir}")
 
     metrics_csv = os.path.join(run_dir, "metrics.csv")
     with open(metrics_csv, mode='w', newline='') as f:
@@ -250,6 +244,35 @@ def run_training(DEVICE, TORCH_SEED, data,
         direction='both',
     )
     print("Supervised edge types:", sup_ets)
+
+    training_record = {
+        "torch_seed": TORCH_SEED,
+        "primary_ntype": primary_ntype,
+        "hidden": hidden,
+        "out_dim": out_dim,
+        "layers": layers,
+        "dropout": dropout,
+        "neg_ratio": neg_ratio,
+        "batch_size": batch_size,
+        "fanout": fanout,
+        "val_ratio": val_ratio,
+        "test_ratio": test_ratio,
+        "epochs": epochs,
+        "lr": lr,
+        "wd": wd,
+        "score_head": score_head,
+        "early_stopping_patience": early_stopping_patience,
+        "lr_reduce_patience": lr_reduce_patience,
+        "lr_reduce_factor": lr_reduce_factor,
+        "lr_reduce_min": lr_reduce_min,
+        "supervised_edge_types": supervised_edge_types,
+        "model_save_name": model_save_name,
+        "contrastive_edges": contrastive_edges,
+        "contrastive_weight": contrastive_weight,
+        "supervised_edge_types_resolved": [list(et) for et in sup_ets],
+    }
+    with open(run_dir / "training_config.json", "w", encoding="utf-8") as f:
+        json.dump(training_record, f, indent=2)
 
     train_graph, train_pos, val_pos, test_pos = split_edges_and_build_train_graph(TORCH_SEED,
         data, sup_ets, val_ratio=val_ratio, test_ratio=test_ratio
@@ -307,7 +330,7 @@ def run_training(DEVICE, TORCH_SEED, data,
                 patience_counter=patience_counter, best_val=best_val,
                 best_model_state=model.state_dict(), best_predictor_state=predictor.state_dict(),
                 training_params=training_params,
-                save_dir=run_dir,
+                save_dir=ckpt_dir,
                 filename=f"model_epoch_{epoch}.pt"
             )
 
@@ -323,11 +346,11 @@ def run_training(DEVICE, TORCH_SEED, data,
                 optimizer_state=opt.state_dict(), scheduler_state=scheduler.state_dict(),
                 patience_counter=patience_counter, best_val=best_val,
                 best_model_state=best_state['model'], best_predictor_state=best_state['pred'],
-                training_params=training_params, 
-                save_dir=run_dir,
-                filename=f"best_model.pt"
+                training_params=training_params,
+                save_dir=ckpt_dir,
+                filename=model_save_name,
             )
-            print(f"Best-accuracy model saved to {os.path.join(run_dir, 'model_best_val.pt')}")
+            print(f"Best val-loss checkpoint saved to {ckpt_dir / model_save_name}")
         else:
             patience_counter += 1
 

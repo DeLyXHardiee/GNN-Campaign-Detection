@@ -34,6 +34,7 @@ def save_model_checkpoint(
     val_loss,
     config,
     *,
+    save_dir=None,
     filename="best_model.pt",
     data_metadata=None,
     train_pos=None,
@@ -53,7 +54,9 @@ def save_model_checkpoint(
     Optionally include splits and loader params so evaluation notebooks
     can rebuild loaders without rerunning the split step.
     """
-    save_path = get_models_dir() / filename
+    base_dir = Path(save_dir) if save_dir is not None else get_models_dir()
+    base_dir.mkdir(parents=True, exist_ok=True)
+    save_path = base_dir / filename
     torch.save(
         {
             "epoch": epoch,
@@ -123,7 +126,8 @@ def load_model_checkpoint(device=None, metadata=None, filename="best_model.pt"):
     checkpoint metadata when available.
     """
     device = select_device(device)
-    load_path = get_models_dir() / filename
+    candidate = Path(filename).expanduser()
+    load_path = candidate if candidate.is_file() else (get_models_dir() / filename)
     checkpoint = torch.load(load_path, map_location=device)
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=metadata)
     return model, predictor, checkpoint

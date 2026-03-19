@@ -8,11 +8,17 @@ import json
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn.metrics import roc_auc_score, average_precision_score
 
 from ..model import DistMultPredictor
+from ..load_graph_data import load_hetero_pt
+from ..model_io import get_models_dir, load_full_run, select_device
 
 
 def collect_auroc_ap_scores(
@@ -101,6 +107,32 @@ def _et_to_label(et: tuple) -> str:
     return "_".join(str(x) for x in et)
 
 
+def plot_score_distributions(distributions: dict, output_dir: str | Path) -> list[str]:
+    """
+    Save score distribution histograms per edge type.
+
+    `distributions[et]` must contain `pos_scores` and `neg_scores` lists.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    matplotlib.use("Agg")
+    plot_paths: list[str] = []
+    for et, dist in distributions.items():
+        label = _et_to_label(et)
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.hist(dist["pos_scores"], bins=50, alpha=0.6, label="Positive")
+        ax.hist(dist["neg_scores"], bins=50, alpha=0.6, label="Negative")
+        ax.set_title(f"Score distributions for {et}")
+        ax.set_xlabel("Score")
+        ax.legend()
+        path = output_dir / f"score_dist_{label}.png"
+        fig.savefig(path, bbox_inches="tight")
+        plt.close(fig)
+        plot_paths.append(str(path))
+    return plot_paths
+
+
 def run_auroc_ap_analysis(
     device: torch.device,
     model: torch.nn.Module,
@@ -124,23 +156,7 @@ def run_auroc_ap_analysis(
         device, model, predictor, loaders_test
     )
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    plot_paths = []
-    for et, dist in distributions.items():
-        label = _et_to_label(et)
-        fig, ax = plt.subplots(figsize=(7, 5))
-        ax.hist(dist["pos_scores"], bins=50, alpha=0.6, label="Positive")
-        ax.hist(dist["neg_scores"], bins=50, alpha=0.6, label="Negative")
-        ax.set_title(f"Score distributions for {et}")
-        ax.set_xlabel("Score")
-        ax.legend()
-        path = output_dir / f"score_dist_{label}.png"
-        fig.savefig(path, bbox_inches="tight")
-        plt.close(fig)
-        plot_paths.append(str(path))
+    plot_paths = plot_score_distributions(distributions, output_dir)
 
     # Machine-readable metrics: use string keys for JSON
     metrics_serializable = {_et_to_label(et): v for et, v in all_scores.items()}
@@ -177,12 +193,9 @@ def run_auroc_ap_from_run(
     Returns:
         Result dict from run_auroc_ap_analysis (metrics, plot_paths, metrics_path).
     """
-    from ..load_graph_data import load_hetero_pt
-    from ..model_io import get_models_dir, load_full_run, select_device
-
     data = load_hetero_pt(path=str(Path(data_path).expanduser()), to_undirected=to_undirected)
     device = select_device(device)
-    model, predictor, loaders, splits, _ = load_full_run(
+    model, predictor, loaders, _, _ = load_full_run(
         data=data, device=device, filename=filename
     )
     if output_dir is None:
