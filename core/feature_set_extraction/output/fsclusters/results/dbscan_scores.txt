@@ -1,13 +1,8 @@
 
 ================================================================================
-DBSCAN Run - 2026-03-18 13:56:20
+DBSCAN Run - 2026-03-18 14:35:08
 Parameters: eps=0.5, min_samples=5, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
 ================================================================================
 
-FS1: 0.7709 (clusters: 555)
-FS2: 0.7709 (clusters: 555)
-FS3: 0.9567 (clusters: 2)
-FS4: 0.8021 (clusters: 560)
-FS5: 0.8020 (clusters: 569)
-FS6: N/A (only 1 cluster(s) found)
-FS7: 0.8951 (clusters: 550)
+FS4: silhouette=0.8092, clusters=141, H=0.4313, C=0.7032, V=0.5347, n=142
+FS5: silhouette=0.8100, clusters=141, H=0.4213, C=0.7029, V=0.5268, n=140
