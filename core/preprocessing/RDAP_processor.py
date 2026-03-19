@@ -189,6 +189,18 @@ def save_cache(cache):
         json.dump(cache, f, indent=2)
 
 
+def _is_retryable_cached_error(entry):
+    if not isinstance(entry, dict):
+        return False
+
+    error_text = str(entry.get("error", "")).lower()
+    if not error_text:
+        return False
+
+    # Retry cached rate-limit errors so they are not treated as permanently done.
+    return "429" in error_text or "too many requests" in error_text
+
+
 # -----------------------------
 # Ensure cache exists / populate
 # -----------------------------
@@ -197,7 +209,9 @@ def ensure_rdap_cache(domains):
     updated = False
 
     for domain in domains:
-        if domain not in cache:
+        cached_entry = cache.get(domain)
+        should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
+        if should_fetch:
             print(f"Fetching RDAP for {domain}...")
             cache[domain] = fetch_rdap(domain)
             updated = True

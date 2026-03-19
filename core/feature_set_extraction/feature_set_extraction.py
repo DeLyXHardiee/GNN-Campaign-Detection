@@ -13,6 +13,7 @@ from preprocessing.utils.url_extractor import extract_urls_from_text
 from preprocessing.RDAP_processor import process_received_headers
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
+from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
 from graph.common import parse_misp_events
 
 
@@ -634,11 +635,13 @@ This function currently extracts the following URL features:
 def extract_url_based_features(urls):
     # Delegate to shared extractor and return its full feature dict
     try:
+        url_intel_sets = load_url_intelligence_sets()
         return extract_url_features_utils(
         urls,
-        popular_domains=None,
-        phishing_target_domains=None,
-        blacklist=None,
+        popular_domains=url_intel_sets.get("popular_domains", set()),
+        webhost_domains=url_intel_sets.get("webhost_domains", set()),
+        phishing_target_domains=url_intel_sets.get("phishing_target_domains", set()),
+        blacklist=url_intel_sets.get("blacklist", set()),
         domain_metadata=None,
         anchor_pairs=None
     )
@@ -1020,6 +1023,9 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         'FS5': get_FS5,
         'FS6': get_FS6,
         'FS7': get_FS7,
+    }
+    fs_extractors = {
+        'FS1': get_FS1,
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
