@@ -8,10 +8,16 @@ import json
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 
 from ..embed import embed_with_graph
+from ..load_graph_data import load_hetero_pt
+from ..model_io import get_models_dir, load_full_run, select_device
 
 
 def recall_at_k_mrr(
@@ -114,6 +120,34 @@ def _et_to_label(et: tuple) -> str:
     return "_".join(str(x) for x in et)
 
 
+def plot_recall_curves(
+    recall_curves: dict,
+    K_list: list[int],
+    output_path: str | Path,
+    use_dot: bool,
+) -> str:
+    """
+    Save one combined Recall@K plot (one line per edge type).
+    Returns the saved plot path.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    colors = plt.cm.tab20(range(len(recall_curves)))
+    for (et, vals), color in zip(recall_curves.items(), colors):
+        label = f"{et[0]}→{et[2]}"
+        ax.plot(K_list, vals, label=label, color=color)
+    ax.set_xlabel("K")
+    ax.set_ylabel("Recall@K")
+    ax.set_title("Recall@K (cosine)" if not use_dot else "Recall@K (dot)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+    return str(output_path)
+
+
 def run_recall_at_k_analysis(
     device: torch.device,
     model: torch.nn.Module,
@@ -158,23 +192,12 @@ def run_recall_at_k_analysis(
         mrr_at_max_k[et] = res_max["MRR"]
 
     # One combined plot: x=K, y=Recall@K, one line per edge type
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    colors = plt.cm.tab20(range(len(recall_curves)))
-    for (et, vals), color in zip(recall_curves.items(), colors):
-        label = f"{et[0]}→{et[2]}"
-        ax.plot(K_list, vals, label=label, color=color)
-    ax.set_xlabel("K")
-    ax.set_ylabel("Recall@K")
-    ax.set_title("Recall@K (cosine)" if not use_dot else "Recall@K (dot)")
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
-    plot_path = output_dir / "recall_at_k.png"
-    fig.savefig(plot_path, bbox_inches="tight")
-    plt.close(fig)
+    plot_path = plot_recall_curves(
+        recall_curves=recall_curves,
+        K_list=K_list,
+        output_path=output_dir / "recall_at_k.png",
+        use_dot=use_dot,
+    )
 
     # Machine-readable: curves and MRR
     metrics_serializable = {
@@ -221,9 +244,6 @@ def run_recall_at_k_from_run(
     Returns:
         Result dict from run_recall_at_k_analysis (recall_curves, plot_path, metrics_path, etc.).
     """
-    from ..load_graph_data import load_hetero_pt
-    from ..model_io import get_models_dir, load_full_run, select_device
-
     data = load_hetero_pt(path=str(Path(data_path).expanduser()), to_undirected=to_undirected)
     device = select_device(device)
     model, predictor, loaders, splits, _ = load_full_run(

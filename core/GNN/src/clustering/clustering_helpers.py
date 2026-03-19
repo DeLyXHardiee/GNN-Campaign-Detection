@@ -1,9 +1,12 @@
 import json
+import csv
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 import torch
-from sklearn.cluster import DBSCAN
+import hdbscan
+from sklearn.cluster import DBSCAN, MeanShift, estimate_bandwidth
 from sklearn.metrics import (
     calinski_harabasz_score,
     completeness_score,
@@ -13,49 +16,84 @@ from sklearn.metrics import (
     v_measure_score,
 )
 
+from src.model_io import load_model_checkpoint
+
 @torch.no_grad()
 def extract_email_embeddings(model, data, device):
     """
-    Run the model and return email-node embeddings keyed by graph-local index.
+    Run the model and return email-node embeddings keyed by email ``external_id``.
 
     PyG orders email nodes 0 .. n-1; row i of h['email'] is the embedding for
-    that node. Keys in the returned dict are those indices; each value is a
-    1-D copy of that row (so mutating it does not affect the original stack).
+    that node. We align that embedding row to the email node's
+    ``data['email'].external_id[i]``.
     """
     model.eval()
-    x_dict = data.to(device).x_dict
-    edge_index_dict = data.to(device).edge_index_dict
+    graph = data.to(device)
+    x_dict = graph.x_dict
+    edge_index_dict = graph.edge_index_dict
     h = model(x_dict, edge_index_dict)
-    email_vecs = h['email'].cpu().numpy()
-    return {i: email_vecs[i].copy() for i in range(len(email_vecs))}
+    email_vecs = h["email"].cpu().numpy()
 
-def extract_ground_truth_labels(path_or_data):
+    if not hasattr(graph["email"], "external_id"):
+        raise AttributeError('Expected email nodes to have `external_id` at data["email"].external_id.')
+
+    external_ids = graph["email"].external_id
+    if torch.is_tensor(external_ids):
+        external_ids = external_ids.detach().cpu().tolist()
+    elif isinstance(external_ids, np.ndarray):
+        external_ids = external_ids.tolist()
+    else:
+        external_ids = list(external_ids)
+
+    if len(external_ids) != len(email_vecs):
+        raise ValueError(
+            f"Email external_id length ({len(external_ids)}) does not match number of email embeddings ({len(email_vecs)})."
+        )
+
+    # external_id must be unique; otherwise dict keys collide.
+    if len(set(map(str, external_ids))) != len(external_ids):
+        raise ValueError("Duplicate `external_id` values found on email nodes; cannot build a unique id->embedding map.")
+
+    return {
+        str(eid.item() if isinstance(eid, np.generic) else eid): email_vecs[i].copy()
+        for i, eid in enumerate(external_ids)
+    }
+
+def extract_ground_truth_labels(path):
     """
-    Extract ground truth labels from a JSON file or loaded dict with format:
-    {"clusters": {"label_store_1/49": [{"record_id": str, ...}, ...], ...}}
+    Extract ground truth labels from a JSON file with format:
+    {"clusters": {"label_store_1/49": [{"external_id": str, ...}, ...], ...}}
     Cluster keys are normalized by stripping the "label_store_*/" prefix.
-    Returns dict mapping record_id -> cluster_id (int when possible).
+    Returns dict mapping external_id -> cluster_id (int when possible).
     """
-    with open(path_or_data, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     label_map = {}
+    duplicate_external_ids = set()
     clusters = data.get("clusters", {})
-    for raw_key, records in clusters.items():
+    for raw_key, emails in clusters.items():
         # Remove "label_store_*/" prefix; use the part after the last "/" as cluster id
         cluster_id_str = raw_key.split("/")[-1] if "/" in raw_key else raw_key
         try:
             campaign_id = int(cluster_id_str)
         except ValueError:
             campaign_id = cluster_id_str
-        for rec in records:
-            record_id = rec.get("external_id")
-            if record_id is None:
+        for email in emails:
+            email_id = email.get("external_id")
+            if email_id is None:
                 continue
-            try:
-                rid = int(record_id)
-            except (ValueError, TypeError):
-                rid = record_id
-            label_map[rid] = campaign_id
+            email_id_str = str(email_id)
+            if email_id_str in label_map:
+                duplicate_external_ids.add(email_id_str)
+                continue
+            label_map[email_id_str] = campaign_id
+    if duplicate_external_ids:
+        sample = sorted(duplicate_external_ids)[:10]
+        suffix = "..." if len(duplicate_external_ids) > 10 else ""
+        raise ValueError(
+            "Duplicate `external_id` values found in ground truth JSON. "
+            f"Examples: {sample}{suffix}"
+        )
     return label_map
 
 def compute_internal_metrics(id_to_embedding_map, labels):
@@ -64,7 +102,7 @@ def compute_internal_metrics(id_to_embedding_map, labels):
 
     Assumes ``labels[i]`` corresponds to the i-th id in ``sorted(id_to_embedding_map.keys())``.
     """
-    sorted_ids = sorted(id_to_embedding_map.keys())
+    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
     labels = np.asarray(labels)
     if len(labels) != len(sorted_ids):
         raise ValueError(
@@ -115,21 +153,14 @@ def compute_external_metrics(true_labels, predicted_labels):
     }
 
 
-def compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels):
+def _aligned_true_predicted_labels(sorted_ids, labels, ground_truth_labels):
     """
-    Compute both internal + external clustering metrics and return one dict.
+    Align predicted cluster labels with ground-truth labels (by external_id).
+
+    Skips:
+    - predicted noise points where predicted label == -1
+    - ids not present in ground_truth_labels
     """
-    sorted_ids = sorted(id_to_embedding_map.keys())
-    labels = np.asarray(labels)
-    if len(labels) != len(sorted_ids):
-        raise ValueError(
-            f"len(labels)={len(labels)} must equal len(id_to_embedding_map)={len(sorted_ids)}"
-        )
-
-    internal = compute_internal_metrics(id_to_embedding_map, labels)
-
-    # External metrics only need aligned (true, predicted) labels for ids that
-    # exist in ground truth. No need to construct a clusters dict.
     gt_get = ground_truth_labels.get
     true_labels = []
     predicted_labels = []
@@ -141,7 +172,27 @@ def compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels):
             continue
         true_labels.append(true)
         predicted_labels.append(int(lab))
+    return true_labels, predicted_labels
 
+
+def compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels):
+    """
+    Compute both internal + external clustering metrics and return one dict.
+    """
+    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
+    labels = np.asarray(labels)
+    if len(labels) != len(sorted_ids):
+        raise ValueError(
+            f"len(labels)={len(labels)} must equal len(id_to_embedding_map)={len(sorted_ids)}"
+        )
+
+    internal = compute_internal_metrics(id_to_embedding_map, labels)
+
+    true_labels, predicted_labels = _aligned_true_predicted_labels(
+        sorted_ids=sorted_ids,
+        labels=labels,
+        ground_truth_labels=ground_truth_labels,
+    )
     external = compute_external_metrics(true_labels, predicted_labels)
 
     n_clusters = int(len(set(labels)) - (1 if -1 in labels else 0))
@@ -156,63 +207,234 @@ def compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels):
         "n_embeddings": int(len(sorted_ids)),
     }
 
-def run_clustering_analysis_for_embeddings(
-    id_to_embedding_map,
-    ground_truth_labels,
-    epsilon,
-    min_samples=5,
-):
-
-    sorted_ids = sorted(id_to_embedding_map.keys())
+def _emb_matrix_from_id_to_embedding(id_to_embedding_map):
+    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
     embeddings = np.stack(
-        [np.asarray(id_to_embedding_map[i], dtype=np.float64) for i in sorted_ids]
+        [np.asarray(id_to_embedding_map[k], dtype=np.float64) for k in sorted_ids]
     )
+    return sorted_ids, embeddings
 
+
+def run_db_scan_analysis(id_to_embedding_map, ground_truth_labels, epsilon, min_samples=5):
+    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     clusterer = DBSCAN(eps=epsilon, min_samples=min_samples, metric="euclidean")
     labels = clusterer.fit_predict(embeddings)
-
     metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
+    metrics["clustering_type"] = "dbscan"
     metrics["epsilon"] = float(epsilon)
     metrics["min_samples"] = int(min_samples)
+    metrics["n_embeddings"] = int(len(sorted_ids))
     return metrics
 
 
+def run_meanshift_analysis(id_to_embedding_map, ground_truth_labels, quantile, n_samples=None):
+    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
+    bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
+    clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
+    labels = clusterer.fit_predict(embeddings)
+    metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
+    metrics["clustering_type"] = "meanshift"
+    metrics["quantile"] = float(quantile)
+    metrics["n_samples"] = None if n_samples is None else int(n_samples)
+    metrics["bandwidth"] = float(bw) if bw is not None else None
+    metrics["n_embeddings"] = int(len(sorted_ids))
+    return metrics
 
-def run_clustering_analysis_across_models(data, device, run_dir, epsilon_values, ground_truth_labels):
-    from src.model_io import load_full_run
 
-    run_path = Path("../models") / run_dir
-    model_files = sorted(run_path.glob("*.pt"))
+def run_hdbscan_analysis(id_to_embedding_map, ground_truth_labels, min_cluster_size, min_samples=None):
+    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=int(min_cluster_size),
+        min_samples=None if min_samples is None else int(min_samples),
+    )
+    labels = clusterer.fit_predict(embeddings)
+    metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
+    metrics["clustering_type"] = "hdbscan"
+    metrics["min_cluster_size"] = int(min_cluster_size)
+    metrics["min_samples"] = None if min_samples is None else int(min_samples)
+    metrics["n_embeddings"] = int(len(sorted_ids))
+    return metrics
 
+
+def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, clustering_config):
+    algo = str(clustering_config["cluster_algorithm"]).lower()
+
+    if algo == "dbscan":
+        eps_values = clustering_config["epsilon_values"]
+        min_samples = clustering_config.get("min_samples", 5)
+        return [
+            run_db_scan_analysis(
+                id_to_embedding_map, ground_truth_labels, epsilon=eps, min_samples=min_samples
+            )
+            for eps in eps_values
+        ]
+
+    if algo == "meanshift":
+        quantile_values = clustering_config["quantile_values"]
+        n_samples = clustering_config.get("n_samples")
+        return [
+            run_meanshift_analysis(
+                id_to_embedding_map, ground_truth_labels, quantile=q, n_samples=n_samples
+            )
+            for q in quantile_values
+        ]
+
+    if algo == "hdbscan":
+        mcs_values = clustering_config["min_cluster_size_values"]
+        min_samples = clustering_config.get("min_samples")
+        return [
+            run_hdbscan_analysis(
+                id_to_embedding_map,
+                ground_truth_labels,
+                min_cluster_size=mcs,
+                min_samples=min_samples,
+            )
+            for mcs in mcs_values
+        ]
+
+    raise ValueError(f"Unknown cluster_algorithm={algo!r}. Expected: dbscan, meanshift, hdbscan.")
+
+
+def save_metrics_csv(rows, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        raise ValueError("No rows to save.")
+
+    all_keys = set().union(*(r.keys() for r in rows))
+    preferred_order = [
+        # Identifiers / algorithm
+        "model",
+        "clustering_type",
+        # DBSCAN
+        "epsilon",
+        "min_samples",
+        # MeanShift
+        "quantile",
+        "n_samples",
+        "bandwidth",
+        # HDBSCAN
+        "min_cluster_size",
+        # Internal metrics
+        "silhouette",
+        "db_index",
+        "ch_index",
+        # External metrics
+        "homogeneity",
+        "completeness",
+        "v_measure",
+        # Coverage / size
+        "n_embeddings",
+        "n_clusters",
+        "n_noise",
+        "coverage",
+        # External alignment counts
+        "n_samples_external",
+    ]
+
+    remaining = sorted(k for k in all_keys if k not in preferred_order)
+    fieldnames = [k for k in preferred_order if k in all_keys] + remaining
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+    return str(path)
+
+
+def sweep_clustering_for_one_model(
+    model,
+    data,
+    device,
+    ground_truth_labels,
+    clustering_config,
+    output_dir,
+    model_column_name="model",
+):
+    """
+    Run clustering sweep for one model. Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``
+    (e.g. best_model_dbscan_sweep.csv). Use training.model_save_name stem for consistency.
+    """
+    id_to_emb = extract_email_embeddings(model, data, device)
+    cfg = dict(clustering_config)
+
+    rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
+    for r in rows:
+        r["model"] = model_column_name
+
+    algo = str(cfg["cluster_algorithm"]).lower()
+    output_dir = Path(output_dir)
+    csv_path = output_dir / f"{model_column_name}_{algo}_sweep.csv"
+    save_metrics_csv(rows, csv_path)
+    return {"csv_path": str(csv_path), "rows": rows}
+
+
+def sweep_clustering_for_many_models(
+    data,
+    device,
+    checkpoints,
+    ground_truth_labels,
+    clustering_config,
+    output_dir,
+):
+    """
+    Run the same clustering sweep across multiple checkpoint files.
+
+    `checkpoints` should be an iterable of full paths to `.pt` files.
+    """
+    output_dir = Path(output_dir)
     results = []
-    for eps in epsilon_values:
-        print(f"### Clustering with epsilon={eps} ###")
-        for model_file in model_files:
-            print(f"Evaluating {model_file.name}...")
-            model, predictor, checkpoint = load_model_checkpoint(device=device, metadata=data.metadata(), filename=model_file)
-
-            id_to_emb = extract_email_embeddings(model, data, device)
-            sorted_ids = sorted(id_to_emb.keys())
-            embeddings = np.stack([id_to_emb[i] for i in sorted_ids])
-
-            clusterer = DBSCAN(eps=eps, min_samples=5, metric="euclidean")
-            labels = clusterer.fit_predict(embeddings)
-
-            metrics = compute_all_metrics(id_to_emb, labels, ground_truth_labels)
-
-            results.append({
-                "model_file": model_file.name,
-                "epsilon": eps,
-                "silhouette": metrics["silhouette"],
-                "db_index": metrics["db_index"],
-                "ch_index": metrics["ch_index"],
-                "homogeneity": metrics["homogeneity"],
-                "n_samples": metrics["n_samples"],
-                "completeness": metrics["completeness"],
-                "v_measure": metrics["v_measure"],
-                "n_clusters": metrics["n_clusters"],
-                "coverage": metrics["coverage"],
-                "n_noise": metrics["n_noise"],
-            })
-
+    for ckpt in sorted(checkpoints, key=lambda p: str(p)):
+        ckpt_path = Path(ckpt).expanduser()
+        model, predictor, _checkpoint = load_model_checkpoint(
+            device=device,
+            metadata=data.metadata(),
+            filename=str(ckpt_path),
+        )
+        _ = predictor
+        model_column_name = ckpt_path.stem
+        results.append(
+            sweep_clustering_for_one_model(
+                model=model,
+                data=data,
+                device=device,
+                ground_truth_labels=ground_truth_labels,
+                clustering_config=clustering_config,
+                output_dir=output_dir,
+                model_column_name=model_column_name,
+            )
+        )
     return results
+
+
+def run_locked_param_across_checkpoints(
+    data,
+    device,
+    checkpoints,
+    ground_truth_labels,
+    clustering_config,
+    locked_param_value,
+    output_dir,
+):
+    """
+    Keep one clustering parameter fixed and run it across multiple checkpoints.
+    """
+    algo = str(clustering_config["cluster_algorithm"]).lower()
+    locked_cfg = dict(clustering_config)
+
+    if algo == "dbscan":
+        locked_cfg["epsilon_values"] = [locked_param_value]
+    elif algo == "meanshift":
+        locked_cfg["quantile_values"] = [locked_param_value]
+    elif algo == "hdbscan":
+        locked_cfg["min_cluster_size_values"] = [locked_param_value]
+    else:
+        raise ValueError(f"Unknown cluster_algorithm={algo!r}")
+
+    return sweep_clustering_for_many_models(
+        data=data,
+        device=device,
+        checkpoints=checkpoints,
+        ground_truth_labels=ground_truth_labels,
+        clustering_config=locked_cfg,
+        output_dir=output_dir,
+    )
