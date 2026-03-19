@@ -64,5 +64,767 @@
     "domain": "company.dk",
     "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/company.dk",
     "fetched_at": "2026-03-19T11:46:39.227589"
+  },
+  "fastlylb.net": {
+    "domain": "fastlylb.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2014-09-08T21:28:33Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:39.419674",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/fastlylb.net"
+  },
+  "webflow.io": {
+    "domain": "webflow.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/webflow.io",
+    "fetched_at": "2026-03-19T13:40:39.518902"
+  },
+  "vercel.app": {
+    "domain": "vercel.app",
+    "registrar": "Tucows Domains Inc",
+    "registration_date": "2020-01-28T03:03:04.240Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:39.807953",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/vercel.app"
+  },
+  "webflow.com": {
+    "domain": "webflow.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2003-03-31T19:16:33Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:39.912865",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/webflow.com"
+  },
+  "onrender.com": {
+    "domain": "onrender.com",
+    "registrar": "Amazon Registrar, Inc.",
+    "registration_date": "2015-03-28T01:20:58Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:40.006624",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/onrender.com"
+  },
+  "wpengine.com": {
+    "domain": "wpengine.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2010-03-10T21:28:12Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:40.098442",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/wpengine.com"
+  },
+  "vmjesti.me": {
+    "domain": "vmjesti.me",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vmjesti.me",
+    "fetched_at": "2026-03-19T13:40:40.171160"
+  },
+  "meqrnews.com": {
+    "domain": "meqrnews.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/meqrnews.com",
+    "fetched_at": "2026-03-19T13:40:40.436516"
+  },
+  "footmbrcato.net": {
+    "domain": "footmbrcato.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/footmbrcato.net",
+    "fetched_at": "2026-03-19T14:54:13.937334"
+  },
+  "trafficmanager.net": {
+    "domain": "trafficmanager.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2005-11-25T00:16:41Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:40.636210",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/trafficmanager.net"
+  },
+  "coa.br": {
+    "domain": "coa.br",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.registro.br/domain/coa.br",
+    "fetched_at": "2026-03-19T14:54:15.300237"
+  },
+  "bubbleapps.io": {
+    "domain": "bubbleapps.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bubbleapps.io",
+    "fetched_at": "2026-03-19T14:54:15.366897"
+  },
+  "kingofshojh.com": {
+    "domain": "kingofshojh.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/kingofshojh.com",
+    "fetched_at": "2026-03-19T14:54:38.216491"
+  },
+  "gitlab.io": {
+    "domain": "gitlab.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gitlab.io",
+    "fetched_at": "2026-03-19T14:54:38.278030"
+  },
+  "netlify.app": {
+    "domain": "netlify.app",
+    "registrar": "Name.com, Inc.",
+    "registration_date": "2018-05-08T22:48:05.787Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:41.821632",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/netlify.app"
+  },
+  "myshopify.com": {
+    "domain": "myshopify.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2006-03-03T03:01:37Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:41.929650",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/myshopify.com"
+  },
+  "duckdns.org": {
+    "domain": "duckdns.org",
+    "registrar": "Gandi SAS",
+    "registration_date": "2013-04-12T19:58:56.713Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:42.789234",
+    "rdap_url": "https://rdap.publicinterestregistry.org/rdap/domain/duckdns.org"
+  },
+  "000webhostapp.com": {
+    "domain": "000webhostapp.com",
+    "registrar": "HOSTINGER operations, UAB",
+    "registration_date": "2016-05-11T13:34:12Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:42.891658",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/000webhostapp.com"
+  },
+  "shopify.com": {
+    "domain": "shopify.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2005-03-11T05:18:03Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:42.970141",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/shopify.com"
+  },
+  "digitalocean.com": {
+    "domain": "digitalocean.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2000-04-12T10:36:48Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:43.053504",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/digitalocean.com"
+  },
+  "tumblr.com": {
+    "domain": "tumblr.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2006-06-08T22:11:40Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:43.234360",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/tumblr.com"
+  },
+  "xool18.com": {
+    "domain": "xool18.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/xool18.com",
+    "fetched_at": "2026-03-19T14:54:38.590814"
+  },
+  "medium.com": {
+    "domain": "medium.com",
+    "registrar": "Amazon Registrar, Inc.",
+    "registration_date": "1998-05-27T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:43.499704",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/medium.com"
+  },
+  "afraid.org": {
+    "domain": "afraid.org",
+    "registrar": "eNom, LLC",
+    "registration_date": "1999-09-21T22:14:24.162Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:44.136869",
+    "rdap_url": "https://rdap.publicinterestregistry.org/rdap/domain/afraid.org"
+  },
+  "amazonaws.com": {
+    "domain": "amazonaws.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2005-08-18T02:10:45Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:44.255393",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/amazonaws.com"
+  },
+  "shallory.com": {
+    "domain": "shallory.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/shallory.com",
+    "fetched_at": "2026-03-19T14:55:08.653677"
+  },
+  "unfcvc.int": {
+    "domain": "unfcvc.int",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.iana.org/domain/unfcvc.int",
+    "fetched_at": "2026-03-19T14:55:09.637906"
+  },
+  "digitaloceanspaces.com": {
+    "domain": "digitaloceanspaces.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2017-02-23T21:30:06Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:45.468069",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/digitaloceanspaces.com"
+  },
+  "web.app": {
+    "domain": "web.app",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2019-01-08T22:05:04.716Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:45.701617",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/web.app"
+  },
+  "blogspot.com": {
+    "domain": "blogspot.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2000-07-31T21:38:58Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:45.783652",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/blogspot.com"
+  },
+  "confnrama.fr": {
+    "domain": "confnrama.fr",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.nic.fr/domain/confnrama.fr",
+    "fetched_at": "2026-03-19T14:56:06.632679"
+  },
+  "pages.dev": {
+    "domain": "pages.dev",
+    "registrar": "CloudFlare, Inc.",
+    "registration_date": "2020-09-02T02:33:29.228Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:17.470455",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/pages.dev"
+  },
+  "squarespace.com": {
+    "domain": "squarespace.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2003-03-25T21:26:58Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:46.510011",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/squarespace.com"
+  },
+  "vapclap.com": {
+    "domain": "vapclap.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/vapclap.com",
+    "fetched_at": "2026-03-19T14:56:06.845093"
+  },
+  "krnjp.com": {
+    "domain": "krnjp.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/krnjp.com",
+    "fetched_at": "2026-03-19T14:56:53.516368"
+  },
+  "wixsite.com": {
+    "domain": "wixsite.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2012-05-08T23:35:02Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:46.829805",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/wixsite.com"
+  },
+  "inmotionhosting.com": {
+    "domain": "inmotionhosting.com",
+    "registrar": "Tucows Domains Inc.",
+    "registration_date": "2001-02-15T05:43:18Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:46.953522",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/inmotionhosting.com"
+  },
+  "amazonaws.cn": {
+    "domain": "amazonaws.cn",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/amazonaws.cn",
+    "fetched_at": "2026-03-19T14:56:53.633738"
+  },
+  "trycloudflare.com": {
+    "domain": "trycloudflare.com",
+    "registrar": "Cloudflare, Inc.",
+    "registration_date": "2018-07-07T12:30:43Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:47.101145",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/trycloudflare.com"
+  },
+  "withgoogle.com": {
+    "domain": "withgoogle.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2008-11-17T19:17:42Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:47.192618",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/withgoogle.com"
+  },
+  "csahi.com": {
+    "domain": "csahi.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/csahi.com",
+    "fetched_at": "2026-03-19T14:56:53.898584"
+  },
+  "linkvdrtise.com": {
+    "domain": "linkvdrtise.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/linkvdrtise.com",
+    "fetched_at": "2026-03-19T14:56:54.144297"
+  },
+  "strikingly.com": {
+    "domain": "strikingly.com",
+    "registrar": "NameCheap, Inc.",
+    "registration_date": "2001-01-21T10:21:03Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:47.561143",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/strikingly.com"
+  },
+  "unixgools.org": {
+    "domain": "unixgools.org",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.publicinterestregistry.org/rdap/domain/unixgools.org",
+    "fetched_at": "2026-03-19T14:56:55.503018"
+  },
+  "busonesswire.com": {
+    "domain": "busonesswire.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/busonesswire.com",
+    "fetched_at": "2026-03-19T14:56:55.775393"
+  },
+  "replit.dev": {
+    "domain": "replit.dev",
+    "registrar": "Nom-IQ Limited dba Com Laude",
+    "registration_date": "2021-01-26T03:11:39.758Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:41.172270",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/replit.dev"
+  },
+  "godaddysites.com": {
+    "domain": "godaddysites.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2013-11-18T17:08:35Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:48.761477",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/godaddysites.com"
+  },
+  "replit.app": {
+    "domain": "replit.app",
+    "registrar": "Nom-IQ Limited dba Com Laude",
+    "registration_date": "2021-04-16T20:44:58.737Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:27.241490",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/replit.app"
+  },
+  "weebly.com": {
+    "domain": "weebly.com",
+    "registrar": "SafeNames Ltd.",
+    "registration_date": "2006-03-29T00:25:07Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.175529",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/weebly.com"
+  },
+  "wix.com": {
+    "domain": "wix.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "1995-05-12T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.267838",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/wix.com"
+  },
+  "cloudflare.com": {
+    "domain": "cloudflare.com",
+    "registrar": "Cloudflare, Inc.",
+    "registration_date": "2009-02-17T22:07:54Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.381549",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/cloudflare.com"
+  },
+  "pythonanywhere.com": {
+    "domain": "pythonanywhere.com",
+    "registrar": "NameCheap, Inc.",
+    "registration_date": "2011-03-24T15:27:29Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.457806",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/pythonanywhere.com"
+  },
+  "serveo.net": {
+    "domain": "serveo.net",
+    "registrar": "1API GmbH",
+    "registration_date": "2017-04-18T15:45:18Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.608812",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/serveo.net"
+  },
+  "ddns.net": {
+    "domain": "ddns.net",
+    "registrar": "Vitalwerks Internet Solutions, LLC DBA No-IP",
+    "registration_date": "2001-06-28T16:04:59Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.770535",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/ddns.net"
+  },
+  "windows.net": {
+    "domain": "windows.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "1995-08-10T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:49.881095",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/windows.net"
+  },
+  "name-servicey.com": {
+    "domain": "name-servicey.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/name-servicey.com",
+    "fetched_at": "2026-03-19T14:56:56.330177"
+  },
+  "godaddy.com": {
+    "domain": "godaddy.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "1999-03-02T05:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:50.092410",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/godaddy.com"
+  },
+  "appspot.com": {
+    "domain": "appspot.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2005-03-10T02:27:55Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:50.198979",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/appspot.com"
+  },
+  "ngrok-free.app": {
+    "domain": "ngrok-free.app",
+    "registrar": "Namecheap Inc.",
+    "registration_date": "2022-11-16T22:22:59.949Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:50.441662",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/ngrok-free.app"
+  },
+  "hostingerapp.com": {
+    "domain": "hostingerapp.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2016-09-08T09:41:59Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:50.533636",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/hostingerapp.com"
+  },
+  "uov.uk": {
+    "domain": "uov.uk",
+    "registrar": "Elife Limited",
+    "registration_date": "2017-10-30T09:37:52Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:51.234645",
+    "rdap_url": "https://rdap.nominet.uk/uk/domain/uov.uk"
+  },
+  "wordpress.com": {
+    "domain": "wordpress.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2000-03-03T12:13:23Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:51.341846",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/wordpress.com"
+  },
+  "cloudapp.net": {
+    "domain": "cloudapp.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2008-08-07T17:34:15Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:51.441515",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/cloudapp.net"
+  },
+  "azureedge.net": {
+    "domain": "azureedge.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2014-01-22T16:14:52Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:51.610144",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/azureedge.net"
+  },
+  "mitly.com": {
+    "domain": "mitly.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2012-08-11T05:23:07Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:51.745937",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/mitly.com"
+  },
+  "run.app": {
+    "domain": "run.app",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2018-04-05T21:49:32.024Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:27.865354",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/run.app"
+  },
+  "githubusercontent.com": {
+    "domain": "githubusercontent.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2014-02-06T21:17:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:52.551299",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/githubusercontent.com"
+  },
+  "bluesystlm.me": {
+    "domain": "bluesystlm.me",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bluesystlm.me",
+    "fetched_at": "2026-03-19T14:56:56.799433"
+  },
+  "linode.com": {
+    "domain": "linode.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2003-01-26T00:03:21Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:52.741533",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/linode.com"
+  },
+  "glitch.me": {
+    "domain": "glitch.me",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/glitch.me",
+    "fetched_at": "2026-03-19T14:56:56.994218"
+  },
+  "dreamhost.com": {
+    "domain": "dreamhost.com",
+    "registrar": "DreamHost, LLC",
+    "registration_date": "1997-09-23T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:52.872714",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/dreamhost.com"
+  },
+  "azurewebsites.net": {
+    "domain": "azurewebsites.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2012-01-24T18:43:51Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:52.976065",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/azurewebsites.net"
+  },
+  "workers.dev": {
+    "domain": "workers.dev",
+    "registrar": "CloudFlare, Inc.",
+    "registration_date": "2019-02-08T20:36:47.904Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:42.486969",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/workers.dev"
+  },
+  "pantheonsite.io": {
+    "domain": "pantheonsite.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pantheonsite.io",
+    "fetched_at": "2026-03-19T14:56:57.144340"
+  },
+  "surge.sh": {
+    "domain": "surge.sh",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/surge.sh",
+    "fetched_at": "2026-03-19T14:56:57.296662"
+  },
+  "salesforco-sites.com": {
+    "domain": "salesforco-sites.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/salesforco-sites.com",
+    "fetched_at": "2026-03-19T14:56:57.620627"
+  },
+  "2mdw.net": {
+    "domain": "2mdw.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/2mdw.net",
+    "fetched_at": "2026-03-19T14:56:57.946658"
+  },
+  "akamaized.net": {
+    "domain": "akamaized.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2014-03-18T14:07:55Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:54.041403",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/akamaized.net"
+  },
+  "pantheon.io": {
+    "domain": "pantheon.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pantheon.io",
+    "fetched_at": "2026-03-19T14:56:58.112022"
+  },
+  "demoegen.be": {
+    "domain": "demoegen.be",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/demoegen.be",
+    "fetched_at": "2026-03-19T14:57:21.596175"
+  },
+  "delomtte.com": {
+    "domain": "delomtte.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/delomtte.com",
+    "fetched_at": "2026-03-19T14:57:22.281863"
+  },
+  "render.com": {
+    "domain": "render.com",
+    "registrar": "Amazon Registrar, Inc.",
+    "registration_date": "1998-10-01T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:54.756604",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/render.com"
+  },
+  "pomkbun.com": {
+    "domain": "pomkbun.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/pomkbun.com",
+    "fetched_at": "2026-03-19T14:57:22.709082"
+  },
+  "f8bega2.com": {
+    "domain": "f8bega2.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/f8bega2.com",
+    "fetched_at": "2026-03-19T14:57:23.039092"
+  },
+  "ngipx.com": {
+    "domain": "ngipx.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/ngipx.com",
+    "fetched_at": "2026-03-19T14:57:23.319189"
+  },
+  "herokuapp.com": {
+    "domain": "herokuapp.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2010-09-19T05:55:31Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:55.461332",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/herokuapp.com"
+  },
+  "quenduum.com": {
+    "domain": "quenduum.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/quenduum.com",
+    "fetched_at": "2026-03-19T14:57:23.707600"
+  },
+  "bluehost.com": {
+    "domain": "bluehost.com",
+    "registrar": "Domain.com - Network Solutions, LLC",
+    "registration_date": "2002-11-15T10:33:55Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:55.740653",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/bluehost.com"
+  },
+  "ddmaincontrol.com": {
+    "domain": "ddmaincontrol.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/ddmaincontrol.com",
+    "fetched_at": "2026-03-19T14:57:24.052864"
+  },
+  "fly.dev": {
+    "domain": "fly.dev",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2019-03-01T16:38:00.153Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T14:54:27.650407",
+    "rdap_url": "https://pubapi.registry.google/rdap/domain/fly.dev"
+  },
+  "cloudflare.net": {
+    "domain": "cloudflare.net",
+    "registrar": "Cloudflare, Inc.",
+    "registration_date": "2009-02-17T22:08:05Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:56.365586",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/cloudflare.net"
+  },
+  "hubspotpagebuilder.com": {
+    "domain": "hubspotpagebuilder.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2020-05-06T21:35:51Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:56.468993",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/hubspotpagebuilder.com"
+  },
+  "eramer.com": {
+    "domain": "eramer.com",
+    "registrar": "Gname.com Pte. Ltd.",
+    "registration_date": "2017-10-02T18:36:52Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:56.631555",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/eramer.com"
+  },
+  "hearncbse.in": {
+    "domain": "hearncbse.in",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.nixiregistry.in/rdap/domain/hearncbse.in",
+    "fetched_at": "2026-03-19T14:57:25.627876"
+  },
+  "pricboye.pk": {
+    "domain": "pricboye.pk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pricboye.pk",
+    "fetched_at": "2026-03-19T14:57:25.708029"
+  },
+  "yulture.com": {
+    "domain": "yulture.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/yulture.com",
+    "fetched_at": "2026-03-19T14:57:26.026683"
+  },
+  "akamaihd.net": {
+    "domain": "akamaihd.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2009-09-14T20:35:31Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:57.596073",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/akamaihd.net"
+  },
+  "futohero.com": {
+    "domain": "futohero.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/futohero.com",
+    "fetched_at": "2026-03-19T14:57:26.368677"
+  },
+  "vercel.sh": {
+    "domain": "vercel.sh",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vercel.sh",
+    "fetched_at": "2026-03-19T14:57:26.479819"
+  },
+  "cloudfront.net": {
+    "domain": "cloudfront.net",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "2008-04-25T18:25:49Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:57.856080",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/cloudfront.net"
+  },
+  "wpguvrdian.io": {
+    "domain": "wpguvrdian.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/wpguvrdian.io",
+    "fetched_at": "2026-03-19T14:57:26.585711"
+  },
+  "repl.co": {
+    "domain": "repl.co",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/repl.co",
+    "fetched_at": "2026-03-19T14:57:26.780452"
+  },
+  "royalsocietypuulishing.org": {
+    "domain": "royalsocietypuulishing.org",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.publicinterestregistry.org/rdap/domain/royalsocietypuulishing.org",
+    "fetched_at": "2026-03-19T14:57:50.812963"
+  },
+  "vawve.net": {
+    "domain": "vawve.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/vawve.net",
+    "fetched_at": "2026-03-19T14:57:51.130579"
+  },
+  "github.io": {
+    "domain": "github.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/github.io",
+    "fetched_at": "2026-03-19T14:56:56.906001"
+  },
+  "hom.au": {
+    "domain": "hom.au",
+    "registrar": "Above.au Pty Limited",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:40:59.831555",
+    "rdap_url": "https://rdap.cctld.au/rdap/domain/hom.au"
+  },
+  "name-servlces.com": {
+    "domain": "name-servlces.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/name-servlces.com",
+    "fetched_at": "2026-03-19T14:57:37.367320"
+  },
+  "wwsdns-62.net": {
+    "domain": "wwsdns-62.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/wwsdns-62.net",
+    "fetched_at": "2026-03-19T14:57:37.677924"
+  },
+  "bubble.is": {
+    "domain": "bubble.is",
+    "registrar": null,
+    "registration_date": "2012-07-31T21:45:09+00:00",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:41:00.451625",
+    "rdap_url": "https://rdap.isnic.is/rdap/domain/bubble.is"
+  },
+  "htoriesig.info": {
+    "domain": "htoriesig.info",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.identitydigital.services/rdap/domain/htoriesig.info",
+    "fetched_at": "2026-03-19T13:41:48.994954"
+  },
+  "crowd-urlaut.com": {
+    "domain": "crowd-urlaut.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/crowd-urlaut.com",
+    "fetched_at": "2026-03-19T13:41:50.307702"
+  },
+  "netlify.com": {
+    "domain": "netlify.com",
+    "registrar": "Name.com, Inc.",
+    "registration_date": "2014-06-09T19:55:48Z",
+    "registrar_location": null,
+    "fetched_at": "2026-03-19T13:41:50.425632",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/netlify.com"
+  },
+  "ngrok.io": {
+    "domain": "ngrok.io",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ngrok.io",
+    "fetched_at": "2026-03-19T13:41:51.891261"
+  },
+  "sportnievws.nl": {
+    "domain": "sportnievws.nl",
+    "error": "HTTPError: 429 Client Error:  for url: https://rdap.sidn.nl/domain/sportnievws.nl",
+    "fetched_at": "2026-03-19T15:02:58.101928"
   }
 }
