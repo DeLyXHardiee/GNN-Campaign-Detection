@@ -13,8 +13,8 @@ One experiment folder per ``run_id`` in ``gnn_stage_pipeline_config.json``:
     clustering/
 
 Train, eval, and clustering all use the same path — no timestamps or sidecar files.
-Change ``run_id`` when you want a new isolated run (avoid reusing names if you care about
-old checkpoints).
+Keep ``run_id`` and ``training.model_save_name`` consistent with the run/checkpoint you use,
+especially when you skip training and only run eval or clustering.
 
 Optional ``RUN_DIR`` below overrides ``<RUNS_PARENT>/<run_id>`` (full path).
 """
@@ -60,7 +60,6 @@ def main() -> None:
 
     clustering_root = cfg["clustering"]
     clustering_cfg = clustering_root["config"]
-    clustering_model_name = clustering_root["model_name"]
 
     run_dir = RUN_DIR.strip()
     if not run_dir:
@@ -105,7 +104,7 @@ def main() -> None:
     #     checkpoint_path=checkpoint_path,
     #     output_dir=run_dir,
     #     clustering_cfg=clustering_cfg,
-    #     model_name=clustering_model_name,
+    #     model_save_name=training_cfg["model_save_name"],
     #     device_pref=device_pref,
     #     to_undirected=to_undirected,
     # )

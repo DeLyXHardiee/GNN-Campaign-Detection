@@ -6,18 +6,18 @@
   "training": {
     "torch_seed": 42,
     "primary_ntype": "email",
-    "hidden": 64,
-    "out_dim": 64,
+    "hidden": 128,
+    "out_dim": 128,
     "layers": 2,
-    "dropout": 0.1,
+    "dropout": 0.3,
     "neg_ratio": 1.0,
-    "batch_size": 1024,
-    "fanout": [15, 10],
+    "batch_size": 256,
+    "fanout": [-1, -1],
     "val_ratio": 0.1,
     "test_ratio": 0.1,
-    "epochs": 1,
-    "lr": 0.001,
-    "wd": 0.0001,
+    "epochs": 30,
+    "lr": 0.0005,
+    "wd": 0.0005,
     "score_head": "dot",
     "early_stopping_patience": 5,
     "lr_reduce_patience": 5,
@@ -33,19 +33,26 @@
     "auroc_ap": {},
     "recall_at_k": {
       "K_list": [1, 10, 20],
-      "use_dot": false
+      "use_dot": true
     }
   },
 
   "clustering": {
-    "model_name": "model_test",
     "config": {
-      "cluster_algorithm": "dbscan",
-      "epsilon_values": [0.5],
-      "min_samples": 5,
-      "quantile_values": [0.25],
-      "n_samples": 500,
-      "min_cluster_size_values": [10]
+      "dbscan": {
+        "enabled": true,
+        "epsilon_values": [0.5],
+        "min_samples": 5
+      },
+      "meanshift": {
+        "enabled": true,
+        "quantile_values": [0.25],
+        "n_samples": 500
+      },
+      "hdbscan": {
+        "enabled": false,
+        "min_cluster_size_values": [5]
+      }
     }
   }
 }

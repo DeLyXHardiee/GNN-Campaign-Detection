@@ -18,7 +18,7 @@ def run_clustering_stage(
     checkpoint_path: str | Path,
     output_dir: str | Path,
     clustering_cfg: dict[str, Any],
-    model_name: str,
+    model_save_name: str,
     device_pref: str | None,
     to_undirected: bool,
 ) -> dict[str, Any]:
@@ -51,23 +51,39 @@ def run_clustering_stage(
     )
     _ = predictor, checkpoint
 
-    sweep_clustering_for_one_model(
-        model=model,
-        data=data,
-        device=device,
-        ground_truth_labels=ground_truth,
-        clustering_config=clustering_cfg,
-        output_dir=clustering_out,
-        model_name=model_name,
-        model_column_name=Path(checkpoint_path).stem,
-    )
+    # clustering_cfg is a dict: algo_name -> { "enabled": bool, ...params }.
+    # Model name comes from training.model_save_name (stem) so it stays consistent when not running training.
+    outputs: dict[str, dict[str, str]] = {}
+    model_stem = Path(model_save_name).stem
 
-    algo = str(clustering_cfg["cluster_algorithm"]).lower()
-    model_dir = clustering_out / model_name
-    csv_path = model_dir / f"{algo}_sweep.csv"
+    for algo_name, algo_cfg in clustering_cfg.items():
+        if not algo_cfg.get("enabled", False):
+            continue
+        algo_name = str(algo_name).lower().strip()
+        cfg_for_sweep = {k: v for k, v in algo_cfg.items() if k != "enabled"}
+        cfg_for_sweep["cluster_algorithm"] = algo_name
 
-    result = {"csv_path": str(csv_path), "output_dir": str(clustering_out), "model_column_name": Path(checkpoint_path).stem}
-    (model_dir / "stage_result.json").write_text(
+        algo_out = clustering_out / algo_name
+        sweep_res = sweep_clustering_for_one_model(
+            model=model,
+            data=data,
+            device=device,
+            ground_truth_labels=ground_truth,
+            clustering_config=cfg_for_sweep,
+            output_dir=algo_out,
+            model_column_name=model_stem,
+        )
+        outputs[algo_name] = {
+            "csv_path": str(sweep_res["csv_path"]),
+            "output_dir": str(algo_out),
+        }
+
+    result = {
+        "output_dir": str(clustering_out),
+        "model_column_name": model_stem,
+        "algorithms": outputs,
+    }
+    (clustering_out / "stage_result.json").write_text(
         json.dumps(result, indent=2),
         encoding="utf-8",
     )

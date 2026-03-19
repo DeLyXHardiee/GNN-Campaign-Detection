@@ -348,19 +348,22 @@ def sweep_clustering_for_one_model(
     ground_truth_labels,
     clustering_config,
     output_dir,
-    model_name="model",
-    model_column_name=None,
+    model_column_name="model",
 ):
+    """
+    Run clustering sweep for one model. Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``
+    (e.g. best_model_dbscan_sweep.csv). Use training.model_save_name stem for consistency.
+    """
     id_to_emb = extract_email_embeddings(model, data, device)
     cfg = dict(clustering_config)
 
     rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
     for r in rows:
-        r["model"] = model_column_name if model_column_name is not None else model_name
+        r["model"] = model_column_name
 
     algo = str(cfg["cluster_algorithm"]).lower()
     output_dir = Path(output_dir)
-    csv_path = output_dir / model_name / f"{algo}_sweep.csv"
+    csv_path = output_dir / f"{model_column_name}_{algo}_sweep.csv"
     save_metrics_csv(rows, csv_path)
     return {"csv_path": str(csv_path), "rows": rows}
 
@@ -388,7 +391,7 @@ def sweep_clustering_for_many_models(
             filename=str(ckpt_path),
         )
         _ = predictor
-        model_name = ckpt_path.stem
+        model_column_name = ckpt_path.stem
         results.append(
             sweep_clustering_for_one_model(
                 model=model,
@@ -397,7 +400,7 @@ def sweep_clustering_for_many_models(
                 ground_truth_labels=ground_truth_labels,
                 clustering_config=clustering_config,
                 output_dir=output_dir,
-                model_name=model_name,
+                model_column_name=model_column_name,
             )
         )
     return results
