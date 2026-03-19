@@ -293,6 +293,41 @@ def _coerce_mapping(value: Any) -> Dict[str, Any]:
     return {}
 
 
+def _coerce_mapping_list(value: Any) -> List[Dict[str, Any]]:
+    """Best-effort conversion of a MISP attribute value into a list of dicts."""
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+
+    if isinstance(value, dict):
+        return [value]
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)]
+            if isinstance(parsed, dict):
+                return [parsed]
+        except Exception:
+            pass
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)]
+            if isinstance(parsed, dict):
+                return [parsed]
+        except Exception:
+            pass
+
+    return []
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -318,6 +353,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             "body": "",
             "html": {},
             "css": {},
+            "attachment_metadata": [],
             "date": "",
             "received_hops": [],
             "return_path": {},
@@ -346,6 +382,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 extracted = _extract_strings_from_attr_value(raw_val)
             elif mapping.strategy == "dict_mapping":
                 extracted = _coerce_mapping(raw_val)
+            elif mapping.strategy == "dict_list":
+                extracted = _coerce_mapping_list(raw_val)
             elif mapping.strategy == "received_list":
                 extracted = _coerce_received_hops(raw_val)
             else:
@@ -389,6 +427,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "html": fields["html"],
                 "css": fields["css"],
                 "attachments": accum["attachments"],
+                "attachment_metadata": fields.get("attachment_metadata", []),
                 "urls": accum["urls"],
                 "date": fields["date"],
                 "received_hops": fields.get("received_hops", []),

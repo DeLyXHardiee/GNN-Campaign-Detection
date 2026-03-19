@@ -72,6 +72,7 @@ def run_preprocessing_trec():
             "body_has_unsubscribe_link": "false",
             "domain_is_common_webprovided": "false",
             "email_attachments": [],
+            "email_attachment_metadata": [],
             "email_html": {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""},
             "email_css": {"style_features": {}},
             "email_headers": {
