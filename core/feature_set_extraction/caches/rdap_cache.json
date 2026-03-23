@@ -825,6 +825,21 @@
   "sportnievws.nl": {
     "domain": "sportnievws.nl",
     "error": "HTTPError: 429 Client Error:  for url: https://rdap.sidn.nl/domain/sportnievws.nl",
-    "fetched_at": "2026-03-19T15:02:58.101928"
+    "fetched_at": "2026-03-23T10:26:15.593428"
+  },
+  "correios.coa.br": {
+    "domain": "correios.coa.br",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.registro.br/domain/correios.coa.br",
+    "fetched_at": "2026-03-23T10:05:01.251583"
+  },
+  "ons.uov.uk": {
+    "domain": "ons.uov.uk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.nominet.uk/uk/domain/ons.uov.uk",
+    "fetched_at": "2026-03-23T10:05:03.057446"
+  },
+  "escortsandbabes.hom.au": {
+    "domain": "escortsandbabes.hom.au",
+    "error": "HTTPError: 400 Client Error: Bad Request for url: https://rdap.cctld.au/rdap/domain/escortsandbabes.hom.au",
+    "fetched_at": "2026-03-23T10:05:07.036571"
   }
 }

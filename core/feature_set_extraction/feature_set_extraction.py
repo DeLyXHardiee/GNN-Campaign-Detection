@@ -1,4 +1,5 @@
 from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 import pandas as pd
 import os
 from collections import Counter
@@ -33,6 +34,7 @@ This function is able to extract all of the above features from the DATE header.
 
 def extract_time_features(date_str):
     try:
+        date_str = datetime.fromtimestamp(float(date_str), tz=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
         dt = parsedate_to_datetime(date_str)
         data = {
             'day': int(dt.day),
@@ -438,12 +440,12 @@ def extract_attachment_features(attachments, attachment_metadata=None):
     unique_top_level_types = sorted(set(top_level_types))
 
     return {
-        "attachments": cleaned,
+        #"attachments": cleaned,
         "has_attachments": int(len(cleaned) > 0 or len(metadata_items) > 0),
         "num_attachments": int(max(len(cleaned), len(metadata_items))),
         "attachment_sizes_bytes": sizes,
         "attachment_types": unique_content_types,
-        "attachment_top_level_types": " ".join(unique_top_level_types),
+        #"attachment_top_level_types": " ".join(unique_top_level_types),
     }
 
 '''
@@ -853,10 +855,10 @@ def get_idf_path_for_misp(misp_path):
     return os.path.join(get_helpers_output_dir(), f"{base_name}_subject_idf.json")
 
 def get_FS1(misp_path, events):
-    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls"], events=events)
+    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls", "attachments"], events=events)
 
 def get_FS2(misp_path, events):
-    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin"], events=events)
+    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin", "attachments"], events=events)
 
     filtered_features = []
     for feat in features_list:
@@ -892,7 +894,7 @@ def get_FS4(misp_path, events):
     return filtered_features
 
 def get_FS5(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls"], events=events)
+    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls", "attachments"], events=events)
 
     filtered_features = []
     for feat in features_list:
@@ -903,7 +905,8 @@ def get_FS5(misp_path, events):
                                      "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
                                      "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
                                      "any_similar_phish_targets","any_popular_domain_in_subdomain",
-                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",]
+                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",
+                                     "has_attachments","num_attachments", "attachment_sizes_bytes",]
                         }
         filtered_features.append(filtered_feat)
 
@@ -919,7 +922,8 @@ def get_FS6(misp_path, events):
         filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject",
                                          "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5",
-                                         "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
+                                         "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9",
+                                         "has_attachments"]
                         }
         filtered_features.append(filtered_feat)
 
@@ -994,9 +998,6 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         'FS5': get_FS5,
         'FS6': get_FS6,
         'FS7': get_FS7,
-    }
-    fs_extractors = {
-        'FS1': get_FS1,
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
