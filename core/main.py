@@ -178,10 +178,11 @@ def create_feature_sets():
 def run_featureset_clustering():
     """
     Run DBSCAN and Mean Shift clustering with grid search over parameters.
-    Tests different parameter combinations to find optimal homogeneity scores.
+    Delegates to feature_set_extraction.clustering.featureset_clustering.
     """
-    from feature_set_extraction.cluster_comparison.dbScanComparison import dbscan_cluster_all
-    from feature_set_extraction.cluster_comparison.meanshiftComparison import meanshift_cluster_all
+    from feature_set_extraction.clustering.featureset_clustering import (
+        run_featureset_clustering as _run,
+    )
 
     cfg = load_pipeline_config()
     clustering_cfg = cfg.get("featureset-clustering", cfg.get("clustering", {}))
@@ -189,94 +190,22 @@ def run_featureset_clustering():
     meanshift_cfg = clustering_cfg.get("meanshift", {})
     outlier_cfg = clustering_cfg.get("outlier_removal", {})
 
-    ground_truth_json = resolve_project_path(cfg.get("datasets", {}).get("ground_truth_json"))
-    dataset_base = cfg.get("datasets", {}).get("featureset_base_name", "synthetic_email_dataset_50")
-
-    eps_values = dbscan_cfg.get("eps_values", [1, 1.5, 2])
-    min_samples = dbscan_cfg.get("min_samples", 5)
-    n_components_values = clustering_cfg.get("n_components_values", [1000])
-    max_tfidf_features = clustering_cfg.get("max_tfidf_features")
-
-    remove_outliers = outlier_cfg.get("enabled", True)
-    outlier_contamination = outlier_cfg.get("contamination", 0.05)
-    
-    print(f"{'='*80}")
-    print(f"DBSCAN Parameter Grid Search")
-    print(f"{'='*80}")
-    print(f"Testing {len(eps_values)} eps values: {eps_values}")
-    print(f"Testing {len(n_components_values)} SVD components: {n_components_values}")
-    print(f"Total configurations: {len(eps_values) * len(n_components_values)}")
-    print(f"{'='*80}\n")
-    
-    for eps in eps_values:
-        for n_components in n_components_values:
-            print(f"\n{'='*80}")
-            print(
-                f"Testing: eps={eps}, max_tfidf_features=uncapped, "
-                f"n_components={n_components}, min_samples={min_samples}, "
-                f"remove_outliers={remove_outliers}, outlier_contamination={outlier_contamination}"
-            )
-            print(f"{'='*80}")
-
-            dbscan_cluster_all(
-                eps=eps,
-                min_samples=min_samples,
-                max_tfidf_features=max_tfidf_features,
-                n_components=n_components,
-                remove_outliers=remove_outliers,
-                outlier_contamination=outlier_contamination,
-                ground_truth_json=ground_truth_json,
-                dataset_base=dataset_base,
-            )
-    
-    print(f"\n{'='*80}")
-    print(f"DBSCAN grid search complete!")
-    print(f"Results saved to data/fsclusters/dbscan_*_scores.txt")
-    print(f"{'='*80}\n")
-    
-    quantile_values = meanshift_cfg.get("quantile_values", [0.25])
-    n_samples = meanshift_cfg.get("n_samples", 500)
-    
-    print(f"\n{'='*80}")
-    print(f"Mean Shift Parameter Grid Search")
-    print(f"{'='*80}")
-    print(f"Testing {len(quantile_values)} bandwidth values: {quantile_values}")
-    print(f"Testing {len(n_components_values)} SVD components: {n_components_values}")
-    print(f"Total configurations: {len(quantile_values) * len(n_components_values)}")
-    print(f"{'='*80}\n")
-    
-    for quantile in quantile_values:
-        for n_components in n_components_values:
-            print(f"\n{'='*80}")
-            print(
-                f"Testing: quantile={quantile}, max_tfidf_features=uncapped, "
-                f"n_components={n_components}, n_samples={n_samples}, "
-                f"remove_outliers={remove_outliers}, outlier_contamination={outlier_contamination}"
-            )
-            print(f"{'='*80}")
-            
-            meanshift_cluster_all(
-                quantile=quantile,
-                n_samples=n_samples,
-                max_tfidf_features=max_tfidf_features,
-                n_components=n_components,
-                remove_outliers=remove_outliers,
-                outlier_contamination=outlier_contamination,
-                ground_truth_json=ground_truth_json,
-                dataset_base=dataset_base,
-            )
-    
-    print(f"\n{'='*80}")
-    print(f"Mean Shift grid search complete!")
-    print(f"Results saved to data/fsclusters/meanshift_*_scores.txt")
-    print(f"{'='*80}\n")
-    
-    print(f"\n{'='*80}")
-    print(f"All grid searches complete!")
-    print(f"Review homogeneity scores to find optimal parameters:")
-    print(f"  - DBSCAN: data/fsclusters/dbscan_homogeneity_scores.txt")
-    print(f"  - Mean Shift: data/fsclusters/meanshift_homogeneity_scores.txt")
-    print(f"{'='*80}")
+    _run(
+        dataset_base=cfg.get("datasets", {}).get(
+            "featureset_base_name", "synthetic_email_dataset_50"
+        ),
+        ground_truth_json=resolve_project_path(
+            cfg.get("datasets", {}).get("ground_truth_json")
+        ),
+        eps_values=dbscan_cfg.get("eps_values", [1, 1.5, 2]),
+        min_samples=dbscan_cfg.get("min_samples", 5),
+        quantile_values=meanshift_cfg.get("quantile_values", [0.25]),
+        n_samples=meanshift_cfg.get("n_samples", 500),
+        n_components_values=clustering_cfg.get("n_components_values", [1000]),
+        max_tfidf_features=clustering_cfg.get("max_tfidf_features"),
+        remove_outliers=outlier_cfg.get("enabled", True),
+        outlier_contamination=outlier_cfg.get("contamination", 0.05),
+    )
 
 def run_GNN():
     # input PyTorch Geometric graph --> Run GNN model on the graph --> output embeddings
@@ -300,8 +229,8 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # misp_path = run_preprocessing_trec()
-    create_feature_sets()
-    #run_featureset_clustering()
+    #create_feature_sets()
+    run_featureset_clustering()
     #misp_path = "preprocessing/output/incidents-20260211-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
