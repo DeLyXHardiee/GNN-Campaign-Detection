@@ -158,14 +158,14 @@ def run_auroc_ap_analysis(
 
     plot_paths = plot_score_distributions(distributions, output_dir)
 
-    # Machine-readable metrics: use string keys for JSON
+    # Machine-readable metrics: use string keys for JSON (tuples are not JSON-serializable)
     metrics_serializable = {_et_to_label(et): v for et, v in all_scores.items()}
     metrics_path = output_dir / "auroc_ap_metrics.json"
     with open(metrics_path, "w") as f:
         json.dump(metrics_serializable, f, indent=2)
 
     return {
-        "metrics": all_scores,
+        "metrics": metrics_serializable,
         "plot_paths": plot_paths,
         "metrics_path": str(metrics_path),
     }

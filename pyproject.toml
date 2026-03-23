@@ -1,0 +1,43 @@
+# Install order matters: torch-sparse and torch_scatter need torch at build time.
+# Run:  scripts/install.sh   OR  pip install torch && pip install torch-sparse torch_scatter --no-build-isolation && pip install -e .
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gnn-campaign-detection"
+version = "0.1.0"
+description = "GNN-based campaign detection pipeline"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "torch",
+    "torch-geometric",
+    "torch-sparse",
+    "torch_scatter",
+    "pandas",
+    "numpy",
+    "networkx",
+    "scikit-learn",
+    "sentence-transformers",
+    "neo4j",
+    "pytest",
+    "mail-parser",
+    "lxml",
+    "hdbscan",
+    "tqdm",
+    "beautifulsoup4",
+    "tldextract",
+    "matplotlib",
+    "wheel",  # Install before torch_scatter to avoid legacy setup.py install deprecation (torch_scatter has no pyproject.toml)
+]
+
+[project.optional-dependencies]
+dev = []  # Add dev tools here if needed (e.g. ruff, mypy)
+
+[tool.setuptools.package-dir]
+"" = "core"
+
+[tool.setuptools.packages.find]
+where = ["core"]

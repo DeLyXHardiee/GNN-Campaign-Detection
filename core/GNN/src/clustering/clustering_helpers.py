@@ -25,13 +25,14 @@ from core.clustering.clusteringMetrics import (  # noqa: E402
 )
 
 @torch.no_grad()
-def extract_email_embeddings(model, data, device):
+def extract_email_embeddings(model, data, device, external_ids):
     """
     Run the model and return email-node embeddings keyed by email ``external_id``.
 
     PyG orders email nodes 0 .. n-1; row i of h['email'] is the embedding for
-    that node. We align that embedding row to the email node's
-    ``data['email'].external_id[i]``.
+    that node. Pass ``external_ids`` from the graph metadata (e.g.
+    metadata["email_attrs"]["external_id"]) when loading the graph; the graph
+    itself does not store external_id (PyG loaders require tensor-only node stores).
     """
     model.eval()
     graph = data.to(device)
@@ -40,16 +41,7 @@ def extract_email_embeddings(model, data, device):
     h = model(x_dict, edge_index_dict)
     email_vecs = h["email"].cpu().numpy()
 
-    if not hasattr(graph["email"], "external_id"):
-        raise AttributeError('Expected email nodes to have `external_id` at data["email"].external_id.')
-
-    external_ids = graph["email"].external_id
-    if torch.is_tensor(external_ids):
-        external_ids = external_ids.detach().cpu().tolist()
-    elif isinstance(external_ids, np.ndarray):
-        external_ids = external_ids.tolist()
-    else:
-        external_ids = list(external_ids)
+    external_ids = list(external_ids)
 
     if len(external_ids) != len(email_vecs):
         raise ValueError(
@@ -123,6 +115,7 @@ def save_metrics_csv(rows, path):
         "quantile",
         "n_samples",
         "bandwidth",
+        "clustering_error",
         # HDBSCAN
         "min_cluster_size",
         # Internal metrics
@@ -137,7 +130,9 @@ def save_metrics_csv(rows, path):
         "n_embeddings",
         "n_clusters",
         "n_noise",
-        "coverage",
+        "n_non_noise",
+        "coverage_ground_truth",
+        "coverage_all",
         # External alignment counts
         "n_samples_external",
     ]
@@ -159,12 +154,15 @@ def sweep_clustering_for_one_model(
     clustering_config,
     output_dir,
     model_column_name="model",
+    *,
+    email_external_ids,
 ):
     """
     Run clustering sweep for one model. Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``
     (e.g. best_model_dbscan_sweep.csv). Use training.model_save_name stem for consistency.
+    email_external_ids: list of external_id per email node from metadata (email_attrs.external_id).
     """
-    id_to_emb = extract_email_embeddings(model, data, device)
+    id_to_emb = extract_email_embeddings(model, data, device, external_ids=email_external_ids)
     cfg = dict(clustering_config)
 
     rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
@@ -185,11 +183,14 @@ def sweep_clustering_for_many_models(
     ground_truth_labels,
     clustering_config,
     output_dir,
+    *,
+    email_external_ids,
 ):
     """
     Run the same clustering sweep across multiple checkpoint files.
 
     `checkpoints` should be an iterable of full paths to `.pt` files.
+    email_external_ids: list of external_id per email node (e.g. from metadata email_attrs.external_id).
     """
     output_dir = Path(output_dir)
     results = []
@@ -211,6 +212,7 @@ def sweep_clustering_for_many_models(
                 clustering_config=clustering_config,
                 output_dir=output_dir,
                 model_column_name=model_column_name,
+                email_external_ids=email_external_ids,
             )
         )
     return results
@@ -224,9 +226,12 @@ def run_locked_param_across_checkpoints(
     clustering_config,
     locked_param_value,
     output_dir,
+    *,
+    email_external_ids,
 ):
     """
     Keep one clustering parameter fixed and run it across multiple checkpoints.
+    email_external_ids: list of external_id per email node (e.g. from metadata).
     """
     algo = str(clustering_config["cluster_algorithm"]).lower()
     locked_cfg = dict(clustering_config)
@@ -247,4 +252,5 @@ def run_locked_param_across_checkpoints(
         ground_truth_labels=ground_truth_labels,
         clustering_config=locked_cfg,
         output_dir=output_dir,
+        email_external_ids=email_external_ids,
     )

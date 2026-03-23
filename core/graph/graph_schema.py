@@ -164,13 +164,6 @@ DEFAULT_SCHEMA = GraphSchema(
             feature_strategy="str_len",
             extra_attr_keys=("docfreq",),
         ),
-        "week": NodeMapping(
-            canonical="week",
-            pyg="week",
-            memgraph="Week",
-            memgraph_id_key="key",
-            feature_strategy="index",
-        ),
         "url": NodeMapping(
             canonical="url",
             pyg="url",
@@ -268,18 +261,6 @@ DEFAULT_SCHEMA = GraphSchema(
             memgraph_right_label="Receiver",
             memgraph_right_key="key",
             edge_strategy="email_to_entity",
-        ),
-        "in_week": EdgeMapping(
-            canonical="in_week",
-            src="email",
-            rel_pyg="in_week",
-            dst="week",
-            memgraph_type="IN_WEEK",
-            memgraph_left_label="Email",
-            memgraph_left_key="eid",
-            memgraph_right_label="Week",
-            memgraph_right_key="key",
-            edge_strategy="email_to_week_from_date",
         ),
         "has_url": EdgeMapping(
             canonical="has_url",

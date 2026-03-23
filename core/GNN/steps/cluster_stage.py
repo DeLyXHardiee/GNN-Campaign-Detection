@@ -44,6 +44,21 @@ def run_clustering_stage(
         path=str(Path(graph_path).expanduser()),
         to_undirected=bool(to_undirected),
     )
+    # Load metadata for email external_id (graph does not store it; PyG loaders require tensor-only node stores)
+    meta_path = Path(graph_path).expanduser().with_suffix(".meta.json")
+    if not meta_path.exists():
+        raise FileNotFoundError(
+            f"Graph metadata not found: {meta_path}. "
+            "Clustering requires email_attrs.external_id from the companion .meta.json."
+        )
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+    email_external_ids = meta.get("email_attrs", {}).get("external_id")
+    if not email_external_ids:
+        raise ValueError(
+            f"Metadata at {meta_path} has no email_attrs.external_id. "
+            "Clustering requires external_id per email node."
+        )
     ground_truth = extract_ground_truth_labels(ground_truth_path)
 
     model, predictor, checkpoint = load_model_checkpoint(
@@ -72,11 +87,20 @@ def run_clustering_stage(
             clustering_config=cfg_for_sweep,
             output_dir=algo_out,
             model_column_name=model_stem,
+            email_external_ids=email_external_ids,
         )
-        outputs[algo_name] = {
+        algo_entry: dict[str, Any] = {
             "csv_path": str(sweep_res["csv_path"]),
             "output_dir": str(algo_out),
         }
+        clustering_errors = [
+            str(r["clustering_error"])
+            for r in sweep_res["rows"]
+            if r.get("clustering_error")
+        ]
+        if clustering_errors:
+            algo_entry["clustering_errors"] = clustering_errors
+        outputs[algo_name] = algo_entry
 
     result = {
         "output_dir": str(clustering_out),
