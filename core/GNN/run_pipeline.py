@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from steps.cluster_stage import run_clustering_stage
+from steps.clustering_plot_stage import run_clustering_plot_stage
 from steps.eval_auroc_ap_stage import run_auroc_ap_stage
 from steps.eval_recall_at_k_stage import run_recall_at_k_stage
 from steps.pipeline_paths import run_dir_for, sanitize_run_id
@@ -42,11 +43,6 @@ GROUND_TRUTH_PATH = "../../data/groundtruth/ground_truth.json"
 # Parent directory where training creates run_<timestamp>/ (see docstring).
 RUNS_PARENT = ""
 
-# Full path override. Empty → <RUNS_PARENT>/<run_id> from config.
-RUN_DIR = ""
-
-# Optional override; if empty, uses RUN_DIR/models/<model_save_name from config>.
-CHECKPOINT_PATH = ""
 
 
 def main() -> None:
@@ -111,6 +107,9 @@ def main() -> None:
         device_pref=device_pref,
         to_undirected=to_undirected,
     )
+
+    # Uncomment to generate clustering analysis plots under <run_dir>/clustering/plots/.
+    # run_clustering_plot_stage(output_dir=run_dir)
 
     print("Done. run_dir:", run_dir)
 
