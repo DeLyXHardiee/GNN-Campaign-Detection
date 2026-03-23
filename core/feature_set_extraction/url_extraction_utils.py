@@ -210,7 +210,8 @@ def extract_url_features(
         "subdomain_counts": subdomain_counts,
         "hyphen_counts": hyphen_counts,
         
-        "any_ev_cert": any_ev_cert,
+        #outcommented EV cert because its unavailable, is part of WHOIS but this is not provided and getting EV cert requires connecting to host
+        #"any_ev_cert": any_ev_cert,
         "any_has_extra_http": any_has_extra_http,
         "any_multi_part_tld": any_multi_part_tld,
         "any_is_web_hosting_domain": any_is_web_hosting_domain,
