@@ -1,22 +1,28 @@
-import json
 import csv
-from collections import defaultdict
+import sys
 from pathlib import Path
 
 import numpy as np
 import torch
-import hdbscan
-from sklearn.cluster import DBSCAN, MeanShift, estimate_bandwidth
-from sklearn.metrics import (
-    calinski_harabasz_score,
-    completeness_score,
-    davies_bouldin_score,
-    homogeneity_score,
-    silhouette_score,
-    v_measure_score,
-)
 
 from src.model_io import load_model_checkpoint
+
+# General clustering/metric utilities live in core/clustering/clusteringMetrics.py.
+# GNN stage code imports these for ground-truth alignment + metric computation.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from core.clustering.clusteringMetrics import (  # noqa: E402
+    extract_ground_truth_labels,
+    compute_all_metrics,
+    compute_external_metrics,
+    compute_internal_metrics,
+    alligned_true_predictived_labels,
+    _emb_matrix_from_id_to_embedding,
+    run_db_scan_analysis,
+    run_hdbscan_analysis,
+    run_meanshift_analysis,
+)
 
 @torch.no_grad()
 def extract_email_embeddings(model, data, device):
@@ -58,202 +64,6 @@ def extract_email_embeddings(model, data, device):
         str(eid.item() if isinstance(eid, np.generic) else eid): email_vecs[i].copy()
         for i, eid in enumerate(external_ids)
     }
-
-def extract_ground_truth_labels(path):
-    """
-    Extract ground truth labels from a JSON file with format:
-    {"clusters": {"label_store_1/49": [{"external_id": str, ...}, ...], ...}}
-    Cluster keys are normalized by stripping the "label_store_*/" prefix.
-    Returns dict mapping external_id -> cluster_id (int when possible).
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    label_map = {}
-    duplicate_external_ids = set()
-    clusters = data.get("clusters", {})
-    for raw_key, emails in clusters.items():
-        # Remove "label_store_*/" prefix; use the part after the last "/" as cluster id
-        cluster_id_str = raw_key.split("/")[-1] if "/" in raw_key else raw_key
-        try:
-            campaign_id = int(cluster_id_str)
-        except ValueError:
-            campaign_id = cluster_id_str
-        for email in emails:
-            email_id = email.get("external_id")
-            if email_id is None:
-                continue
-            email_id_str = str(email_id)
-            if email_id_str in label_map:
-                duplicate_external_ids.add(email_id_str)
-                continue
-            label_map[email_id_str] = campaign_id
-    if duplicate_external_ids:
-        sample = sorted(duplicate_external_ids)[:10]
-        suffix = "..." if len(duplicate_external_ids) > 10 else ""
-        raise ValueError(
-            "Duplicate `external_id` values found in ground truth JSON. "
-            f"Examples: {sample}{suffix}"
-        )
-    return label_map
-
-def compute_internal_metrics(id_to_embedding_map, labels):
-    """
-    Compute clustering internal metrics (silhouette, DB index, CH index).
-
-    Assumes ``labels[i]`` corresponds to the i-th id in ``sorted(id_to_embedding_map.keys())``.
-    """
-    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
-    labels = np.asarray(labels)
-    if len(labels) != len(sorted_ids):
-        raise ValueError(
-            f"len(labels)={len(labels)} must equal len(id_to_embedding_map)={len(sorted_ids)}"
-        )
-
-    embeddings = np.stack(
-        [np.asarray(id_to_embedding_map[k], dtype=np.float64) for k in sorted_ids]
-    )
-
-    mask = labels != -1
-    usable = labels[mask]
-    uniq = np.unique(usable) if usable.size else []
-    if mask.sum() > 1 and len(uniq) > 1:
-        silhouette = float(silhouette_score(embeddings[mask], usable))
-        db_index = float(davies_bouldin_score(embeddings[mask], usable))
-        ch_index = float(calinski_harabasz_score(embeddings[mask], usable))
-    else:
-        silhouette, db_index, ch_index = -1.0, float("inf"), 0.0
-
-    return {"silhouette": silhouette, "db_index": db_index, "ch_index": ch_index}
-
-
-def compute_external_metrics(true_labels, predicted_labels):
-    """
-    Compute clustering external metrics (homogeneity, completeness, v-measure).
-
-    Expects aligned label vectors (same length, same order).
-    """
-    n_samples = len(true_labels)
-    if n_samples < 2:
-        return {
-            "homogeneity": 0.0,
-            "completeness": 0.0,
-            "v_measure": 0.0,
-            "n_samples": int(n_samples),
-        }
-
-    homogeneity = homogeneity_score(true_labels, predicted_labels)
-    completeness = completeness_score(true_labels, predicted_labels)
-    v_measure = v_measure_score(true_labels, predicted_labels)
-
-    return {
-        "homogeneity": float(homogeneity),
-        "completeness": float(completeness),
-        "v_measure": float(v_measure),
-        "n_samples": int(n_samples),
-    }
-
-
-def _aligned_true_predicted_labels(sorted_ids, labels, ground_truth_labels):
-    """
-    Align predicted cluster labels with ground-truth labels (by external_id).
-
-    Skips:
-    - predicted noise points where predicted label == -1
-    - ids not present in ground_truth_labels
-    """
-    gt_get = ground_truth_labels.get
-    true_labels = []
-    predicted_labels = []
-    for eid, lab in zip(sorted_ids, labels):
-        if lab == -1:
-            continue
-        true = gt_get(eid)
-        if true is None:
-            continue
-        true_labels.append(true)
-        predicted_labels.append(int(lab))
-    return true_labels, predicted_labels
-
-
-def compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels):
-    """
-    Compute both internal + external clustering metrics and return one dict.
-    """
-    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
-    labels = np.asarray(labels)
-    if len(labels) != len(sorted_ids):
-        raise ValueError(
-            f"len(labels)={len(labels)} must equal len(id_to_embedding_map)={len(sorted_ids)}"
-        )
-
-    internal = compute_internal_metrics(id_to_embedding_map, labels)
-
-    true_labels, predicted_labels = _aligned_true_predicted_labels(
-        sorted_ids=sorted_ids,
-        labels=labels,
-        ground_truth_labels=ground_truth_labels,
-    )
-    external = compute_external_metrics(true_labels, predicted_labels)
-
-    n_clusters = int(len(set(labels)) - (1 if -1 in labels else 0))
-    n_noise = int((labels == -1).sum())
-
-    return {
-        **internal,
-        **external,
-        "n_clusters": n_clusters,
-        "n_noise": n_noise,
-        "coverage": external["n_samples"] / max(1, len(ground_truth_labels)),
-        "n_embeddings": int(len(sorted_ids)),
-    }
-
-def _emb_matrix_from_id_to_embedding(id_to_embedding_map):
-    sorted_ids = sorted(id_to_embedding_map.keys(), key=str)
-    embeddings = np.stack(
-        [np.asarray(id_to_embedding_map[k], dtype=np.float64) for k in sorted_ids]
-    )
-    return sorted_ids, embeddings
-
-
-def run_db_scan_analysis(id_to_embedding_map, ground_truth_labels, epsilon, min_samples=5):
-    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
-    clusterer = DBSCAN(eps=epsilon, min_samples=min_samples, metric="euclidean")
-    labels = clusterer.fit_predict(embeddings)
-    metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
-    metrics["clustering_type"] = "dbscan"
-    metrics["epsilon"] = float(epsilon)
-    metrics["min_samples"] = int(min_samples)
-    metrics["n_embeddings"] = int(len(sorted_ids))
-    return metrics
-
-
-def run_meanshift_analysis(id_to_embedding_map, ground_truth_labels, quantile, n_samples=None):
-    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
-    bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
-    clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
-    labels = clusterer.fit_predict(embeddings)
-    metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
-    metrics["clustering_type"] = "meanshift"
-    metrics["quantile"] = float(quantile)
-    metrics["n_samples"] = None if n_samples is None else int(n_samples)
-    metrics["bandwidth"] = float(bw) if bw is not None else None
-    metrics["n_embeddings"] = int(len(sorted_ids))
-    return metrics
-
-
-def run_hdbscan_analysis(id_to_embedding_map, ground_truth_labels, min_cluster_size, min_samples=None):
-    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=int(min_cluster_size),
-        min_samples=None if min_samples is None else int(min_samples),
-    )
-    labels = clusterer.fit_predict(embeddings)
-    metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
-    metrics["clustering_type"] = "hdbscan"
-    metrics["min_cluster_size"] = int(min_cluster_size)
-    metrics["min_samples"] = None if min_samples is None else int(min_samples)
-    metrics["n_embeddings"] = int(len(sorted_ids))
-    return metrics
 
 
 def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, clustering_config):
