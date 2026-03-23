@@ -10,9 +10,10 @@ from feature_set_extraction.tfidf_utils import build_vectorizer, precompute_subj
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
-from preprocessing.RDAP_processor import process_received_headers
+from preprocessing.RDAP_processor import ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
+from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
 from graph.common import parse_misp_events
 
 
@@ -135,14 +136,91 @@ type (style of greeting, such as hi, hello, and dear; checking
 whether greeting is followed by recipient name, username or
 email address).
 
-
-This function extracts the body based features, however since the TREC data is much simpler
-the amount of features has been reduced.
-There are no HTML tags or attachments in the TREC data. 
-
 '''
 
-def extract_body_based_features(body):
+def extract_body_markup_presence_features(body, html=None, css=None):
+    if not isinstance(body, str):
+        body = ""
+
+    tag_counts = {}
+    tree_stats = {}
+    style_features = {}
+    if isinstance(html, dict):
+        if isinstance(html.get("tag_counts"), dict):
+            tag_counts = html.get("tag_counts")
+        if isinstance(html.get("tree_stats"), dict):
+            tree_stats = html.get("tree_stats")
+    if isinstance(css, dict) and isinstance(css.get("style_features"), dict):
+        style_features = css.get("style_features")
+
+    has_structured_markup = bool(tag_counts or tree_stats or style_features)
+
+    if has_structured_markup:
+        html_tag_total = 0
+        for v in tag_counts.values():
+            try:
+                iv = int(v)
+            except Exception:
+                iv = 0
+            if iv > 0:
+                html_tag_total += iv
+
+        num_images = 0
+        try:
+            num_images = int(tag_counts.get("img", 0))
+        except Exception:
+            num_images = 0
+        if num_images <= 0:
+            try:
+                num_images = int(tree_stats.get("images", 0))
+            except Exception:
+                num_images = 0
+
+        script_count = 0
+        try:
+            script_count = int(tag_counts.get("script", 0))
+        except Exception:
+            script_count = 0
+        if script_count <= 0:
+            try:
+                script_count = int(tree_stats.get("external_scripts", 0))
+            except Exception:
+                script_count = 0
+
+        style_tag_count = 0
+        try:
+            style_tag_count = int(tag_counts.get("style", 0))
+        except Exception:
+            style_tag_count = 0
+
+        has_html_tags = int(html_tag_total > 0)
+        has_script = int(script_count > 0)
+        has_css_specs = int(style_tag_count > 0 or any(bool(v) for v in style_features.values()))
+
+    else:
+        has_html_tags = int(bool(re.search(r"<[^>]+>", body)))
+        num_images = 0
+        has_script = 0
+        has_css_specs = 0
+
+        if has_html_tags:
+            soup = BeautifulSoup(body, "html.parser")
+            num_images = len(soup.find_all("img"))
+            has_script = int(bool(soup.find_all("script")))
+            has_css_specs = int(bool(soup.find_all("style") or soup.find_all(style=True)))
+
+    return {
+        "has_html_tags": has_html_tags,
+        "has_images": int(num_images > 0),
+        "num_images": num_images,
+        "has_script": has_script,
+        "has_css_specs": has_css_specs,
+    }
+
+
+def extract_body_based_features(body, html=None, css=None):
+    if not isinstance(body, str):
+        body = ""
     extracted_urls = extract_urls_from_text(body) if body else []
     
     num_lines = len(body.splitlines())
@@ -153,8 +231,7 @@ def extract_body_based_features(body):
     avg_word_length = round(sum(len(word) for word in words) / num_words,1) if num_words > 0 else 0
 
     greeting_features = extract_greeting_features(body)
-
-    #bow = compute_body_bow(body)
+    bow = compute_body_bow(body)
 
     return {
         "num_urls_in_body": len(extracted_urls),
@@ -164,7 +241,8 @@ def extract_body_based_features(body):
         "avg_word_length": avg_word_length,
         "greeting": greeting_features.get("greeting", ""),
         "body": body,
-        #"bow": bow
+        "bow": bow,
+        **extract_body_markup_presence_features(body, html=html, css=css),
     }
 
 def compute_body_bow(body):
@@ -321,11 +399,9 @@ many attachments the email has [38], [46], and attachment
 size and type [38]. This information indicates if the attacker
 distributes the same files within a campaign.
 
-For the TREC dataset this is irrelevant so not implemented
-
 '''
 
-def extract_attachment_features(attachments):
+def extract_attachment_features(attachments, attachment_metadata=None):
     if isinstance(attachments, list):
         cleaned = [a for a in attachments if isinstance(a, str) and a]
     elif isinstance(attachments, str) and attachments:
@@ -333,8 +409,41 @@ def extract_attachment_features(attachments):
     else:
         cleaned = []
 
+    if isinstance(attachment_metadata, dict):
+        metadata_items = [attachment_metadata]
+    elif isinstance(attachment_metadata, list):
+        metadata_items = [item for item in attachment_metadata if isinstance(item, dict)]
+    else:
+        metadata_items = []
+
+    sizes = []
+    content_types = []
+    top_level_types = []
+    for item in metadata_items:
+        raw_size = item.get("size_bytes")
+        try:
+            size_bytes = int(raw_size)
+            if size_bytes >= 0:
+                sizes.append(size_bytes)
+        except Exception:
+            pass
+
+        raw_ct = item.get("content_type", "")
+        content_type = str(raw_ct).strip().lower()
+        if content_type:
+            content_types.append(content_type)
+            top_level_types.append(content_type.split("/", 1)[0])
+
+    unique_content_types = sorted(set(content_types))
+    unique_top_level_types = sorted(set(top_level_types))
+
     return {
         "attachments": cleaned,
+        "has_attachments": int(len(cleaned) > 0 or len(metadata_items) > 0),
+        "num_attachments": int(max(len(cleaned), len(metadata_items))),
+        "attachment_sizes_bytes": sizes,
+        "attachment_types": unique_content_types,
+        "attachment_top_level_types": " ".join(unique_top_level_types),
     }
 
 '''
@@ -351,11 +460,9 @@ the registrar location [38]. This provides information about
 the attacker origin and whether they used a public service or
 compromised accounts to send the email.
 
-This function extracts only the sender name and email from the FROM header.
-The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
-def extract_origin_based_features(sender, received_hops=None):
+def extract_origin_based_features(sender, auth_spf=None):
     def _parse_sender_entry(sender_entry):
         if not isinstance(sender_entry, str) or not sender_entry.strip():
             return "", ""
@@ -388,53 +495,40 @@ def extract_origin_based_features(sender, received_hops=None):
         if email:
             sender_names.append(name)
             sender_emails.append(email)
-    '''
-    if not isinstance(received_hops, list):
-        received_hops = []
 
-    rdap_results = []
-    try:
-        rdap_results = process_received_headers(received_hops)
-        if not isinstance(rdap_results, list):
-            rdap_results = []
-    except Exception:
-        rdap_results = []
+    spf_pass = isinstance(auth_spf, str) and auth_spf.strip().lower() == "pass"
 
-    header_received_domains = []
+    # RDAP lookup on the domain portion of each sender email
+    sender_domains = []
+    for email in sender_emails:
+        at_idx = email.rfind("@")
+        if at_idx != -1:
+            sender_domains.append(email[at_idx + 1:].lower())
+
     domain_registrars = []
     domain_registration_dates = []
     registrar_locations = []
 
-    for item in rdap_results:
-        if not isinstance(item, dict):
-            continue
-
-        domain = item.get("domain")
-        if isinstance(domain, str) and domain:
-            header_received_domains.append(domain)
-        else:
-            continue
-
-        registrar = item.get("registrar")
-        registration_date = item.get("registration_date")
-        registrar_location = item.get("registrar_location")
-
-        domain_registrars.append(registrar if isinstance(registrar, str) else "")
-        domain_registration_dates.append(registration_date if isinstance(registration_date, str) else "")
-        registrar_locations.append(registrar_location if isinstance(registrar_location, str) else "")
+    if sender_domains:
+        try:
+            cache = ensure_rdap_cache(sender_domains)
+            for domain in sender_domains:
+                item = cache.get(domain, {})
+                domain_registrars.append(item.get("registrar") or "")
+                domain_registration_dates.append(item.get("registration_date") or "")
+                registrar_locations.append(item.get("registrar_location") or "")
+        except Exception:
+            domain_registrars = [""] * len(sender_domains)
+            domain_registration_dates = [""] * len(sender_domains)
+            registrar_locations = [""] * len(sender_domains)
 
     return {
         "sender_name": sender_names,
         "sender_email": sender_emails,
-        "header_received_domains": header_received_domains,
+        "spf_pass": spf_pass,
         "domain_registrars": domain_registrars,
         "domain_registration_dates": domain_registration_dates,
         "registrar_locations": registrar_locations,
-    }
-    '''
-    return {
-    "sender_name": sender_names,
-    "sender_email": sender_emails,
     }
 
 '''
@@ -442,9 +536,6 @@ Recipient features concern the target users which only
 includes recipient names and recipient counts. Other information that has been shown to be effective at 
 identifying the target characteristics [38] was excluded as most of the 
 information we have about recipients was redacted for anonymity reasons
-
-This function extracts only the recipient name and email from the RECEIVER header.
-No idea what recipient counts means.
 '''
 
 def extract_recipient_based_features(recipient):
@@ -510,22 +601,18 @@ dates of the oldest and the most recent domains, the minimum
 PageRank and popularity, and the maximum PageRank and
 Popularity for the list of URLs.
 
-This function currently extracts only a subset of the above URL features.
-Included are:
-This function currently extracts the following URL features:
-- URL counts: total URLs, unique domains, URLs with IP addresses, short URLs
-- Binary indicators: @symbol presence, non-ASCII characters, extra http/https
-- Aggregate statistics: average subdomain count, average hyphen count per URL
 '''
 
 def extract_url_based_features(urls):
     # Delegate to shared extractor and return its full feature dict
     try:
+        url_intel_sets = load_url_intelligence_sets()
         return extract_url_features_utils(
         urls,
-        popular_domains=None,
-        phishing_target_domains=None,
-        blacklist=None,
+        popular_domains=url_intel_sets.get("popular_domains", set()),
+        webhost_domains=url_intel_sets.get("webhost_domains", set()),
+        phishing_target_domains=url_intel_sets.get("phishing_target_domains", set()),
+        blacklist=url_intel_sets.get("blacklist", set()),
         domain_metadata=None,
         anchor_pairs=None
     )
@@ -678,18 +765,29 @@ def extract_features(misp_path, features, events=None):
                 feat.update(extract_subject_features(email_fields.get("subject"), subject_idf_dict))
 
             elif feature_type == "body":
-                feat.update(extract_body_based_features(email_fields.get("body")))
+                feat.update(
+                    extract_body_based_features(
+                        email_fields.get("body"),
+                        email_fields.get("html", {}),
+                        email_fields.get("css", {}),
+                    )
+                )
                 if event_idx < len(lsa_features_list) and isinstance(lsa_features_list[event_idx], dict):
                     feat.update(lsa_features_list[event_idx])
 
             elif feature_type == "attachments":
-                feat.update(extract_attachment_features(email_fields.get("attachments")))
+                feat.update(
+                    extract_attachment_features(
+                        email_fields.get("attachments"),
+                        email_fields.get("attachment_metadata", []),
+                    )
+                )
 
             elif feature_type == "origin":
                 feat.update(
                     extract_origin_based_features(
                         email_fields.get("senders"),
-                        email_fields.get("received_hops", []),
+                        email_fields.get("auth_spf", ""),
                     )
                 )
 
@@ -733,6 +831,7 @@ def parse_misp_event_attributes(event):
         'date': parsed.get('date', ''),
         'urls': parsed.get('urls', []),
         'attachments': parsed.get('attachments', []),
+        'attachment_metadata': parsed.get('attachment_metadata', []),
         'html': parsed.get('html', {}),
         'css': parsed.get('css', {}),
         'received_hops': parsed.get('received_hops', []),
@@ -895,6 +994,9 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         'FS5': get_FS5,
         'FS6': get_FS6,
         'FS7': get_FS7,
+    }
+    fs_extractors = {
+        'FS1': get_FS1,
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from email import policy
 from email.parser import BytesParser
-from typing import List
+from typing import Any, Dict, List
 
 
 def _to_bytes(payload: bytes | str | None) -> bytes:
@@ -16,8 +16,13 @@ def _to_bytes(payload: bytes | str | None) -> bytes:
     return b""
 
 
-def extract_attachment_hashes_from_email(raw_bytes: bytes) -> List[str]:
-    """Extract SHA-256 hashes of attachment payloads from an RFC email."""
+def _normalize_content_type(content_type: str) -> str:
+    text = (content_type or "").strip().lower()
+    return text or "application/octet-stream"
+
+
+def extract_attachment_metadata_from_email(raw_bytes: bytes) -> List[Dict[str, Any]]:
+    """Extract per-attachment metadata with content hash, size in bytes, and MIME type."""
     if not raw_bytes:
         return []
 
@@ -26,8 +31,8 @@ def extract_attachment_hashes_from_email(raw_bytes: bytes) -> List[str]:
     except Exception:
         return []
 
-    hashes: List[str] = []
-    seen: set[str] = set()
+    metadata: List[Dict[str, Any]] = []
+    seen_hashes: set[str] = set()
 
     for part in message.walk():
         if part.is_multipart():
@@ -35,7 +40,7 @@ def extract_attachment_hashes_from_email(raw_bytes: bytes) -> List[str]:
 
         disposition = (part.get_content_disposition() or "").lower()
         filename = part.get_filename()
-        content_type = (part.get_content_type() or "").lower()
+        content_type = _normalize_content_type(part.get_content_type() or "")
 
         is_attachment = disposition == "attachment"
         looks_like_embedded_file = bool(filename) and content_type not in {"text/plain", "text/html"}
@@ -47,11 +52,24 @@ def extract_attachment_hashes_from_email(raw_bytes: bytes) -> List[str]:
             continue
 
         digest = hashlib.sha256(payload).hexdigest()
-        if digest not in seen:
-            seen.add(digest)
-            hashes.append(digest)
+        if digest in seen_hashes:
+            continue
+        seen_hashes.add(digest)
 
-    return hashes
+        metadata.append(
+            {
+                "sha256": digest,
+                "size_bytes": len(payload),
+                "content_type": content_type,
+            }
+        )
+
+    return metadata
 
 
-__all__ = ["extract_attachment_hashes_from_email"]
+def extract_attachment_hashes_from_email(raw_bytes: bytes) -> List[str]:
+    """Extract SHA-256 hashes of attachment payloads from an RFC email."""
+    return [str(item.get("sha256", "")).strip() for item in extract_attachment_metadata_from_email(raw_bytes) if item.get("sha256")]
+
+
+__all__ = ["extract_attachment_hashes_from_email", "extract_attachment_metadata_from_email"]

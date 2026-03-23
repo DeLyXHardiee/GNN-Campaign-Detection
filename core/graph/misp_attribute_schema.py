@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Literal, Tuple
 
-ExtractorStrategy = Literal["email_list", "url_list", "string_single", "dict_mapping", "string_list", "received_list"]
+ExtractorStrategy = Literal[
+    "email_list",
+    "url_list",
+    "string_single",
+    "dict_mapping",
+    "string_list",
+    "received_list",
+    "dict_list",
+]
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,7 @@ DEFAULT_MISP_ATTRIBUTE_SCHEMA = AttributeSchema(
         "body": AttributeMapping("body", "string_single", extract_urls_side_effect=True),
         "html": AttributeMapping("html", "dict_mapping", extract_urls_side_effect=True),
         "css": AttributeMapping("css", "dict_mapping", extract_urls_side_effect=True),
+        "attachments_meta": AttributeMapping("attachment_metadata", "dict_list"),
         "url": AttributeMapping("urls", "url_list", accumulate=True),
         "email-date": AttributeMapping("date", "string_single"),
         "date": AttributeMapping("date", "string_single"),
