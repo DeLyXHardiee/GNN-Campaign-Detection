@@ -78,7 +78,7 @@ def run_clustering_plot_stage(
                 dbscan_df,
                 x="epsilon",
                 total_items=total_emails,
-                title="DBSCAN: coverage vs epsilon",
+                title="DBSCAN: ground-truth coverage vs epsilon",
             )
             saved.append(
                 _save_fig(fig, plots_out / "dbscan_coverage_vs_epsilon.png", dpi=dpi)

@@ -137,7 +137,9 @@ def save_metrics_csv(rows, path):
         "n_embeddings",
         "n_clusters",
         "n_noise",
-        "coverage",
+        "n_non_noise",
+        "coverage_ground_truth",
+        "coverage_all",
         # External alignment counts
         "n_samples_external",
     ]

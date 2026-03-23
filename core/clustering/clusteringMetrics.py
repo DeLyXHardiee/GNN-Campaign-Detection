@@ -176,14 +176,24 @@ def compute_all_metrics(
 
     n_clusters = int(len(set(labels)) - (1 if -1 in labels else 0))
     n_noise = int((labels == -1).sum())
+    n_embeddings = int(len(sorted_ids))
+    n_non_noise = int(n_embeddings - n_noise)
+
+    # Two different "coverage" definitions:
+    # 1) Ground-truth coverage: among all ground-truth-labeled items, how many were predicted as non-noise.
+    coverage_ground_truth = external["n_samples"] / max(1, len(ground_truth_labels))
+    # 2) All-items coverage: among all embeddings, how many were predicted as non-noise (regardless of ground-truth presence).
+    coverage_all = n_non_noise / max(1, n_embeddings)
 
     return {
         **internal,
         **external,
         "n_clusters": n_clusters,
         "n_noise": n_noise,
-        "coverage": external["n_samples"] / max(1, len(ground_truth_labels)),
-        "n_embeddings": int(len(sorted_ids)),
+        "n_non_noise": n_non_noise,
+        "n_embeddings": n_embeddings,
+        "coverage_ground_truth": coverage_ground_truth,
+        "coverage_all": coverage_all,
     }
 
 
