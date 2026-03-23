@@ -18,6 +18,7 @@ def load_gnn_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
     recall_cfg = cfg["evaluation"]["recall_at_k"]
     gnn_clustering_cfg = cfg["gnn_clustering"]["config"]
+    gnn_clustering_selection_cfg = cfg["gnn_clustering"].get("selection", {})
 
     return {
         "device_pref": device_pref,
@@ -27,6 +28,7 @@ def load_gnn_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         "evaluation_auroc_cfg": evaluation_auroc_cfg,
         "recall_cfg": recall_cfg,
         "gnn_clustering_cfg": gnn_clustering_cfg,
+        "gnn_clustering_selection_cfg": gnn_clustering_selection_cfg,
     }
 
 

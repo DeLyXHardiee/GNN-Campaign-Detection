@@ -57,6 +57,7 @@ def main() -> None:
 
     clustering_root = cfg["gnn_clustering"]
     clustering_cfg = clustering_root["config"]
+    clustering_selection_cfg = clustering_root.get("selection", {})
 
     run_dir = RUN_DIR.strip()
     if not run_dir:
@@ -103,6 +104,9 @@ def main() -> None:
         checkpoint_path=checkpoint_path,
         output_dir=run_dir,
         clustering_cfg=clustering_cfg,
+        min_coverage_ground_truth=float(
+            clustering_selection_cfg.get("min_coverage_ground_truth", 0.5)
+        ),
         model_save_name=training_cfg["model_save_name"],
         device_pref=device_pref,
         to_undirected=to_undirected,
