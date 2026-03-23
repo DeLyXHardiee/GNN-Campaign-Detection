@@ -1,8 +1,0 @@
-
-================================================================================
-DBSCAN Run - 2026-03-18 14:35:08
-Parameters: eps=0.5, min_samples=5, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
-================================================================================
-
-FS4: silhouette=0.8092, clusters=141, H=0.4313, C=0.7032, V=0.5347, n=142
-FS5: silhouette=0.8100, clusters=141, H=0.4213, C=0.7029, V=0.5268, n=140

@@ -1,7 +1,0 @@
-
-================================================================================
-Mean Shift Run - 2026-03-18 14:37:26
-Parameters: quantile=0.25, n_samples=500, max_tfidf_features=uncapped, n_components=1000, remove_outliers=True, outlier_contamination=0.05
-================================================================================
-
-FS1: silhouette=N/A (only 1 cluster(s) found), clusters=1, H=0.0000, C=1.0000, V=0.0000, n=206

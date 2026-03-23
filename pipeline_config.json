@@ -45,5 +45,71 @@
       ],
       "n_samples": 3000
     }
+  },
+  "device": "cpu",
+  "to_undirected": true,
+  "run_id": "default_experiment",
+  "training": {
+    "torch_seed": 42,
+    "primary_ntype": "email",
+    "hidden": 128,
+    "out_dim": 128,
+    "layers": 2,
+    "dropout": 0.3,
+    "neg_ratio": 1.0,
+    "batch_size": 256,
+    "fanout": [
+      -1,
+      -1
+    ],
+    "val_ratio": 0.1,
+    "test_ratio": 0.1,
+    "epochs": 30,
+    "lr": 0.0005,
+    "wd": 0.0005,
+    "score_head": "dot",
+    "early_stopping_patience": 5,
+    "lr_reduce_patience": 5,
+    "lr_reduce_factor": 0.5,
+    "lr_reduce_min": 0.0,
+    "supervised_edge_types": null,
+    "model_save_name": "best_model.pt",
+    "contrastive_edges": null,
+    "contrastive_weight": 0.2
+  },
+  "evaluation": {
+    "auroc_ap": {},
+    "recall_at_k": {
+      "K_list": [
+        1,
+        10,
+        20
+      ],
+      "use_dot": true
+    }
+  },
+  "gnn_clustering": {
+    "config": {
+      "dbscan": {
+        "enabled": true,
+        "epsilon_values": [
+          0.5
+        ],
+        "min_samples": 5
+      },
+      "meanshift": {
+        "enabled": true,
+        "quantile_values": [
+          0.25
+        ],
+        "n_samples": 500
+      },
+      "hdbscan": {
+        "enabled": false,
+        "min_cluster_size_values": [
+          5
+        ]
+      }
+    }
   }
 }

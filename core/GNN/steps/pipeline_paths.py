@@ -16,7 +16,7 @@ def sanitize_run_id(run_id: str) -> str:
     s = (run_id or "").strip()
     if not s:
         raise ValueError(
-            "Set 'run_id' in gnn_stage_pipeline_config.json to a unique experiment name "
+            "Set 'run_id' in pipeline_config.json to a unique experiment name "
             "(e.g. 'sage_email_v1'). All stages read/write <RUNS_PARENT>/<run_id>/."
         )
     if not _RUN_ID_RE.match(s):

@@ -1,7 +1,7 @@
 """
 Manual toggle pipeline for the GNN project.
 
-One experiment folder per ``run_id`` in ``gnn_stage_pipeline_config.json``:
+One experiment folder per ``run_id`` in ``pipeline_config.json``:
 
   <RUNS_PARENT>/<run_id>/
     models/
@@ -32,7 +32,8 @@ from steps.pipeline_paths import run_dir_for, sanitize_run_id
 from steps.train_stage import run_train_stage
 
 
-CONFIG_PATH = Path(__file__).with_name("gnn_stage_pipeline_config.json")
+# pipeline_config.json lives at repo root (two levels above this file).
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "pipeline_config.json"
 
 # Paths you fill in.
 GRAPH_PATH = "../graph/output/incidents-20260211-misp_hetero.pt"
@@ -58,7 +59,7 @@ def main() -> None:
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
     recall_cfg = cfg["evaluation"]["recall_at_k"]
 
-    clustering_root = cfg["clustering"]
+    clustering_root = cfg["gnn_clustering"]
     clustering_cfg = clustering_root["config"]
 
     run_dir = RUN_DIR.strip()
