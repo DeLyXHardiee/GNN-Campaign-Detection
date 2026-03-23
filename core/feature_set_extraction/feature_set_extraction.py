@@ -1,4 +1,5 @@
 from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone
 import pandas as pd
 import os
 from collections import Counter
@@ -10,7 +11,7 @@ from feature_set_extraction.tfidf_utils import build_vectorizer, precompute_subj
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
-from preprocessing.RDAP_processor import process_received_headers
+from preprocessing.RDAP_processor import ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
@@ -33,6 +34,7 @@ This function is able to extract all of the above features from the DATE header.
 
 def extract_time_features(date_str):
     try:
+        date_str = datetime.fromtimestamp(float(date_str), tz=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
         dt = parsedate_to_datetime(date_str)
         data = {
             'day': int(dt.day),
@@ -135,11 +137,6 @@ type. Therefore, we added a feature describing the greeting
 type (style of greeting, such as hi, hello, and dear; checking
 whether greeting is followed by recipient name, username or
 email address).
-
-
-This function extracts the body based features, however since the TREC data is much simpler
-the amount of features has been reduced.
-There are no HTML tags or attachments in the TREC data. 
 
 '''
 
@@ -404,8 +401,6 @@ many attachments the email has [38], [46], and attachment
 size and type [38]. This information indicates if the attacker
 distributes the same files within a campaign.
 
-For the TREC dataset this is irrelevant so not implemented
-
 '''
 
 def extract_attachment_features(attachments, attachment_metadata=None):
@@ -445,12 +440,12 @@ def extract_attachment_features(attachments, attachment_metadata=None):
     unique_top_level_types = sorted(set(top_level_types))
 
     return {
-        "attachments": cleaned,
+        #"attachments": cleaned,
         "has_attachments": int(len(cleaned) > 0 or len(metadata_items) > 0),
         "num_attachments": int(max(len(cleaned), len(metadata_items))),
         "attachment_sizes_bytes": sizes,
         "attachment_types": unique_content_types,
-        "attachment_top_level_types": " ".join(unique_top_level_types),
+        #"attachment_top_level_types": " ".join(unique_top_level_types),
     }
 
 '''
@@ -467,11 +462,9 @@ the registrar location [38]. This provides information about
 the attacker origin and whether they used a public service or
 compromised accounts to send the email.
 
-This function extracts only the sender name and email from the FROM header.
-The sender IP, domain information etc. is unavailable in the TREC dataset.
 '''
 
-def extract_origin_based_features(sender, received_hops=None):
+def extract_origin_based_features(sender, auth_spf=None):
     def _parse_sender_entry(sender_entry):
         if not isinstance(sender_entry, str) or not sender_entry.strip():
             return "", ""
@@ -504,51 +497,40 @@ def extract_origin_based_features(sender, received_hops=None):
         if email:
             sender_names.append(name)
             sender_emails.append(email)
-    if not isinstance(received_hops, list):
-        received_hops = []
 
-    rdap_results = []
-    try:
-        rdap_results = process_received_headers(received_hops)
-        if not isinstance(rdap_results, list):
-            rdap_results = []
-    except Exception:
-        rdap_results = []
+    spf_pass = isinstance(auth_spf, str) and auth_spf.strip().lower() == "pass"
 
-    header_received_domains = []
+    # RDAP lookup on the domain portion of each sender email
+    sender_domains = []
+    for email in sender_emails:
+        at_idx = email.rfind("@")
+        if at_idx != -1:
+            sender_domains.append(email[at_idx + 1:].lower())
+
     domain_registrars = []
     domain_registration_dates = []
     registrar_locations = []
 
-    for item in rdap_results:
-        if not isinstance(item, dict):
-            continue
-
-        domain = item.get("domain")
-        if isinstance(domain, str) and domain:
-            header_received_domains.append(domain)
-        else:
-            continue
-
-        registrar = item.get("registrar")
-        registration_date = item.get("registration_date")
-        registrar_location = item.get("registrar_location")
-
-        domain_registrars.append(registrar if isinstance(registrar, str) else "")
-        domain_registration_dates.append(registration_date if isinstance(registration_date, str) else "")
-        registrar_locations.append(registrar_location if isinstance(registrar_location, str) else "")
+    if sender_domains:
+        try:
+            cache = ensure_rdap_cache(sender_domains)
+            for domain in sender_domains:
+                item = cache.get(domain, {})
+                domain_registrars.append(item.get("registrar") or "")
+                domain_registration_dates.append(item.get("registration_date") or "")
+                registrar_locations.append(item.get("registrar_location") or "")
+        except Exception:
+            domain_registrars = [""] * len(sender_domains)
+            domain_registration_dates = [""] * len(sender_domains)
+            registrar_locations = [""] * len(sender_domains)
 
     return {
         "sender_name": sender_names,
         "sender_email": sender_emails,
-        "header_received_domains": header_received_domains,
+        "spf_pass": spf_pass,
         "domain_registrars": domain_registrars,
         "domain_registration_dates": domain_registration_dates,
         "registrar_locations": registrar_locations,
-    }
-    return {
-    "sender_name": sender_names,
-    "sender_email": sender_emails,
     }
 
 '''
@@ -556,9 +538,6 @@ Recipient features concern the target users which only
 includes recipient names and recipient counts. Other information that has been shown to be effective at 
 identifying the target characteristics [38] was excluded as most of the 
 information we have about recipients was redacted for anonymity reasons
-
-This function extracts only the recipient name and email from the RECEIVER header.
-No idea what recipient counts means.
 '''
 
 def extract_recipient_based_features(recipient):
@@ -624,12 +603,6 @@ dates of the oldest and the most recent domains, the minimum
 PageRank and popularity, and the maximum PageRank and
 Popularity for the list of URLs.
 
-This function currently extracts only a subset of the above URL features.
-Included are:
-This function currently extracts the following URL features:
-- URL counts: total URLs, unique domains, URLs with IP addresses, short URLs
-- Binary indicators: @symbol presence, non-ASCII characters, extra http/https
-- Aggregate statistics: average subdomain count, average hyphen count per URL
 '''
 
 def extract_url_based_features(urls):
@@ -816,7 +789,7 @@ def extract_features(misp_path, features, events=None):
                 feat.update(
                     extract_origin_based_features(
                         email_fields.get("senders"),
-                        email_fields.get("received_hops", []),
+                        email_fields.get("auth_spf", ""),
                     )
                 )
 
@@ -882,10 +855,10 @@ def get_idf_path_for_misp(misp_path):
     return os.path.join(get_helpers_output_dir(), f"{base_name}_subject_idf.json")
 
 def get_FS1(misp_path, events):
-    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls"], events=events)
+    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls", "attachments"], events=events)
 
 def get_FS2(misp_path, events):
-    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin"], events=events)
+    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin", "attachments"], events=events)
 
     filtered_features = []
     for feat in features_list:
@@ -921,7 +894,7 @@ def get_FS4(misp_path, events):
     return filtered_features
 
 def get_FS5(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls"], events=events)
+    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls", "attachments"], events=events)
 
     filtered_features = []
     for feat in features_list:
@@ -932,7 +905,8 @@ def get_FS5(misp_path, events):
                                      "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
                                      "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
                                      "any_similar_phish_targets","any_popular_domain_in_subdomain",
-                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",]
+                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",
+                                     "has_attachments","num_attachments", "attachment_sizes_bytes",]
                         }
         filtered_features.append(filtered_feat)
 
@@ -948,7 +922,8 @@ def get_FS6(misp_path, events):
         filtered_feat = {k: v for k, v in feat.items()
                         if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject",
                                          "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5",
-                                         "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
+                                         "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9",
+                                         "has_attachments"]
                         }
         filtered_features.append(filtered_feat)
 
@@ -1023,9 +998,6 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         'FS5': get_FS5,
         'FS6': get_FS6,
         'FS7': get_FS7,
-    }
-    fs_extractors = {
-        'FS1': get_FS1,
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
