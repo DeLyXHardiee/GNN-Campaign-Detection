@@ -29,7 +29,7 @@ def run_gnn(
     *,
     graph_path: str | Path | None = None,
     run_dir: str | Path | None = None,
-    runs_parent: str | Path = "outputs",
+    runs_parent: str | Path | None = None,
     checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
     device_pref: str | None = None,
 ):
@@ -46,7 +46,7 @@ def run_gnn(
     )
 
     # Make sure the training output directory matches `run_dir` override (if provided).
-    runs_parent_effective: str | Path = runs_parent
+    runs_parent_effective: str | Path = g["path_layout"].runs_parent
     if run_dir is not None and str(run_dir).strip() != "":
         expected = sanitize_run_id(str(g["run_id"]))
         if Path(run_dir_str).name != expected:
@@ -60,6 +60,7 @@ def run_gnn(
         runs_parent=runs_parent_effective,
         run_id=g["run_id"],
         training_cfg=g["training_cfg"],
+        path_layout=g["path_layout"],
         device_pref=device_pref if device_pref is not None else g["device_pref"],
         to_undirected=g["to_undirected"],
     )
@@ -69,7 +70,7 @@ def run_gnn_evaluation(
     *,
     graph_path: str | Path | None = None,
     run_dir: str | Path | None = None,
-    runs_parent: str | Path = "outputs",
+    runs_parent: str | Path | None = None,
     checkpoint_path: str | Path | None = None,
 ):
     cfg = load_pipeline_config()
@@ -85,12 +86,14 @@ def run_gnn_evaluation(
     )
     evaluation_cfg_auroc = g["evaluation_auroc_cfg"]
     recall_cfg = g["recall_cfg"]
+    layout = g["path_layout"]
 
     res_auroc = run_auroc_ap_stage(
         graph_path=graph_path_str,
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         evaluation_cfg=evaluation_cfg_auroc,
+        path_layout=layout,
         device_pref=g["device_pref"],
         to_undirected=g["to_undirected"],
     )
@@ -99,6 +102,7 @@ def run_gnn_evaluation(
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         evaluation_cfg=recall_cfg,
+        path_layout=layout,
         device_pref=g["device_pref"],
         to_undirected=g["to_undirected"],
     )
@@ -115,7 +119,7 @@ def run_gnn_clustering(
     graph_path: str | Path | None = None,
     ground_truth_path: str | Path | None = None,
     run_dir: str | Path | None = None,
-    runs_parent: str | Path = "outputs",
+    runs_parent: str | Path | None = None,
     checkpoint_path: str | Path | None = None,
     make_plots: bool = True,
 ):
@@ -138,12 +142,16 @@ def run_gnn_clustering(
         output_dir=run_dir_str,
         clustering_cfg=g["gnn_clustering_cfg"],
         model_save_name=g["training_cfg"]["model_save_name"],
+        path_layout=g["path_layout"],
         device_pref=g["device_pref"],
         to_undirected=g["to_undirected"],
     )
 
     if make_plots:
-        plots_res = run_clustering_plot_stage(output_dir=run_dir_str)
+        plots_res = run_clustering_plot_stage(
+            output_dir=run_dir_str,
+            path_layout=g["path_layout"],
+        )
         return res | {"clustering_plots": plots_res}
 
     return res

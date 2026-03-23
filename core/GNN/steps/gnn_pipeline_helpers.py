@@ -3,11 +3,31 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from config.pipeline_config import default_hetero_graph_pt_path, resolve_project_path
+from config.pipeline_config import (
+    GnnPathLayout,
+    default_hetero_graph_pt_path,
+    gnn_path_layout_from_pipeline,
+    resolve_project_path,
+)
 from steps.pipeline_paths import run_dir_for, sanitize_run_id
 
 
-def load_gnn_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+def _effective_runs_parent(
+    runs_parent: str | Path | None,
+    layout: GnnPathLayout,
+    *,
+    project_root: Path | None = None,
+) -> str:
+    s = "" if runs_parent is None else str(runs_parent).strip()
+    if not s:
+        return layout.runs_parent
+    resolved = resolve_project_path(s, project_root=project_root)
+    if resolved:
+        return resolved
+    return str(Path(s).expanduser().resolve())
+
+
+def load_gnn_cfg(cfg: dict[str, Any], *, project_root: Path | None = None) -> dict[str, Any]:
     """
     Extract the GNN-relevant keys from the unified `pipeline_config.json`.
     """
@@ -18,6 +38,7 @@ def load_gnn_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
     recall_cfg = cfg["evaluation"]["recall_at_k"]
     gnn_clustering_cfg = cfg["gnn_clustering"]["config"]
+    path_layout = gnn_path_layout_from_pipeline(cfg, project_root=project_root)
 
     return {
         "device_pref": device_pref,
@@ -27,6 +48,7 @@ def load_gnn_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
         "evaluation_auroc_cfg": evaluation_auroc_cfg,
         "recall_cfg": recall_cfg,
         "gnn_clustering_cfg": gnn_clustering_cfg,
+        "path_layout": path_layout,
     }
 
 
@@ -34,11 +56,12 @@ def resolve_gnn_paths(
     *,
     cfg: dict[str, Any],
     run_dir: str | Path | None,
-    runs_parent: str | Path,
+    runs_parent: str | Path | None,
     checkpoint_path: str | Path | None,
     graph_path: str | Path | None,
     ground_truth_path: str | Path | None,
     require_ground_truth: bool,
+    project_root: Path | None = None,
 ) -> tuple[str, str, str, str]:
     """
     Resolve concrete paths for the GNN stages from the unified config.
@@ -46,12 +69,13 @@ def resolve_gnn_paths(
     `ground_truth_path` is only required by the clustering stage; callers can set
     `require_ground_truth=False` so training/eval don't fail if that config key is absent.
     """
-    g = load_gnn_cfg(cfg)
-    runs_parent = str(runs_parent)
+    g = load_gnn_cfg(cfg, project_root=project_root)
+    layout: GnnPathLayout = g["path_layout"]
+    runs_parent_eff = _effective_runs_parent(runs_parent, layout, project_root=project_root)
 
     # run_dir
     if run_dir is None or str(run_dir).strip() == "":
-        run_dir_path = run_dir_for(runs_parent, sanitize_run_id(str(g["run_id"]))).resolve()
+        run_dir_path = run_dir_for(runs_parent_eff, sanitize_run_id(str(g["run_id"]))).resolve()
         run_dir_str = str(run_dir_path)
     else:
         run_dir_str = str(Path(run_dir).resolve())
@@ -59,7 +83,7 @@ def resolve_gnn_paths(
     # checkpoint_path
     if checkpoint_path is None or str(checkpoint_path).strip() == "":
         checkpoint_path_str = str(
-            Path(run_dir_str) / "models" / str(g["training_cfg"]["model_save_name"])
+            Path(run_dir_str) / layout.models_subdir / str(g["training_cfg"]["model_save_name"])
         )
     else:
         checkpoint_path_str = str(Path(checkpoint_path).resolve())

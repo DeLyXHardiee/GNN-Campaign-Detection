@@ -49,6 +49,17 @@
   "device": "cuda",
   "to_undirected": true,
   "run_id": "default_experiment",
+  "gnn": {
+    "runs_parent": "core/GNN/outputs",
+    "models_subdir": "models",
+    "metrics_csv": "metrics.csv",
+    "training_config_json": "training_config.json",
+    "eval_auroc_ap_subdir": "eval_auroc_ap",
+    "eval_recall_at_k_subdir": "eval_recall_at_k",
+    "clustering_subdir": "clustering",
+    "clustering_plots_subdir": "plots",
+    "stage_result_json": "stage_result.json"
+  },
   "training": {
     "torch_seed": 42,
     "primary_ntype": "email",

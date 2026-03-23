@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from config.pipeline_config import GnnPathLayout, gnn_path_layout_from_pipeline, load_pipeline_config
 from src.eval_link.recall_at_k import run_recall_at_k_analysis
 from steps.eval_stage_utils import load_graph_and_run
 
@@ -16,6 +17,7 @@ def run_recall_at_k_stage(
     evaluation_cfg: dict[str, Any],
     device_pref: str | None,
     to_undirected: bool,
+    path_layout: GnnPathLayout | None = None,
 ) -> dict[str, Any]:
     graph_path = str(graph_path)
     checkpoint_path = str(checkpoint_path)
@@ -24,8 +26,10 @@ def run_recall_at_k_stage(
     if not checkpoint_path:
         raise ValueError("CHECKPOINT_PATH is empty in core/GNN/run_pipeline.py (required for eval).")
 
+    layout = path_layout or gnn_path_layout_from_pipeline(load_pipeline_config())
+
     output_dir = Path(output_dir)
-    out = output_dir / "eval_recall_at_k"
+    out = output_dir / layout.eval_recall_at_k_subdir
     out.mkdir(parents=True, exist_ok=True)
 
     device, model, predictor, loaders, splits, _checkpoint = load_graph_and_run(
@@ -52,7 +56,7 @@ def run_recall_at_k_stage(
         encoding="utf-8",
     )
     result = res | {"output_dir": str(out)}
-    (out / "stage_result.json").write_text(
+    (out / layout.stage_result_json).write_text(
         json.dumps(result, indent=2),
         encoding="utf-8",
     )

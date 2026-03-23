@@ -6,7 +6,12 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-from config.pipeline_config import load_pipeline_config, resolve_project_path
+from config.pipeline_config import (
+    GnnPathLayout,
+    gnn_path_layout_from_pipeline,
+    load_pipeline_config,
+    resolve_project_path,
+)
 from core.clustering.clusteringMetrics import extract_ground_truth_labels
 from src.plots.clustering_plot_utils import (
     load_dbscan_results_for_epsilon,
@@ -35,20 +40,21 @@ def run_clustering_plot_stage(
     output_dir: str | Path,
     total_emails: int | None = None,
     dpi: int = 150,
+    path_layout: GnnPathLayout | None = None,
 ) -> dict[str, Any]:
     """
     Read clustering sweep CSVs and generate plots for analysis.
 
-    Expected clustering output (written by `run_clustering_stage`):
-      <run_dir>/clustering/stage_result.json
-      <run_dir>/clustering/<algo_name>/<model_stem>_<algo>_sweep.csv
+    Expected clustering output (written by `run_clustering_stage`); subdirs match
+    ``pipeline_config.json`` ``gnn.clustering_subdir`` and ``gnn.clustering_plots_subdir``.
     """
-    output_dir = Path(output_dir)
-    clustering_out = output_dir / "clustering"
-    plots_out = clustering_out / "plots"
-    plots_out.mkdir(parents=True, exist_ok=True)
-
     cfg = load_pipeline_config()
+    layout = path_layout or gnn_path_layout_from_pipeline(cfg)
+
+    output_dir = Path(output_dir)
+    clustering_out = output_dir / layout.clustering_subdir
+    plots_out = clustering_out / layout.clustering_plots_subdir
+    plots_out.mkdir(parents=True, exist_ok=True)
     gnn_cfg = cfg.get("gnn_clustering", {}).get("config", {})
     dbscan_cfg = gnn_cfg.get("dbscan", {}) if isinstance(gnn_cfg, dict) else {}
     meanshift_cfg = gnn_cfg.get("meanshift", {}) if isinstance(gnn_cfg, dict) else {}
@@ -157,7 +163,7 @@ def run_clustering_plot_stage(
                 saved.append(_save_fig(fig_i, plots_out / fname, dpi=dpi))
 
     result = {"plots_dir": str(plots_out), "saved_plots": saved}
-    (plots_out / "stage_result.json").write_text(
+    (plots_out / layout.stage_result_json).write_text(
         json.dumps(result, indent=2),
         encoding="utf-8",
     )
