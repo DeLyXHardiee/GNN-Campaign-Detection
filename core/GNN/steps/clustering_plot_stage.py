@@ -7,7 +7,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 
 from config.pipeline_config import load_pipeline_config, resolve_project_path
-from src.clustering.clusteringMetrics import extract_ground_truth_labels
+from core.clustering.clusteringMetrics import extract_ground_truth_labels
 from src.plots.clustering_plot_utils import (
     load_dbscan_results_for_epsilon,
     load_dbscan_sweep_csvs,
