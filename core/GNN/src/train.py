@@ -178,15 +178,19 @@ def run_training(DEVICE, TORCH_SEED, data,
                  contrastive_edges=None,
                  contrastive_weight=0.2,
                  run_dir=None,
-                 runs_parent=None):
+                 runs_parent=None,
+                 models_subdir="models",
+                 metrics_csv="metrics.csv",
+                 training_config_json="training_config.json"):
     """
     If ``run_dir`` is set, that directory is used (pipeline: ``<RUNS_PARENT>/<run_id>/``).
 
     If ``run_dir`` is None, creates ``<runs_parent>/run_<timestamp>/`` (default parent
     ``outputs``) — handy for ad-hoc notebooks.
 
-    Checkpoints go under ``<run_dir>/models/`` (``ckpt_dir``). Metrics and
-    ``training_config.json`` live at ``run_dir``.
+    Checkpoints go under ``<run_dir>/<models_subdir>/``. Metrics and training config
+    filenames default to ``metrics.csv`` and ``training_config.json``; override when
+    using ``pipeline_config.json`` ``gnn`` layout.
     """
     if run_dir is None:
         parent = Path(runs_parent) if runs_parent is not None else Path("outputs")
@@ -196,7 +200,7 @@ def run_training(DEVICE, TORCH_SEED, data,
     else:
         run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    ckpt_dir = run_dir / "models"
+    ckpt_dir = run_dir / models_subdir
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     ckpt_path = ckpt_dir / model_save_name
@@ -209,8 +213,8 @@ def run_training(DEVICE, TORCH_SEED, data,
     print(f"🔖 Run directory: {run_dir}")
     print(f"   Checkpoints: {ckpt_dir}")
 
-    metrics_csv = os.path.join(run_dir, "metrics.csv")
-    with open(metrics_csv, mode='w', newline='') as f:
+    metrics_csv_path = os.path.join(run_dir, metrics_csv)
+    with open(metrics_csv_path, mode='w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['epoch', 'val_loss', 'val_acc'])
 
@@ -271,7 +275,7 @@ def run_training(DEVICE, TORCH_SEED, data,
         "contrastive_weight": contrastive_weight,
         "supervised_edge_types_resolved": [list(et) for et in sup_ets],
     }
-    with open(run_dir / "training_config.json", "w", encoding="utf-8") as f:
+    with open(run_dir / training_config_json, "w", encoding="utf-8") as f:
         json.dump(training_record, f, indent=2)
 
     train_graph, train_pos, val_pos, test_pos = split_edges_and_build_train_graph(TORCH_SEED,
@@ -316,7 +320,7 @@ def run_training(DEVICE, TORCH_SEED, data,
         va_loss, va_acc = eval_epoch(DEVICE, model, predictor, loaders['val'], pos_weight_fixed=pos_weight_fixed)
         print(f"🧪 Epoch {epoch:02d} | 🏋️ train loss: {tr_loss:.4f} acc: {tr_acc:.3f} | 📉 val loss: {va_loss:.4f} acc: {va_acc:.3f}")
 
-        with open(metrics_csv, mode='a', newline='') as f:
+        with open(metrics_csv_path, mode='a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([epoch, va_loss, va_acc])
 

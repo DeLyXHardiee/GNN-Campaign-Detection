@@ -6,6 +6,7 @@ from typing import Any
 
 import torch
 
+from config.pipeline_config import GnnPathLayout, gnn_path_layout_from_pipeline, load_pipeline_config
 from src.clustering.clustering_helpers import extract_ground_truth_labels, sweep_clustering_for_one_model
 from src.load_graph_data import load_hetero_pt
 from src.model_io import load_model_checkpoint, select_device
@@ -21,6 +22,7 @@ def run_clustering_stage(
     model_save_name: str,
     device_pref: str | None,
     to_undirected: bool,
+    path_layout: GnnPathLayout | None = None,
 ) -> dict[str, Any]:
     graph_path = str(graph_path)
     ground_truth_path = str(ground_truth_path)
@@ -33,8 +35,10 @@ def run_clustering_stage(
     if not checkpoint_path:
         raise ValueError("CHECKPOINT_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
 
+    layout = path_layout or gnn_path_layout_from_pipeline(load_pipeline_config())
+
     output_dir = Path(output_dir)
-    clustering_out = output_dir / "clustering"
+    clustering_out = output_dir / layout.clustering_subdir
     clustering_out.mkdir(parents=True, exist_ok=True)
 
     pref = torch.device(device_pref) if isinstance(device_pref, str) and device_pref else None
@@ -107,7 +111,7 @@ def run_clustering_stage(
         "model_column_name": model_stem,
         "algorithms": outputs,
     }
-    (clustering_out / "stage_result.json").write_text(
+    (clustering_out / layout.stage_result_json).write_text(
         json.dumps(result, indent=2),
         encoding="utf-8",
     )
