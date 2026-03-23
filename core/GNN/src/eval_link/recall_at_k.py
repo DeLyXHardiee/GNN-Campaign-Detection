@@ -199,20 +199,22 @@ def run_recall_at_k_analysis(
         use_dot=use_dot,
     )
 
-    # Machine-readable: curves and MRR
+    # Machine-readable: curves and MRR (string keys for JSON serialization)
+    recall_curves_serializable = {_et_to_label(et): v for et, v in recall_curves.items()}
+    mrr_at_max_k_serializable = {_et_to_label(et): v for et, v in mrr_at_max_k.items()}    
     metrics_serializable = {
         "K_list": K_list,
         "use_dot": use_dot,
-        "recall_curves": {_et_to_label(et): v for et, v in recall_curves.items()},
-        "mrr_at_max_K": {_et_to_label(et): v for et, v in mrr_at_max_k.items()},
+        "recall_curves": recall_curves_serializable,
+        "mrr_at_max_K": mrr_at_max_k_serializable,
     }
     metrics_path = output_dir / "recall_at_k_metrics.json"
     with open(metrics_path, "w") as f:
         json.dump(metrics_serializable, f, indent=2)
 
     return {
-        "recall_curves": recall_curves,
-        "mrr_at_max_k": mrr_at_max_k,
+        "recall_curves": recall_curves_serializable,
+        "mrr_at_max_k": mrr_at_max_k_serializable,
         "plot_path": str(plot_path),
         "metrics_path": str(metrics_path),
     }

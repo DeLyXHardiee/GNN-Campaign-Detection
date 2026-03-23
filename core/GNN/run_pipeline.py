@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from steps.cluster_stage import run_clustering_stage
+from steps.clustering_plot_stage import run_clustering_plot_stage
 from steps.eval_auroc_ap_stage import run_auroc_ap_stage
 from steps.eval_recall_at_k_stage import run_recall_at_k_stage
 from steps.pipeline_paths import run_dir_for, sanitize_run_id
@@ -36,17 +37,12 @@ from steps.train_stage import run_train_stage
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "pipeline_config.json"
 
 # Paths you fill in.
-GRAPH_PATH = ""
-GROUND_TRUTH_PATH = ""
+GRAPH_PATH = "../graph/output/incidents-20260211-misp_hetero.pt"
+GROUND_TRUTH_PATH = "../../data/groundtruth/ground_truth.json"
 
 # Parent directory where training creates run_<timestamp>/ (see docstring).
-RUNS_PARENT = "outputs"
+RUNS_PARENT = ""
 
-# Full path override. Empty → <RUNS_PARENT>/<run_id> from config.
-RUN_DIR = ""
-
-# Optional override; if empty, uses RUN_DIR/models/<model_save_name from config>.
-CHECKPOINT_PATH = ""
 
 
 def main() -> None:
@@ -70,45 +66,50 @@ def main() -> None:
     if run_dir and not checkpoint_path:
         checkpoint_path = str(Path(run_dir) / "models" / training_cfg["model_save_name"])
 
+    '''
     # Uncomment to train into <RUNS_PARENT>/<run_id>/.
-    # run_train_stage(
-    #     graph_path=GRAPH_PATH,
-    #     runs_parent=RUNS_PARENT,
-    #     run_id=cfg["run_id"],
-    #     training_cfg=training_cfg,
-    #     device_pref=device_pref,
-    #     to_undirected=to_undirected,
-    # )
+    run_train_stage(
+        graph_path=GRAPH_PATH,
+        runs_parent=RUNS_PARENT,
+        run_id=cfg["run_id"],
+        training_cfg=training_cfg,
+        device_pref=device_pref,
+        to_undirected=to_undirected,
+    )
 
     # Uncomment eval/clustering (same run_id / RUN_DIR as training).
-    # run_auroc_ap_stage(
-    #     graph_path=GRAPH_PATH,
-    #     checkpoint_path=checkpoint_path,
-    #     output_dir=run_dir,
-    #     evaluation_cfg=evaluation_auroc_cfg,
-    #     device_pref=device_pref,
-    #     to_undirected=to_undirected,
-    # )
+    run_auroc_ap_stage(
+        graph_path=GRAPH_PATH,
+        checkpoint_path=checkpoint_path,
+        output_dir=run_dir,
+        evaluation_cfg=evaluation_auroc_cfg,
+        device_pref=device_pref,
+        to_undirected=to_undirected,
+    )
 
-    # run_recall_at_k_stage(
-    #     graph_path=GRAPH_PATH,
-    #     checkpoint_path=checkpoint_path,
-    #     output_dir=run_dir,
-    #     evaluation_cfg=recall_cfg,
-    #     device_pref=device_pref,
-    #     to_undirected=to_undirected,
-    # )
+    run_recall_at_k_stage(
+        graph_path=GRAPH_PATH,
+        checkpoint_path=checkpoint_path,
+        output_dir=run_dir,
+        evaluation_cfg=recall_cfg,
+        device_pref=device_pref,
+        to_undirected=to_undirected,
+    )
+    '''
+    
+    run_clustering_stage(
+        graph_path=GRAPH_PATH,
+        ground_truth_path=GROUND_TRUTH_PATH,
+        checkpoint_path=checkpoint_path,
+        output_dir=run_dir,
+        clustering_cfg=clustering_cfg,
+        model_save_name=training_cfg["model_save_name"],
+        device_pref=device_pref,
+        to_undirected=to_undirected,
+    )
 
-    # run_clustering_stage(
-    #     graph_path=GRAPH_PATH,
-    #     ground_truth_path=GROUND_TRUTH_PATH,
-    #     checkpoint_path=checkpoint_path,
-    #     output_dir=run_dir,
-    #     clustering_cfg=clustering_cfg,
-    #     model_save_name=training_cfg["model_save_name"],
-    #     device_pref=device_pref,
-    #     to_undirected=to_undirected,
-    # )
+    # Uncomment to generate clustering analysis plots under <run_dir>/clustering/plots/.
+    # run_clustering_plot_stage(output_dir=run_dir)
 
     print("Done. run_dir:", run_dir)
 

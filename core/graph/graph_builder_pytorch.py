@@ -4,18 +4,17 @@ Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 Capabilities:
 - Accepts input either as an in-memory list of MISP events or from a JSON file path.
 - Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
-- Node types: 'email', 'sender', 'receiver', 'week', 'url', 'domain', 'stem', 'email_domain', 'attachment'.
+- Node types: 'email', 'sender', 'receiver', 'url', 'domain', 'stem', 'email_domain', 'attachment'.
 - Edges:
     - ('email', 'has_sender', 'sender')
     - ('email', 'has_receiver', 'receiver')
-    - ('email', 'in_week', 'week') - emails are grouped by ISO week
     - ('email', 'has_url', 'url')
     - ('url', 'has_domain', 'domain')
     - ('url', 'has_stem', 'stem')
     - ('sender', 'from_domain', 'email_domain')
     - ('receiver', 'from_domain', 'email_domain')
     - ('email', 'has_attachment', 'attachment')
-- Component nodes are deduplicated: multiple emails sharing the same sender, week, etc. 
+- Component nodes are deduplicated: multiple emails sharing the same sender, etc. 
     will have edges to the same component node.
 - URLs are parsed into domain and stem components for better deduplication.
 - Email addresses are normalized (lowercase, angle brackets removed) and connected to their 
@@ -149,10 +148,6 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
             other_out_dim=32,
         )
         data[N["email"].pyg].x = proj(raw)
-        email_meta = ir.nodes["email"].index_to_meta or []
-        data[N["email"].pyg].external_id = [
-            str(m.get("external_id") or "") for m in email_meta
-        ]
     else:
         data[N["email"].pyg].num_nodes = 0
 
@@ -233,18 +228,17 @@ def build_hetero_graph_from_misp(
     Build a HeteroData graph from a list of MISP events.
     
         New schema: Email nodes are central hubs connected to component nodes:
-        - Node types: email, sender, receiver, week, url, domain, stem, email_domain
+        - Node types: email, sender, receiver, url, domain, stem, email_domain
     - Edge types: 
       - (email, has_sender, sender)
       - (email, has_receiver, receiver)
-      - (email, in_week, week)
       - (email, has_url, url)
       - (url, has_domain, domain)
       - (url, has_stem, stem)
       - (sender, from_domain, email_domain)
       - (receiver, from_domain, email_domain)
     
-    Components are deduplicated: multiple emails sharing the same sender/receiver/week/etc. 
+    Components are deduplicated: multiple emails sharing the same sender/receiver/etc. 
     will have edges to the same component node. URLs are decomposed into domain and stem.
     Email addresses are normalized (lowercase, angle brackets removed) and connected to 
     their domain nodes to increase connectivity.
