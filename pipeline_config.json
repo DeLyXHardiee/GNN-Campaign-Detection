@@ -46,7 +46,7 @@
       "n_samples": 3000
     }
   },
-  "device": "cpu",
+  "device": "cuda",
   "to_undirected": true,
   "run_id": "default_experiment",
   "training": {
