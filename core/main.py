@@ -1,3 +1,5 @@
+import config.blas_env  # noqa: F401 — before NumPy / sklearn
+
 import json
 import ast
 import sys
@@ -326,6 +328,7 @@ def run_featureset_clustering():
     )
 
     cfg = load_pipeline_config()
+    graph_s = graph_build_settings_from_pipeline(cfg)
     clustering_cfg = cfg.get("featureset-clustering", cfg.get("clustering", {}))
     dbscan_cfg = clustering_cfg.get("dbscan", {})
     meanshift_cfg = clustering_cfg.get("meanshift", {})
@@ -346,6 +349,7 @@ def run_featureset_clustering():
         max_tfidf_features=clustering_cfg.get("max_tfidf_features"),
         remove_outliers=outlier_cfg.get("enabled", True),
         outlier_contamination=outlier_cfg.get("contamination", 0.05),
+        embeddings_output_dir=graph_s.embeddings_output_dir,
     )
 
 def run_metrics_evaluation():
@@ -364,13 +368,13 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing()
-    create_feature_sets()
-    run_featureset_clustering()
+    # misp_path = run_preprocessing()
+    # create_feature_sets()
+    # run_featureset_clustering()
     # misp_path = "preprocessing/output/incidents-20260211-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
-    run_gnn()
-    run_gnn_evaluation()
+    # run_graph_creation(misp_path, to_memgraph=False)
+    # run_gnn()
+    # run_gnn_evaluation()
     run_gnn_clustering()
     run_metrics_evaluation()
     

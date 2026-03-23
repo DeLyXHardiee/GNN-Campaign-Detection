@@ -27,7 +27,7 @@
   "featureset-clustering": {
     "max_tfidf_features": 5000,
     "n_components_values": [
-      1000
+      100000
     ],
     "outlier_removal": {
       "enabled": true,
@@ -93,14 +93,14 @@
       "dbscan": {
         "enabled": true,
         "epsilon_values": [
-          0.5
+          0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
         ],
         "min_samples": 5
       },
       "meanshift": {
         "enabled": true,
         "quantile_values": [
-          0.25
+          0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
         ],
         "n_samples": 500
       },

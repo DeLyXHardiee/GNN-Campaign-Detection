@@ -4,9 +4,9 @@ graph/output and store them in a JSON file. The script opens and parses the .pt
 graph file directly. The graph must have been built with SBERT email features.
 The cache can be parsed later when creating the graph to avoid recomputing embeddings.
 
-Usage:
-  python -m graph.extract_bert_embeddings <graph_path> [output_path]
-  python -m graph.extract_bert_embeddings --graph path/to/graph.pt --output path/to/embeddings.json
+Usage (with ``core`` on ``PYTHONPATH``):
+  python -m utils.embeddings.extract_bert_embeddings <graph_path> [output_path]
+  python -m utils.embeddings.extract_bert_embeddings --graph path/to/graph.pt --output path/to/embeddings.json
 
 Output format (JSON) for later parsing:
   {
@@ -28,7 +28,7 @@ from pathlib import Path
 
 import torch
 
-from ..feature_projection import SCALAR_COUNT, HTML_CSS_LEN, BOOL_ATTR_COUNT, AUTH_ONEHOT_DIM
+from graph.feature_projection import SCALAR_COUNT, HTML_CSS_LEN, BOOL_ATTR_COUNT, AUTH_ONEHOT_DIM
 
 SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
 _EMAIL_NODE_TYPE = "email"
@@ -136,7 +136,7 @@ def main() -> int:
     parser.add_argument(
         "output_path",
         nargs="?",
-        help="Output JSON path. Default: graph/embeddings/output/email_bert_embeddings.json",
+        help="Output JSON path. Default: utils/embeddings/output/email_bert_embeddings.json",
     )
     parser.add_argument("--graph", dest="graph_opt", help="Path to graph .pt file (alternative to positional).")
     parser.add_argument("--output", dest="output_opt", help="Output JSON path (alternative to positional).")
@@ -147,8 +147,7 @@ def main() -> int:
         parser.error("Provide graph_path (positional or --graph).")
     out_path = args.output_opt or args.output_path
     if not out_path:
-        _graph_dir = Path(__file__).resolve().parent.parent
-        out_path = _graph_dir / "embeddings" / "output" / "email_bert_embeddings.json"
+        out_path = Path(__file__).resolve().parent / "output" / "email_bert_embeddings.json"
 
     extract_and_save(graph_path, out_path)
     return 0
