@@ -42,29 +42,6 @@ def to_str(val: Any) -> str:
         return ""
 
 
-def extract_week_key(date_str: str) -> Optional[str]:
-    if not date_str or not date_str.strip():
-        return None
-    try:
-        from datetime import datetime
-        for fmt in [
-            "%a, %d %b %Y %H:%M:%S %z",
-            "%a, %d %b %Y %H:%M:%S %Z",
-            "%d %b %Y %H:%M:%S %z",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d",
-        ]:
-            try:
-                dt = datetime.strptime(date_str.strip(), fmt)
-                iso = dt.isocalendar()
-                return f"{iso[0]}-W{iso[1]:02d}"
-            except ValueError:
-                continue
-        return None
-    except Exception:
-        return None
-
-
 def to_unix_ts(date_str: str) -> int:
     if not date_str or not date_str.strip():
         return 0
@@ -412,7 +389,6 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
 __all__ = [
     "parse_url_components",
     "to_str",
-    "extract_week_key",
     "to_unix_ts",
     "normalize_email_address",
     "extract_email_domain",

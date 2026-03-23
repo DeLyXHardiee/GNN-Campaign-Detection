@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
 from preprocessing.utils.defang import defang_url_string
+
+_LOG = logging.getLogger(__name__)
 
 
 def _clean_text(value: Any) -> str:
@@ -40,9 +43,26 @@ def _add_attr(attributes: List[Dict[str, Any]], attr_type: str, value: Any) -> N
 
 
 def incidents_to_misp_events(incidents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Convert incidents to MISP event dicts. Deduplicates by external_id:
+    only the first occurrence of each external_id is emitted; later duplicates are skipped.
+    """
     events: List[Dict[str, Any]] = []
+    seen_external_ids: set[str] = set()
 
     for idx, incident in enumerate(incidents):
+        external_id = incident.get("external_id") or ""
+        if external_id:
+            if external_id in seen_external_ids:
+                _LOG.warning(
+                    "Skipping duplicate external_id in preprocessing: %r (incident index %s). "
+                    "Only the first occurrence is kept.",
+                    external_id,
+                    idx,
+                )
+                continue
+            seen_external_ids.add(external_id)
+
         headers = incident.get("email_headers", {}) or {}
         attributes: List[Dict[str, Any]] = []
 

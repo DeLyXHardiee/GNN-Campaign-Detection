@@ -12,7 +12,6 @@ class NodeType(Enum):
     EMAIL = "email"
     SENDER = "sender"
     RECEIVER = "receiver"
-    WEEK = "week"
     URL = "url"
     DOMAIN = "domain"
     STEM = "stem"
