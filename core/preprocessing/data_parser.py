@@ -680,7 +680,7 @@ def parse_incidents_with_email_bodies(
             max_csv_field_size = max_csv_field_size // 10
 
     if limit is not None and limit <= 0:
-        return []
+        limit = None
 
     with incidents_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as csv_file:
         reader = csv.DictReader(csv_file)

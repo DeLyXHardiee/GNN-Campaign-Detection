@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .common import (
     parse_misp_events,
-    extract_week_key,
     extract_email_domain,
     parse_url_components,
     to_unix_ts,
@@ -227,10 +226,6 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
             vals.extend(_as_email_list(em.get("receivers")))
         return _dedup_index(vals)
 
-    def week(emails: List[Dict[str, Any]]) -> Dict[str, int]:
-        vals = [extract_week_key(em.get("date", "")) or "" for em in emails]
-        return _dedup_index(vals)
-
     def url(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
@@ -310,7 +305,6 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
     return {
         "sender": sender,
         "receiver": receiver,
-        "week": week,
         "url": url,
         "domain": domain,
         "stem": stem,
@@ -356,20 +350,6 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
                 elif dst_key == "return_path_domain":
                     docfreq_maps["return_path_domain_email_sets"].setdefault(value, set()).add(email_idx)
 
-    def email_to_week_from_date(
-        email_ctx: Dict[str, Any],
-        indices: Dict[str, Dict[str, int]],
-        edges_idx: Dict[str, List[int]],
-        _docfreq_maps: Dict[str, Dict[str, Set[int]]],
-        edge_name: str,
-    ) -> None:
-        email_idx = int(email_ctx["email_idx"])
-        em = email_ctx["email"]
-        wk = extract_week_key(em.get("date", ""))
-        if wk and wk in indices.get("week", {}):
-            edges_idx[f"{edge_name}_src"].append(email_idx)
-            edges_idx[f"{edge_name}_dst"].append(indices["week"][wk])
-
     def email_to_domain_from_urls(
         email_ctx: Dict[str, Any],
         indices: Dict[str, Dict[str, int]],
@@ -408,7 +388,6 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
 
     return {
         "email_to_entity": email_to_entity,
-        "email_to_week_from_date": email_to_week_from_date,
         "email_to_domain_from_urls": email_to_domain_from_urls,
         "email_to_stem_from_urls": email_to_stem_from_urls,
     }
@@ -426,11 +405,6 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
         x = [[float(len(v))] for v in meta]
         attrs = {"docfreq": [len(docfreq_maps["receiver_email_sets"].get(v, set())) for v in meta]}
         return x, meta, attrs
-
-    def week(node_key: str, indices: Dict[str, Dict[str, int]], _url_components: Dict[str, Tuple[str, str]], _docfreq_maps: Dict[str, Dict[str, Set[int]]]):
-        meta = _ordered_keys(indices[node_key])
-        x = [[float(i)] for i, _ in enumerate(meta)]
-        return x, meta, {}
 
     def url(node_key: str, indices: Dict[str, Dict[str, int]], url_components: Dict[str, Tuple[str, str]], docfreq_maps: Dict[str, Dict[str, Set[int]]]):
         meta = _ordered_keys(indices[node_key])
@@ -490,7 +464,6 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
     return {
         "sender": sender,
         "receiver": receiver,
-        "week": week,
         "url": url,
         "domain": domain,
         "stem": stem,

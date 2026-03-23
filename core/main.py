@@ -23,7 +23,10 @@ def run_preprocessing_trec():
     print(f"Parsing TREC-07-only-phishing-6m incidents from {incidents_csv_path}...")
 
     import pandas as pd
-    df = pd.read_csv(incidents_csv_path, encoding="utf-8-sig", nrows=limit)
+    if limit > 0:
+        df = pd.read_csv(incidents_csv_path, encoding="utf-8-sig", nrows=limit)
+    else:
+        df = pd.read_csv(incidents_csv_path, encoding="utf-8-sig")
     df = df.fillna("")
 
     # Align source columns with the incident schema used by synthetic data preprocessing.
@@ -299,10 +302,11 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     # misp_path = run_preprocessing_trec()
-    create_feature_sets()
-    #run_featureset_clustering()
-    #misp_path = "preprocessing/output/incidents-20260211-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
+    misp_path = run_preprocessing()
+    # create_feature_sets()
+    # run_featureset_clustering()
+    # misp_path = "preprocessing/output/incidents-20260211-misp.json"
+    run_graph_creation(misp_path, to_memgraph=False)
     # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()

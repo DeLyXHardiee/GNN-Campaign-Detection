@@ -77,7 +77,7 @@ def graph_build_settings_from_pipeline(
 
     exclude = graph_cfg.get("exclude_node_types")
     if exclude is None:
-        exclude = ["week"]
+        exclude = []
     if not isinstance(exclude, list):
         raise TypeError("graph.exclude_node_types must be a list of strings.")
     exclude_node_types = [str(x) for x in exclude]

@@ -281,40 +281,6 @@ def get_top_stems_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: i
         return []
 
 
-def _md_week_distribution(metadata: Dict[str, Any], graph_path: Optional[str]) -> str:
-    week_strings = metadata.get("node_maps", {}).get("week", {}).get("index_to_string", [])
-    lines = ["## Email Distribution by Week", ""]
-    if not week_strings:
-        lines.append("No week data found in the graph.")
-        lines.append("")
-        return "\n".join(lines)
-    if not graph_path:
-        lines.append(f"Total weeks: {len(week_strings)}")
-        lines.append("")
-        return "\n".join(lines)
-    try:
-        import torch
-        graph = torch.load(graph_path, weights_only=False)
-        if ("email", "in_week", "week") not in getattr(graph, "edge_types", []):
-            lines.append("No in_week edges present.")
-            lines.append("")
-            return "\n".join(lines)
-        edge_index = graph["email", "in_week", "week"].edge_index
-        week_indices = edge_index[1].tolist()
-        c = Counter(week_indices)
-        sorted_weeks = sorted(((week_strings[i], count) for i, count in c.items() if 0 <= i < len(week_strings)))
-        lines.append("")
-        lines.append("```")
-        for week, count in sorted_weeks:
-            bar = "█" * min(50, count // 10)
-            lines.append(f"{week:12s}: {count:5d} emails {bar}")
-        lines.append("```")
-        lines.append("")
-        return "\n".join(lines)
-    except Exception as e:
-        return "\n".join(lines + [f"Could not load graph for week distribution: {e}", ""]) 
-    
-
 def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = None, sample_size: int = 5) -> str:
     import random
 
@@ -425,8 +391,6 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
         receiver_strings = metadata.get("node_maps", {}).get("receiver", {}).get("index_to_string", [])
         recv_pairs = [(r, 0) for r in receiver_strings[:5]]
     sections.append(_md_top_list("Top Receivers", recv_pairs, "emails"))
-
-    sections.append(_md_week_distribution(metadata, graph_path))
 
     comp_md_lines = ["## Connected Components", ""]
     if graph_path:

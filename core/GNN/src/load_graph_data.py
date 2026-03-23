@@ -37,6 +37,10 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     data = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
+    # Remove non-tensor node attributes so PyG loaders (e.g. LinkNeighborLoader) do not fail.
+    # external_id is a list; get it from the companion .meta.json (email_attrs.external_id) when needed.
+    if "email" in data.node_stores and hasattr(data["email"], "external_id"):
+        del data["email"].external_id
     if to_undirected:
         return ToUndirected()(data)
     return data
