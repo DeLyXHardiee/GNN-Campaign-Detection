@@ -1,5 +1,6 @@
 import json
 import ast
+import sys
 from pathlib import Path
 from config.pipeline_config import (
     graph_build_settings_from_pipeline,
@@ -8,6 +9,143 @@ from config.pipeline_config import (
 )
 from preprocessing.data_parser import parse_incidents_with_email_bodies
 from preprocessing.misp_converter import incidents_to_misp_file
+
+# Make `core/GNN/steps/*` and `core/GNN/src/*` importable from here.
+_GNN_ROOT = Path(__file__).resolve().parent / "GNN"
+if str(_GNN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_GNN_ROOT))
+
+from steps.cluster_stage import run_clustering_stage  # noqa: E402
+from steps.eval_auroc_ap_stage import run_auroc_ap_stage  # noqa: E402
+from steps.eval_recall_at_k_stage import run_recall_at_k_stage  # noqa: E402
+from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths  # noqa: E402
+from steps.pipeline_paths import run_dir_for, sanitize_run_id  # noqa: E402
+from steps.train_stage import run_train_stage  # noqa: E402
+from steps.clustering_plot_stage import run_clustering_plot_stage  # noqa: E402
+
+def run_gnn(
+    *,
+    graph_path: str | Path | None = None,
+    run_dir: str | Path | None = None,
+    runs_parent: str | Path = "outputs",
+    checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
+    device_pref: str | None = None,
+):
+    cfg = load_pipeline_config()
+    g = load_gnn_cfg(cfg)
+    run_dir_str, _checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
+        cfg=cfg,
+        run_dir=run_dir,
+        runs_parent=runs_parent,
+        checkpoint_path=checkpoint_path,
+        graph_path=graph_path,
+        ground_truth_path=None,
+        require_ground_truth=False,
+    )
+
+    # Make sure the training output directory matches `run_dir` override (if provided).
+    runs_parent_effective: str | Path = runs_parent
+    if run_dir is not None and str(run_dir).strip() != "":
+        expected = sanitize_run_id(str(g["run_id"]))
+        if Path(run_dir_str).name != expected:
+            raise ValueError(
+                f"run_dir override basename {Path(run_dir_str).name!r} must match sanitize_run_id(run_id)={expected!r}"
+            )
+        runs_parent_effective = Path(run_dir_str).parent
+
+    return run_train_stage(
+        graph_path=graph_path_str,
+        runs_parent=runs_parent_effective,
+        run_id=g["run_id"],
+        training_cfg=g["training_cfg"],
+        device_pref=device_pref if device_pref is not None else g["device_pref"],
+        to_undirected=g["to_undirected"],
+    )
+
+
+def run_gnn_evaluation(
+    *,
+    graph_path: str | Path | None = None,
+    run_dir: str | Path | None = None,
+    runs_parent: str | Path = "outputs",
+    checkpoint_path: str | Path | None = None,
+):
+    cfg = load_pipeline_config()
+    g = load_gnn_cfg(cfg)
+    run_dir_str, checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
+        cfg=cfg,
+        run_dir=run_dir,
+        runs_parent=runs_parent,
+        checkpoint_path=checkpoint_path,
+        graph_path=graph_path,
+        ground_truth_path=None,
+        require_ground_truth=False,
+    )
+    evaluation_cfg_auroc = g["evaluation_auroc_cfg"]
+    recall_cfg = g["recall_cfg"]
+
+    res_auroc = run_auroc_ap_stage(
+        graph_path=graph_path_str,
+        checkpoint_path=checkpoint_path_str,
+        output_dir=run_dir_str,
+        evaluation_cfg=evaluation_cfg_auroc,
+        device_pref=g["device_pref"],
+        to_undirected=g["to_undirected"],
+    )
+    res_recall = run_recall_at_k_stage(
+        graph_path=graph_path_str,
+        checkpoint_path=checkpoint_path_str,
+        output_dir=run_dir_str,
+        evaluation_cfg=recall_cfg,
+        device_pref=g["device_pref"],
+        to_undirected=g["to_undirected"],
+    )
+    return {
+        "run_dir": run_dir_str,
+        "checkpoint_path": checkpoint_path_str,
+        "auroc_ap": res_auroc,
+        "recall_at_k": res_recall,
+    }
+
+
+def run_gnn_clustering(
+    *,
+    graph_path: str | Path | None = None,
+    ground_truth_path: str | Path | None = None,
+    run_dir: str | Path | None = None,
+    runs_parent: str | Path = "outputs",
+    checkpoint_path: str | Path | None = None,
+    make_plots: bool = True,
+):
+    cfg = load_pipeline_config()
+    g = load_gnn_cfg(cfg)
+    run_dir_str, checkpoint_path_str, graph_path_str, ground_truth_path_str = resolve_gnn_paths(
+        cfg=cfg,
+        run_dir=run_dir,
+        runs_parent=runs_parent,
+        checkpoint_path=checkpoint_path,
+        graph_path=graph_path,
+        ground_truth_path=ground_truth_path,
+        require_ground_truth=True,
+    )
+
+    res = run_clustering_stage(
+        graph_path=graph_path_str,
+        ground_truth_path=ground_truth_path_str,
+        checkpoint_path=checkpoint_path_str,
+        output_dir=run_dir_str,
+        clustering_cfg=g["gnn_clustering_cfg"],
+        model_save_name=g["training_cfg"]["model_save_name"],
+        device_pref=g["device_pref"],
+        to_undirected=g["to_undirected"],
+    )
+
+    if make_plots:
+        plots_res = run_clustering_plot_stage(output_dir=run_dir_str)
+        return res | {"clustering_plots": plots_res}
+
+    return res
+
 
 def run_preprocessing_trec():
     """
@@ -278,14 +416,6 @@ def run_featureset_clustering():
     print(f"  - Mean Shift: data/fsclusters/meanshift_homogeneity_scores.txt")
     print(f"{'='*80}")
 
-def run_GNN():
-    # input PyTorch Geometric graph --> Run GNN model on the graph --> output embeddings
-    pass
-
-def run_clustering():
-    # input GNN Embeddings --> Run clustering on embeddings --> output clusters
-    pass
-
 def run_metrics_evaluation():
     # input Clusters --> Evaluate clustering results using metrics -- > store metrics
     pass
@@ -293,8 +423,9 @@ def run_metrics_evaluation():
 def run_pipeline():
     misp_json_path = run_preprocessing()
     run_graph_creation(misp_json_path)
-    run_GNN()
-    run_clustering()
+    run_gnn()
+    run_gnn_evaluation()
+    run_gnn_clustering()
     run_metrics_evaluation()
 
 if __name__ == "__main__":
@@ -304,7 +435,6 @@ if __name__ == "__main__":
     #run_featureset_clustering()
     #misp_path = "preprocessing/output/incidents-20260211-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
-    # run_GNN()
     # run_clustering()
     # run_metrics_evaluation()
     
