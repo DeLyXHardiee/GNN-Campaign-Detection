@@ -231,15 +231,20 @@ def plot_coverage_and_noise_fraction(
     figsize: tuple[int, int] = (6, 3),
 ):
     fig, ax = plt.subplots(figsize=figsize)
-    if "coverage" in df.columns:
-        ax.plot(df[x], df["coverage"], linewidth=2, label="coverage")
+    if "coverage_ground_truth" in df.columns:
+        ax.plot(
+            df[x],
+            df["coverage_ground_truth"],
+            linewidth=2,
+            label="ground-truth coverage",
+        )
 
     if total_items is not None and "n_noise" in df.columns:
         noise_frac = df["n_noise"] / max(1, total_items)
-        ax.plot(df[x], noise_frac, linewidth=2, label="noise fraction")
+        ax.plot(df[x], noise_frac, linewidth=2, label="noise fraction (ground truth)")
 
     ax.set_xlabel(x)
-    ax.set_ylabel("coverage / noise fraction")
+    ax.set_ylabel("ground-truth coverage / noise fraction")
     if title:
         ax.set_title(title)
     ax.grid(True, alpha=0.3)
@@ -288,7 +293,7 @@ def plot_dbscan_epsilon_sweep(
     title_prefix: str = "",
 ):
     """
-    Existing convenience wrapper: returns (coverage, combined metrics, n_clusters).
+    Existing convenience wrapper: returns (ground-truth coverage, combined metrics, n_clusters).
     """
     if metrics_df.empty:
         return []
@@ -303,7 +308,7 @@ def plot_dbscan_epsilon_sweep(
             metrics_df,
             x="epsilon",
             total_items=total_emails,
-            title=f"{prefix}Coverage vs epsilon",
+            title=f"{prefix}Ground-truth coverage vs epsilon",
         )
     )
     figs.append(
@@ -407,7 +412,7 @@ def plot_meanshift_quantile_sweep_all(
             ms_df,
             x="quantile",
             total_items=total_emails,
-            title=f"{prefix}Coverage vs quantile",
+            title=f"{prefix}Ground-truth coverage vs quantile",
         )
     )
     figs.append(
@@ -476,14 +481,19 @@ def plot_meanshift_metrics_vs_epoch_at_quantile(
     plots.append((fig1, ax1))
 
     fig2, ax2 = plt.subplots(figsize=(6, 3))
-    if "coverage" in df.columns:
-        ax2.plot(df["epoch"], df["coverage"], linewidth=2, label="coverage")
+    if "coverage_ground_truth" in df.columns:
+        ax2.plot(
+            df["epoch"],
+            df["coverage_ground_truth"],
+            linewidth=2,
+            label="ground-truth coverage",
+        )
     if total_emails is not None and "n_noise" in df.columns:
         noise_frac = df["n_noise"] / max(1, total_emails)
         ax2.plot(df["epoch"], noise_frac, linewidth=2, label="noise fraction")
     ax2.set_xlabel("epoch")
-    ax2.set_ylabel("coverage / noise fraction")
-    title2 = f"Coverage & noise vs epoch at quantile={quantile} ({model_name})"
+    ax2.set_ylabel("ground-truth coverage / noise fraction")
+    title2 = f"Ground-truth coverage & noise vs epoch at quantile={quantile} ({model_name})"
     ax2.set_title(title2)
     ax2.grid(True, alpha=0.3)
     ax2.legend()
@@ -556,14 +566,19 @@ def plot_dbscan_metrics_vs_epoch_at_epsilon(
     plots.append((fig1, ax1))
 
     fig2, ax2 = plt.subplots(figsize=(6, 3))
-    if "coverage" in df.columns:
-        ax2.plot(df["epoch"], df["coverage"], linewidth=2, label="coverage")
+    if "coverage_ground_truth" in df.columns:
+        ax2.plot(
+            df["epoch"],
+            df["coverage_ground_truth"],
+            linewidth=2,
+            label="ground-truth coverage",
+        )
     if total_emails is not None and "n_noise" in df.columns:
         noise_frac = df["n_noise"] / max(1, total_emails)
         ax2.plot(df["epoch"], noise_frac, linewidth=2, label="noise fraction")
     ax2.set_xlabel("epoch")
-    ax2.set_ylabel("coverage / noise fraction")
-    title2 = f"Coverage & noise vs epoch at epsilon={epsilon} ({model_name})"
+    ax2.set_ylabel("ground-truth coverage / noise fraction")
+    title2 = f"Ground-truth coverage & noise vs epoch at epsilon={epsilon} ({model_name})"
     ax2.set_title(title2)
     ax2.grid(True, alpha=0.3)
     ax2.legend()
