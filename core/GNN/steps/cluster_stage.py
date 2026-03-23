@@ -24,6 +24,7 @@ def run_clustering_stage(
     output_dir: str | Path,
     clustering_cfg: dict[str, Any],
     min_coverage_ground_truth: float = 0.5,
+    min_coverage_all: float | None = None,
     model_save_name: str,
     device_pref: str | None,
     to_undirected: bool,
@@ -77,8 +78,14 @@ def run_clustering_stage(
     outputs: dict[str, dict[str, str]] = {}
     model_stem = Path(model_save_name).stem
 
+    # Default `min_coverage_all` to the same threshold as ground truth coverage.
+    if min_coverage_all is None:
+        min_coverage_all = float(min_coverage_ground_truth)
+
     # Select a single locked parameter from the best-model sweep.
-    # Criterion: maximize v_measure, with a minimum ground-truth coverage threshold.
+    # Criterion: maximize v_measure, with minimum thresholds on BOTH:
+    # - coverage_ground_truth
+    # - coverage_all
     best_locked_params: dict[str, dict[str, Any]] = {}
 
     for algo_name, algo_cfg in clustering_cfg.items():
@@ -118,6 +125,7 @@ def run_clustering_stage(
                 r
                 for r in rows
                 if float(r.get("coverage_ground_truth", 0.0)) >= min_coverage_ground_truth
+                and float(r.get("coverage_all", 0.0)) >= min_coverage_all
             ]
             pool = candidates if candidates else list(rows)
             best_row = max(pool, key=lambda r: float(r.get("v_measure", 0.0)))
@@ -125,7 +133,9 @@ def run_clustering_stage(
                 param_key: float(best_row.get(param_key)),
                 "v_measure": float(best_row.get("v_measure", 0.0)),
                 "coverage_ground_truth": float(best_row.get("coverage_ground_truth", 0.0)),
+                "coverage_all": float(best_row.get("coverage_all", 0.0)),
                 "min_coverage_ground_truth": float(min_coverage_ground_truth),
+                "min_coverage_all": float(min_coverage_all),
             }
 
         clustering_errors = [
@@ -179,6 +189,7 @@ def run_clustering_stage(
         "algorithms": outputs,
         "best_locked_params": best_locked_params,
         "locked_param_min_coverage_ground_truth": float(min_coverage_ground_truth),
+        "locked_param_min_coverage_all": float(min_coverage_all),
         "locked_param_epoch_checkpoints": [str(p) for p in epoch_ckpts],
     }
     (clustering_out / "stage_result.json").write_text(

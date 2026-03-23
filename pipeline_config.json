@@ -90,7 +90,8 @@
   },
   "gnn_clustering": {
     "selection": {
-      "min_coverage_ground_truth": 0.5
+      "min_coverage_ground_truth": 0.5,
+      "min_coverage_all": 0.5
     },
     "config": {
       "dbscan": {
