@@ -667,7 +667,7 @@ def build_node_features(
         node_meta[node_key] = meta
         node_attrs[node_key] = attrs
 
-    from .embeddings import DEFAULT_OUTPUT_DIR, get_embeddings
+    from utils.embeddings import DEFAULT_OUTPUT_DIR, get_embeddings
 
     out_dir = embeddings_output_dir if embeddings_output_dir else str(DEFAULT_OUTPUT_DIR)
     subj_vecs, body_vecs, subj_dim, body_dim = get_embeddings(emails, output_dir=out_dir)

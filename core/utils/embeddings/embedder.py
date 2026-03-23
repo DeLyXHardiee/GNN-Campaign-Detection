@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 MODEL_NAME = "intfloat/multilingual-e5-large"
 _CACHE_FILENAME = "embeddings.json"
 
-# Default output folder for this component (graph/embeddings/output)
+# Default output folder for this component (utils/embeddings/output)
 DEFAULT_OUTPUT_DIR: Path = Path(__file__).resolve().parent / "output"
 
 

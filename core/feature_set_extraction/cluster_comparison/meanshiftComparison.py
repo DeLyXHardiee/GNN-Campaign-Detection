@@ -1,5 +1,8 @@
 import json
 import os
+
+import config.blas_env  # noqa: F401 — before NumPy
+
 import numpy as np
 from datetime import datetime
 from collections import defaultdict
