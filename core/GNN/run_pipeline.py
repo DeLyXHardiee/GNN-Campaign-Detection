@@ -107,6 +107,12 @@ def main() -> None:
         min_coverage_ground_truth=float(
             clustering_selection_cfg.get("min_coverage_ground_truth", 0.5)
         ),
+        min_coverage_all=float(
+            clustering_selection_cfg.get(
+                "min_coverage_all",
+                clustering_selection_cfg.get("min_coverage_ground_truth", 0.5),
+            )
+        ),
         model_save_name=training_cfg["model_save_name"],
         device_pref=device_pref,
         to_undirected=to_undirected,

@@ -138,6 +138,12 @@ def run_gnn_clustering(
         min_coverage_ground_truth=float(
             g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5)
         ),
+        min_coverage_all=float(
+            g["gnn_clustering_selection_cfg"].get(
+                "min_coverage_all",
+                g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5),
+            )
+        ),
         model_save_name=g["training_cfg"]["model_save_name"],
         device_pref=g["device_pref"],
         to_undirected=g["to_undirected"],
