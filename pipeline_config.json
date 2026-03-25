@@ -2,16 +2,29 @@
   "preprocessing": {
     "incidents_csv_path": "data/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
-    "limit": 0
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
+    "limit": 0,
+    "category_allowlist": [
+      "phishing",
+      "scam"
+    ]
+  },
+  "preprocessing_lake": {
+    "incidents_table": "intellagent.public.incidents",
+    "parsed_emails_table": "parsed_emails",
+    "limit": 0,
+    "category_allowlist": [
+      "phishing",
+      "scam"
+    ]
   },
   "datasets": {
-    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "ground_truth_json": "data/groundtruth/ground_truth.json",
-    "featureset_base_name": "incidents-20260211-misp"
+    "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
-    "misp_json_path": "core/preprocessing/output/incidents-20260211-misp.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "output_dir": "core/graph/output",
     "exclude_node_types": [],
     "embeddings_output_dir": null,
@@ -49,6 +62,17 @@
   "device": "cuda",
   "to_undirected": true,
   "run_id": "default_experiment",
+  "gnn": {
+    "runs_parent": "core/GNN/outputs",
+    "models_subdir": "models",
+    "metrics_csv": "metrics.csv",
+    "training_config_json": "training_config.json",
+    "eval_auroc_ap_subdir": "eval_auroc_ap",
+    "eval_recall_at_k_subdir": "eval_recall_at_k",
+    "clustering_subdir": "clustering",
+    "clustering_plots_subdir": "plots",
+    "stage_result_json": "stage_result.json"
+  },
   "training": {
     "torch_seed": 42,
     "primary_ntype": "email",

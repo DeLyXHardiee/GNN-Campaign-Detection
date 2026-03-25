@@ -10,7 +10,9 @@ import re
 import sys
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Collection, Dict, Iterator, List, Optional, Set, Tuple
+import httpx
+from lake.client import LakeAPIClient
 from preprocessing.body_parser import extract_body_html_css_without_headers
 from preprocessing.attachment_parser import extract_attachment_metadata_from_email
 from preprocessing.html_css_parser import get_empty_html_structure, parse_css_fast, parse_html_fast
@@ -662,10 +664,19 @@ def _get_value_from_row_or_properties(row: Dict[str, Any], properties: Dict[str,
     return row.get(key, "")
 
 
+def _normalize_category_allowlist(allowed_categories: Optional[Collection[str]]) -> Optional[Set[str]]:
+    if not allowed_categories:
+        return None
+    normalized = {_normalize_scalar(c).lower() for c in allowed_categories if _normalize_scalar(c)}
+    return normalized or None
+
+
 def parse_incidents_with_email_bodies(
     incidents_csv_path: str,
     bodies_dir: str,
     limit: int | None = None,
+    *,
+    allowed_categories: Optional[Collection[str]] = None,
 ) -> List[Dict[str, Any]]:
     incidents_path = Path(incidents_csv_path)
     body_folder = Path(bodies_dir)
@@ -689,11 +700,18 @@ def parse_incidents_with_email_bodies(
     if limit is not None and limit <= 0:
         limit = None
 
+    category_allow = _normalize_category_allowlist(allowed_categories)
+
     with incidents_path.open("r", encoding="utf-8-sig", errors="replace", newline="") as csv_file:
         reader = csv.DictReader(csv_file)
         for row_idx, row in enumerate(reader):
             external_id = _normalize_scalar(row.get("external_id"))
             properties = _try_parse_mapping(row.get("properties", ""))
+
+            if category_allow is not None:
+                cat_raw = _get_value_from_row_or_properties(row, properties, "category")
+                if _normalize_scalar(cat_raw).lower() not in category_allow:
+                    continue
 
             body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id) if external_id else None
             if body_file is None:
@@ -764,4 +782,275 @@ def parse_incidents_with_email_bodies(
     return parsed_incidents
 
 
-__all__ = ["parse_incidents_with_email_bodies", "INCIDENT_FIELDS", "HEADER_FIELDS"]
+def _value_from_stream_row(row: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row:
+            return row.get(key)
+    for key in keys:
+        leaf_key = key.split(".")[-1]
+        if leaf_key in row:
+            return row.get(leaf_key)
+    return ""
+
+
+def _nested_get(data: Any, *keys: str) -> Any:
+    current: Any = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _extract_analysis_mapping(row: Dict[str, Any], properties: Dict[str, Any]) -> Dict[str, Any]:
+    analysis_raw = _value_from_stream_row(row, "analysis", "i.analysis")
+    analysis_map = _try_parse_mapping(analysis_raw)
+    if analysis_map:
+        return analysis_map
+    # Fallback for legacy payloads where analysis is embedded in properties.
+    embedded = _try_parse_mapping(properties.get("analysis"))
+    return embedded if embedded else {}
+
+
+def _extract_incident_category(
+    row: Dict[str, Any],
+    properties: Dict[str, Any],
+    analysis_map: Dict[str, Any],
+) -> str:
+    category_candidate = (
+        analysis_map.get("category")
+        or properties.get("category")
+        or _value_from_stream_row(row, "category", "i.category")
+    )
+    normalized = _normalize_scalar(category_candidate).lower()
+    if normalized:
+        return normalized
+
+    analysis_text = _normalize_scalar(_value_from_stream_row(row, "analysis", "i.analysis")).lower()
+    return analysis_text if analysis_text in {"phishing", "scam"} else ""
+
+
+def _build_lake_stream_sql(
+    incidents_table: str,
+    parsed_emails_table: str,
+    *,
+    limit: Optional[int],
+) -> str:
+    sql = f"""
+SELECT
+    i.external_id,
+    i.type,
+    i.analysis,
+    i.severity,
+    i.properties,
+    i.title,
+    i.created_at,
+    s.source_id,
+    s.parsed
+FROM {incidents_table} i
+INNER JOIN {parsed_emails_table} s
+    ON i.external_id = s.source_id
+WHERE
+    LOWER(TRIM(CAST(i.type AS VARCHAR))) = 'phishing'
+    AND NULLIF(TRIM(CAST(i.severity AS VARCHAR)), '') IS NOT NULL
+"""
+    if limit is not None and limit > 0:
+        sql = f"{sql}\nLIMIT {int(limit)}"
+    return sql.strip()
+
+
+def _iterate_lake_rows(
+    client: LakeAPIClient,
+    sql: str,
+    *,
+    page_size: int = 1000,
+) -> Iterator[Dict[str, Any]]:
+    retryable_status_codes = {502, 503, 504}
+    try:
+        for batch in client.query_stream(sql):
+            for row in batch.to_pylist():
+                yield row
+        return
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code if exc.response is not None else None
+        if status_code not in retryable_status_codes:
+            raise
+        logging.warning(
+            "Lake query_stream failed with HTTP %s; falling back to paginated /query endpoint.",
+            status_code,
+        )
+    except (httpx.TimeoutException, httpx.NetworkError):
+        logging.warning(
+            "Lake query_stream failed with a transient network error; "
+            "falling back to paginated /query endpoint."
+        )
+
+    # Fallback path: page results through /query to avoid stream gateway instability.
+    # Wrapping SQL as a subquery preserves filters and projection while adding LIMIT/OFFSET.
+    base_sql = sql.strip().rstrip(";")
+    paged_base_sql = f"SELECT * FROM ({base_sql}) AS base_query"
+    offset = 0
+
+    while True:
+        page_sql = f"{paged_base_sql}\nLIMIT {int(page_size)} OFFSET {int(offset)}"
+        rows = client.query(page_sql, limit=page_size)
+        if not rows:
+            break
+        for row in rows:
+            if isinstance(row, dict):
+                yield row
+        if len(rows) < page_size:
+            break
+        offset += page_size
+
+
+def parse_incidents_from_lake_stream(
+    *,
+    base_url: str,
+    api_key: str,
+    incidents_table: str = "intellagent.public.incidents",
+    parsed_emails_table: str = "parsed_emails",
+    limit: int | None = None,
+    allowed_categories: Optional[Collection[str]] = None,
+) -> List[Dict[str, Any]]:
+    if not base_url.strip():
+        raise ValueError("base_url must be provided.")
+    if not api_key.strip():
+        raise ValueError("api_key must be provided.")
+
+    category_allow = _normalize_category_allowlist(allowed_categories) or {"phishing", "scam"}
+    sql = _build_lake_stream_sql(
+        incidents_table=incidents_table,
+        parsed_emails_table=parsed_emails_table,
+        limit=limit,
+    )
+
+    client = LakeAPIClient(base_url=base_url, api_key=api_key)
+    parsed_incidents: List[Dict[str, Any]] = []
+    row_index = 0
+
+    for row in _iterate_lake_rows(client, sql):
+        row_index += 1
+        external_id = _normalize_scalar(_value_from_stream_row(row, "external_id", "i.external_id"))
+        properties = _try_parse_mapping(_value_from_stream_row(row, "properties", "i.properties"))
+        analysis_map = _extract_analysis_mapping(row, properties)
+        incident_category = _extract_incident_category(row, properties, analysis_map)
+        if incident_category not in category_allow:
+            continue
+
+        severity = _normalize_scalar(
+            analysis_map.get("severity") or _value_from_stream_row(row, "severity", "i.severity")
+        ).lower()
+        if not severity:
+            continue
+
+        parsed_payload_raw = _value_from_stream_row(row, "parsed", "s.parsed")
+        parsed_payload = (
+            parsed_payload_raw
+            if isinstance(parsed_payload_raw, dict)
+            else _try_parse_mapping(parsed_payload_raw)
+        )
+        parsed_payload = parsed_payload if isinstance(parsed_payload, dict) else {}
+
+        body_text = _normalize_scalar(
+            parsed_payload.get("body_selectolax_cleaned") or parsed_payload.get("body")
+        )
+        html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
+        css_text: Dict[str, Any] = {"style_features": {}}
+
+        attachments_raw = parsed_payload.get("attachments")
+        attachment_metadata: List[Dict[str, Any]] = (
+            [a for a in attachments_raw if isinstance(a, dict)]
+            if isinstance(attachments_raw, list)
+            else []
+        )
+        attachment_hashes = [
+            _normalize_scalar(a.get("content_hash_sha256"))
+            for a in attachment_metadata
+            if _normalize_scalar(a.get("content_hash_sha256"))
+        ]
+
+        headers_from_properties = _extract_selected_headers(_try_parse_mapping(properties.get("emailHeaders")))
+        parsed_headers = parsed_payload.get("headers")
+        row_headers = _extract_selected_headers(parsed_headers if isinstance(parsed_headers, dict) else {})
+        selected_headers = {
+            field: (
+                headers_from_properties.get(field, _default_header_value(field))
+                or row_headers.get(field, _default_header_value(field))
+            )
+            for field in HEADER_FIELDS
+        }
+
+        urls_from_body = extract_urls_from_text(body_text)
+        parsed_urls: List[str] = []
+        body_analysis_urls = _nested_get(parsed_payload, "enrichment", "body_analysis", "urls")
+        if isinstance(body_analysis_urls, list):
+            for url_item in body_analysis_urls:
+                if isinstance(url_item, dict):
+                    url_text = _normalize_scalar(url_item.get("url"))
+                    if url_text:
+                        parsed_urls.append(url_text)
+        list_unsub_str = _normalize_header_value(selected_headers.get("List-Unsubscribe", ""))
+        urls_from_headers = extract_urls_from_text(list_unsub_str)
+        email_urls = deduplicate_urls(parsed_urls + urls_from_body + urls_from_headers)
+
+        incident: Dict[str, Any] = {
+            "record_index": row_index - 1,
+            "external_id": external_id,
+            "email_body": body_text,
+            "email_html": html_text,
+            "email_css": css_text,
+            "email_attachments": attachment_hashes,
+            "email_attachment_metadata": attachment_metadata,
+            "email_headers": selected_headers,
+            "email_urls": email_urls,
+            "subject": _normalize_scalar(
+                parsed_payload.get("subject")
+                or _value_from_stream_row(row, "title", "i.title")
+            ),
+            "category": incident_category,
+            "date_sent": _normalize_scalar(
+                parsed_payload.get("date_sent")
+                or parsed_payload.get("date")
+                or _value_from_stream_row(row, "created_at", "i.created_at")
+            ),
+            "rfc_defects": _normalize_bool_like(
+                bool(_nested_get(parsed_payload, "enrichment", "rfc_compliance", "defects"))
+            ),
+            "cyrillic_domain": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "sender_profile", "sender_domain_cyrillic")
+            ),
+            "contains_symbols": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "sender_profile", "sender_domain_has_symbols")
+            ),
+            "body_has_tracking_url": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "body_analysis", "body_has_tracking_url")
+            ),
+            "body_has_tracking_image": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "body_analysis", "body_has_tracking_image")
+            ),
+            "body_has_tracking_pixel": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "body_analysis", "body_has_tracking_pixel")
+            ),
+            "body_has_unsubscribe_link": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "body_analysis", "body_has_unsubscribe_link")
+            ),
+            "domain_is_common_webprovided": _normalize_bool_like(
+                _nested_get(parsed_payload, "enrichment", "sender_profile", "domain_is_common_webmail")
+            ),
+        }
+
+        parsed_incidents.append(incident)
+
+        if limit is not None and limit > 0 and len(parsed_incidents) >= limit:
+            return parsed_incidents
+
+    return parsed_incidents
+
+
+__all__ = [
+    "parse_incidents_with_email_bodies",
+    "parse_incidents_from_lake_stream",
+    "INCIDENT_FIELDS",
+    "HEADER_FIELDS",
+]
