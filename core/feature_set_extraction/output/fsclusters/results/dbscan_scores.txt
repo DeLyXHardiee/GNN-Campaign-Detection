@@ -1,0 +1,32 @@
+
+================================================================================
+DBSCAN Run - 2026-03-23 13:51:14
+Parameters: eps_values=[0.5], min_samples=5, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+
+================================================================================
+DBSCAN Run - 2026-03-23 13:56:49
+Parameters: eps_values=[0.5], min_samples=5, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS1 | eps=0.5 | n_components=100000 | silhouette=0.7461, H=1.0000, C=0.7141, V=0.8332, clusters=148, noise=5694, coverage_ground_truth=0.1297, n=96
+FS2 | eps=0.5 | n_components=100000 | silhouette=0.7467, H=1.0000, C=0.7354, V=0.8475, clusters=148, noise=5710, coverage_ground_truth=0.1149, n=85
+FS3 | eps=0.5 | n_components=100000 | silhouette=0.5224, H=0.4687, C=0.6994, V=0.5613, clusters=8, noise=7, coverage_ground_truth=0.2459, n=182
+FS4 | eps=0.5 | n_components=100000 | silhouette=0.7491, H=1.0000, C=0.7141, V=0.8332, clusters=148, noise=5723, coverage_ground_truth=0.1297, n=96
+FS5 | eps=0.5 | n_components=100000 | silhouette=0.7368, H=1.0000, C=0.7185, V=0.8362, clusters=147, noise=5707, coverage_ground_truth=0.1270, n=94
+FS6 | eps=0.5 | n_components=100000 | silhouette=-0.0536, H=0.6357, C=0.6770, V=0.6557, clusters=82, noise=2921, coverage_ground_truth=0.1770, n=131
+FS7 | eps=0.5 | n_components=100000 | silhouette=0.9396, H=1.0000, C=0.7963, V=0.8866, clusters=160, noise=5160, coverage_ground_truth=0.1135, n=84
+
+================================================================================
+DBSCAN Run - 2026-03-23 14:05:11
+Parameters: eps_values=[0.5], min_samples=5, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS1 | eps=0.5 | n_components=100000 | silhouette=0.7461, H=1.0000, C=0.7141, V=0.8332, clusters=148, noise=5694, coverage_ground_truth=0.1297, n=96
+FS2 | eps=0.5 | n_components=100000 | silhouette=0.7467, H=1.0000, C=0.7354, V=0.8475, clusters=148, noise=5710, coverage_ground_truth=0.1149, n=85
+FS3 | eps=0.5 | n_components=100000 | silhouette=0.5224, H=0.4687, C=0.6994, V=0.5613, clusters=8, noise=7, coverage_ground_truth=0.2459, n=182
+FS4 | eps=0.5 | n_components=100000 | silhouette=0.7491, H=1.0000, C=0.7141, V=0.8332, clusters=148, noise=5723, coverage_ground_truth=0.1297, n=96
+FS5 | eps=0.5 | n_components=100000 | silhouette=0.7368, H=1.0000, C=0.7185, V=0.8362, clusters=147, noise=5707, coverage_ground_truth=0.1270, n=94
+FS6 | eps=0.5 | n_components=100000 | silhouette=-0.0536, H=0.6357, C=0.6770, V=0.6557, clusters=82, noise=2921, coverage_ground_truth=0.1770, n=131
+FS7 | eps=0.5 | n_components=100000 | silhouette=0.9396, H=1.0000, C=0.7963, V=0.8866, clusters=160, noise=5160, coverage_ground_truth=0.1135, n=84

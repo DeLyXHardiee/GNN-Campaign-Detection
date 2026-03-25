@@ -13,9 +13,11 @@ core/feature_set_extraction/output/featuresets/*
 core/feature_set_extraction/output/helpers/*
 core/GNN/output/runs/*
 core/GNN/gnn_stage_experiment/*
+core/feature_set_extraction/caches/*
+core/outputs/*
 
 core/GNN/notebooks/models
-core/graph/embeddings/output
+core/utils/embeddings/output
 
 # Ignore Python cache files
 __pycache__/

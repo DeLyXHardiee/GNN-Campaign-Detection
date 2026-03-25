@@ -13,6 +13,8 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import config.blas_env  # noqa: F401 — before NumPy
+
 import numpy as np
 
 from clustering.clusteringMetrics import (
@@ -61,6 +63,7 @@ def _build_embedding_map(
     n_components,
     remove_outliers: bool,
     outlier_contamination: float,
+    embeddings_output_dir: str | os.PathLike | None = None,
 ) -> dict[str, np.ndarray]:
     """Preprocess records into an external_id -> embedding dict."""
     idxs = [record_cluster_id(r) for r in records]
@@ -68,6 +71,7 @@ def _build_embedding_map(
         records,
         max_tfidf_features,
         n_components=n_components,
+        embeddings_output_dir=embeddings_output_dir,
     )
     if remove_outliers:
         X, keep_mask, removed = remove_outliers_from_matrix(
@@ -106,6 +110,7 @@ def run_featureset_clustering(
     max_tfidf_features: int | None = None,
     remove_outliers: bool = True,
     outlier_contamination: float = 0.05,
+    embeddings_output_dir: str | os.PathLike | None = None,
 ) -> None:
     """
     Run DBSCAN and Mean Shift grid searches over all feature sets, computing
@@ -170,8 +175,12 @@ def run_featureset_clustering(
                         continue
 
                     embedding_map = _build_embedding_map(
-                        records, max_tfidf_features, n_components,
-                        remove_outliers, outlier_contamination,
+                        records,
+                        max_tfidf_features,
+                        n_components,
+                        remove_outliers,
+                        outlier_contamination,
+                        embeddings_output_dir=embeddings_output_dir,
                     )
                     if not embedding_map:
                         msg = f"{fs_name}: SKIPPED (empty embedding map)"
@@ -193,7 +202,7 @@ def run_featureset_clustering(
                         f"V={metrics['v_measure']:.4f}, "
                         f"clusters={metrics['n_clusters']}, "
                         f"noise={metrics['n_noise']}, "
-                        f"coverage={metrics['coverage']:.4f}, "
+                        f"coverage_ground_truth={metrics['coverage_ground_truth']:.4f}, "
                         f"n={metrics['n_samples']}"
                     )
                     print(metric_text)
@@ -243,8 +252,12 @@ def run_featureset_clustering(
                         continue
 
                     embedding_map = _build_embedding_map(
-                        records, max_tfidf_features, n_components,
-                        remove_outliers, outlier_contamination,
+                        records,
+                        max_tfidf_features,
+                        n_components,
+                        remove_outliers,
+                        outlier_contamination,
+                        embeddings_output_dir=embeddings_output_dir,
                     )
                     if not embedding_map:
                         msg = f"{fs_name}: SKIPPED (empty embedding map)"
@@ -266,7 +279,7 @@ def run_featureset_clustering(
                         f"V={metrics['v_measure']:.4f}, "
                         f"clusters={metrics['n_clusters']}, "
                         f"noise={metrics['n_noise']}, "
-                        f"coverage={metrics['coverage']:.4f}, "
+                        f"coverage_ground_truth={metrics['coverage_ground_truth']:.4f}, "
                         f"n={metrics['n_samples']}, "
                         f"bandwidth={metrics.get('bandwidth')}"
                     )

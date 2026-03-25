@@ -231,15 +231,42 @@ def run_meanshift_analysis(
     n_samples: int | None = None,
 ) -> dict[str, Any]:
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
+    n_embeddings = int(len(sorted_ids))
     bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
     clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
-    labels = clusterer.fit_predict(embeddings)
+    try:
+        labels = clusterer.fit_predict(embeddings)
+    except ValueError as exc:
+        # sklearn MeanShift (bin_seeding): no grid seed has any point within bandwidth.
+        if "No point was within" not in str(exc):
+            raise
+        metrics: dict[str, Any] = {
+            "silhouette": -1.0,
+            "db_index": float("inf"),
+            "ch_index": 0.0,
+            "homogeneity": 0.0,
+            "completeness": 0.0,
+            "v_measure": 0.0,
+            "n_clusters": 0,
+            "n_noise": n_embeddings,
+            "n_non_noise": 0,
+            "n_embeddings": n_embeddings,
+            "coverage_ground_truth": 0.0,
+            "coverage_all": 0.0,
+            "clustering_type": "meanshift",
+            "quantile": float(quantile),
+            "bandwidth": float(bw) if bw is not None else None,
+            "clustering_error": str(exc),
+        }
+        metrics["n_samples"] = None if n_samples is None else int(n_samples)
+        return metrics
+
     metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
     metrics["clustering_type"] = "meanshift"
     metrics["quantile"] = float(quantile)
     metrics["n_samples"] = None if n_samples is None else int(n_samples)
     metrics["bandwidth"] = float(bw) if bw is not None else None
-    metrics["n_embeddings"] = int(len(sorted_ids))
+    metrics["n_embeddings"] = n_embeddings
     return metrics
 
 
