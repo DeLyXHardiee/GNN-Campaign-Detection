@@ -2,6 +2,7 @@ import config.blas_env  # noqa: F401 — before NumPy / sklearn
 
 import json
 import ast
+import os
 import sys
 from pathlib import Path
 from config.pipeline_config import (
@@ -9,7 +10,7 @@ from config.pipeline_config import (
     load_pipeline_config,
     resolve_project_path,
 )
-from preprocessing.data_parser import parse_incidents_with_email_bodies
+from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
 from preprocessing.misp_converter import incidents_to_misp_file
 
 # Make `core/GNN/steps/*` and `core/GNN/src/*` importable from here.
@@ -24,6 +25,41 @@ from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths  # noqa: 
 from steps.pipeline_paths import run_dir_for, sanitize_run_id  # noqa: E402
 from steps.train_stage import run_train_stage  # noqa: E402
 from steps.clustering_plot_stage import run_clustering_plot_stage  # noqa: E402
+
+
+def _require_path(value: str | None, field_name: str) -> str:
+    if not value:
+        raise ValueError(f"Missing required path configuration for {field_name}.")
+    return value
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists() or not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _coerce_limit(value: object) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
 
 def run_gnn(
     *,
@@ -164,8 +200,14 @@ def run_preprocessing_trec():
     cfg = load_pipeline_config()
     prep_cfg = cfg.get("preprocessing", {})
     # Force the incidents_csv_path to the TREC-07-only-phishing-6m.csv from config
-    incidents_csv_path = resolve_project_path("data/csv/TREC-07-only-phishing-6m.csv")
-    misp_json_path = resolve_project_path(prep_cfg.get("misp_json_path"))
+    incidents_csv_path = _require_path(
+        resolve_project_path("data/csv/TREC-07-only-phishing-6m.csv"),
+        "preprocessing incidents_csv_path",
+    )
+    misp_json_path = _require_path(
+        resolve_project_path(prep_cfg.get("misp_json_path")),
+        "preprocessing misp_json_path",
+    )
     limit = prep_cfg.get("limit")
 
     print(f"Parsing TREC-07-only-phishing-6m incidents from {incidents_csv_path}...")
@@ -256,17 +298,98 @@ def run_preprocessing():
     prep_cfg = cfg.get("preprocessing", {})
     limit = prep_cfg.get("limit")
 
-    incidents_csv_path = resolve_project_path(prep_cfg.get("incidents_csv_path"))
-    bodies_dir = resolve_project_path(prep_cfg.get("bodies_dir"))
-    misp_json_path = resolve_project_path(prep_cfg.get("misp_json_path"))
+    incidents_csv_path = _require_path(
+        resolve_project_path(prep_cfg.get("incidents_csv_path")),
+        "preprocessing incidents_csv_path",
+    )
+    bodies_dir = _require_path(
+        resolve_project_path(prep_cfg.get("bodies_dir")),
+        "preprocessing bodies_dir",
+    )
+    misp_json_path = _require_path(
+        resolve_project_path(prep_cfg.get("misp_json_path")),
+        "preprocessing misp_json_path",
+    )
+
+    raw_category_allow = prep_cfg.get("category_allowlist")
+    allowed_categories = None
+    if isinstance(raw_category_allow, list) and raw_category_allow:
+        allowed_categories = [str(x) for x in raw_category_allow]
 
     print(f"Parsing incidents from {incidents_csv_path}...")
     incidents = parse_incidents_with_email_bodies(
         incidents_csv_path,
         bodies_dir,
         limit=limit,
+        allowed_categories=allowed_categories,
     )
     print(f"Parsed {len(incidents)} incidents with matched email body content.")
+
+    print(f"Converting incidents to MISP and writing secure output at {misp_json_path}...")
+    incidents_to_misp_file(incidents, misp_json_path)
+    print("MISP conversion complete.")
+    return misp_json_path
+
+
+def run_preprocessing_lake():
+    """
+    Parse incidents by streaming joined rows from lake tables, then convert to MISP JSON.
+    Secrets must come from environment variables.
+    """
+    cfg = load_pipeline_config()
+    prep_cfg = cfg.get("preprocessing", {})
+    prep_lake_cfg = cfg.get("preprocessing_lake", {})
+
+    # Allow running without manual export when credentials are in local .env files.
+    _load_env_file(Path(__file__).resolve().parent / "lake" / ".env")
+    _load_env_file(Path(__file__).resolve().parent.parent / ".env")
+
+    limit = prep_cfg.get("limit")
+    lake_limit = _coerce_limit(prep_lake_cfg.get("limit"))
+    if lake_limit is not None:
+        limit = lake_limit
+
+    raw_category_allow = prep_cfg.get("category_allowlist")
+    if isinstance(prep_lake_cfg.get("category_allowlist"), list):
+        raw_category_allow = prep_lake_cfg.get("category_allowlist")
+
+    allowed_categories = None
+    if isinstance(raw_category_allow, list) and raw_category_allow:
+        allowed_categories = [str(x) for x in raw_category_allow]
+
+    base_url = os.getenv("LAKE_BASE_URL", "").strip()
+    api_key = os.getenv("LAKE_API_KEY", "").strip()
+    incidents_table = str(
+        prep_lake_cfg.get("incidents_table")
+        or os.getenv("LAKE_INCIDENTS_TABLE", "intellagent.public.incidents")
+    ).strip()
+    parsed_emails_table = str(
+        prep_lake_cfg.get("parsed_emails_table")
+        or os.getenv("LAKE_PARSED_EMAILS_TABLE", "parsed_emails")
+    ).strip()
+
+    if not base_url or not api_key:
+        raise RuntimeError(
+            "Missing required environment variables LAKE_BASE_URL and/or LAKE_API_KEY."
+        )
+
+    misp_json_path = _require_path(
+        resolve_project_path(prep_cfg.get("misp_json_path")),
+        "preprocessing misp_json_path",
+    )
+    print(
+        "Parsing incidents from lake stream "
+        f"({incidents_table} JOIN {parsed_emails_table})..."
+    )
+    incidents = parse_incidents_from_lake_stream(
+        base_url=base_url,
+        api_key=api_key,
+        incidents_table=incidents_table,
+        parsed_emails_table=parsed_emails_table,
+        limit=limit,
+        allowed_categories=allowed_categories,
+    )
+    print(f"Parsed {len(incidents)} incidents from lake stream.")
 
     print(f"Converting incidents to MISP and writing secure output at {misp_json_path}...")
     incidents_to_misp_file(incidents, misp_json_path)
@@ -360,31 +483,31 @@ def run_featureset_clustering():
         embeddings_output_dir=graph_s.embeddings_output_dir,
     )
 
-def run_metrics_evaluation():
+def run_metric_comparison():
     # input Clusters --> Evaluate clustering results using metrics -- > store metrics
     pass
 
 def run_pipeline():
-    misp_json_path = run_preprocessing()
+    misp_json_path = run_preprocessing_lake()
     create_feature_sets()
     run_featureset_clustering()
     run_graph_creation(misp_json_path)
     run_gnn()
     run_gnn_evaluation()
     run_gnn_clustering()
-    run_metrics_evaluation()
+    run_metric_comparison()
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    # misp_path = run_preprocessing()
-    # create_feature_sets()
-    # run_featureset_clustering()
+    misp_path = run_preprocessing_lake()
+    #create_feature_sets()
+    #run_featureset_clustering()
     # misp_path = "preprocessing/output/incidents-20260211-misp.json"
-    # run_graph_creation(misp_path, to_memgraph=False)
-    # run_gnn()
-    # run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metrics_evaluation()
+    #run_graph_creation(misp_path, to_memgraph=False)
+    #run_gnn()
+    #run_gnn_evaluation()
+    #run_gnn_clustering()
+    #run_metric_comparison()
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
