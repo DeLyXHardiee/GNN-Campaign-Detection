@@ -52,14 +52,31 @@ def main() -> None:
     gt_arg = GROUND_TRUTH_PATH_OVERRIDE.strip() or None
     runs_parent_arg = RUNS_PARENT_OVERRIDE.strip() or None
 
-    run_dir_str, checkpoint_path_str, graph_path_str, _gt_unused = resolve_gnn_paths(
-        cfg=cfg,
-        run_dir=run_dir_arg,
-        runs_parent=runs_parent_arg,
-        checkpoint_path=checkpoint_arg,
-        graph_path=graph_arg,
-        ground_truth_path=gt_arg,
-        require_ground_truth=False,
+    training_cfg = cfg["training"]
+    evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
+    recall_cfg = cfg["evaluation"]["recall_at_k"]
+
+    clustering_root = cfg["gnn_clustering"]
+    clustering_cfg = clustering_root["config"]
+    clustering_selection_cfg = clustering_root.get("selection", {})
+
+    run_dir = RUN_DIR.strip()
+    if not run_dir:
+        run_dir = str(run_dir_for(RUNS_PARENT, sanitize_run_id(cfg["run_id"])).resolve())
+
+    checkpoint_path = CHECKPOINT_PATH.strip()
+    if run_dir and not checkpoint_path:
+        checkpoint_path = str(Path(run_dir) / "models" / training_cfg["model_save_name"])
+
+    '''
+    # Uncomment to train into <RUNS_PARENT>/<run_id>/.
+    run_train_stage(
+        graph_path=GRAPH_PATH,
+        runs_parent=RUNS_PARENT,
+        run_id=cfg["run_id"],
+        training_cfg=training_cfg,
+        device_pref=device_pref,
+        to_undirected=to_undirected,
     )
     gt_raw = (gt_arg or "").strip()
     if gt_raw:
@@ -116,6 +133,15 @@ def main() -> None:
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         clustering_cfg=clustering_cfg,
+        min_coverage_ground_truth=float(
+            clustering_selection_cfg.get("min_coverage_ground_truth", 0.5)
+        ),
+        min_coverage_all=float(
+            clustering_selection_cfg.get(
+                "min_coverage_all",
+                clustering_selection_cfg.get("min_coverage_ground_truth", 0.5),
+            )
+        ),
         model_save_name=training_cfg["model_save_name"],
         path_layout=layout,
         device_pref=device_pref,

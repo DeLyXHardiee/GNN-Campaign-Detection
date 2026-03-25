@@ -38,7 +38,7 @@ def load_gnn_cfg(cfg: dict[str, Any], *, project_root: Path | None = None) -> di
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
     recall_cfg = cfg["evaluation"]["recall_at_k"]
     gnn_clustering_cfg = cfg["gnn_clustering"]["config"]
-    path_layout = gnn_path_layout_from_pipeline(cfg, project_root=project_root)
+    gnn_clustering_selection_cfg = cfg["gnn_clustering"].get("selection", {})
 
     return {
         "device_pref": device_pref,
@@ -48,7 +48,7 @@ def load_gnn_cfg(cfg: dict[str, Any], *, project_root: Path | None = None) -> di
         "evaluation_auroc_cfg": evaluation_auroc_cfg,
         "recall_cfg": recall_cfg,
         "gnn_clustering_cfg": gnn_clustering_cfg,
-        "path_layout": path_layout,
+        "gnn_clustering_selection_cfg": gnn_clustering_selection_cfg,
     }
 
 
