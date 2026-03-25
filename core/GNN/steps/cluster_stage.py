@@ -28,6 +28,7 @@ def run_clustering_stage(
     model_save_name: str,
     device_pref: str | None,
     to_undirected: bool,
+    path_layout: GnnPathLayout | None = None,
 ) -> dict[str, Any]:
     graph_path = str(graph_path)
     ground_truth_path = str(ground_truth_path)
@@ -40,8 +41,10 @@ def run_clustering_stage(
     if not checkpoint_path:
         raise ValueError("CHECKPOINT_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
 
+    layout = path_layout or gnn_path_layout_from_pipeline(load_pipeline_config())
+
     output_dir = Path(output_dir)
-    clustering_out = output_dir / "clustering"
+    clustering_out = output_dir / layout.clustering_subdir
     clustering_out.mkdir(parents=True, exist_ok=True)
 
     pref = torch.device(device_pref) if isinstance(device_pref, str) and device_pref else None
@@ -192,7 +195,7 @@ def run_clustering_stage(
         "locked_param_min_coverage_all": float(min_coverage_all),
         "locked_param_epoch_checkpoints": [str(p) for p in epoch_ckpts],
     }
-    (clustering_out / "stage_result.json").write_text(
+    (clustering_out / layout.stage_result_json).write_text(
         json.dumps(result, indent=2),
         encoding="utf-8",
     )

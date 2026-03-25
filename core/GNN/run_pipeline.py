@@ -1,55 +1,56 @@
 """
 Manual toggle pipeline for the GNN project.
 
-One experiment folder per ``run_id`` in ``pipeline_config.json``:
+All filesystem paths come from ``pipeline_config.json`` at the repo root
+(``gnn`` block, ``graph`` / ``datasets`` for the hetero graph, etc.). Optional
+overrides below only apply when non-empty.
 
-  <RUNS_PARENT>/<run_id>/
-    models/
-    training_config.json
-    metrics.csv
-    stage_result.json
-    eval_auroc_ap/
-    eval_recall_at_k/
-    clustering/
+One experiment folder per ``run_id``:
 
-Train, eval, and clustering all use the same path — no timestamps or sidecar files.
-Keep ``run_id`` and ``training.model_save_name`` consistent with the run/checkpoint you use,
-especially when you skip training and only run eval or clustering.
-
-Optional ``RUN_DIR`` below overrides ``<RUNS_PARENT>/<run_id>`` (full path).
+  <gnn.runs_parent>/<run_id>/
+    <gnn.models_subdir>/
+    <gnn.training_config_json>, <gnn.metrics_csv>, <gnn.run_stage_result_json>
+    <gnn.eval_auroc_ap_subdir>/, <gnn.eval_recall_at_k_subdir>/
+    <gnn.clustering_subdir>/ ...
 """
 
 from __future__ import annotations
 
-import json
+import sys
 from pathlib import Path
-from typing import Any
 
-from steps.cluster_stage import run_clustering_stage
-from steps.clustering_plot_stage import run_clustering_plot_stage
-from steps.eval_auroc_ap_stage import run_auroc_ap_stage
-from steps.eval_recall_at_k_stage import run_recall_at_k_stage
-from steps.pipeline_paths import run_dir_for, sanitize_run_id
-from steps.train_stage import run_train_stage
+# Resolve imports: ``config`` lives under ``core/``, steps under ``core/GNN/``.
+_CORE_ROOT = Path(__file__).resolve().parents[1]
+_GNN_ROOT = Path(__file__).resolve().parent
+for _p in (_CORE_ROOT, _GNN_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
+from config.pipeline_config import load_pipeline_config, resolve_project_path  # noqa: E402
+from steps.cluster_stage import run_clustering_stage  # noqa: E402
+from steps.clustering_plot_stage import run_clustering_plot_stage  # noqa: E402
+from steps.eval_auroc_ap_stage import run_auroc_ap_stage  # noqa: E402
+from steps.eval_recall_at_k_stage import run_recall_at_k_stage  # noqa: E402
+from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths  # noqa: E402
+from steps.train_stage import run_train_stage  # noqa: E402
 
-# pipeline_config.json lives at repo root (two levels above this file).
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "pipeline_config.json"
-
-# Paths you fill in.
-GRAPH_PATH = "../graph/output/incidents-20260211-misp_hetero.pt"
-GROUND_TRUTH_PATH = "../../data/groundtruth/ground_truth.json"
-
-# Parent directory where training creates run_<timestamp>/ (see docstring).
-RUNS_PARENT = ""
-
+# Optional overrides (leave empty to use pipeline_config.json only).
+RUN_DIR_OVERRIDE = ""
+CHECKPOINT_PATH_OVERRIDE = ""
+GRAPH_PATH_OVERRIDE = ""
+GROUND_TRUTH_PATH_OVERRIDE = ""
+RUNS_PARENT_OVERRIDE = ""
 
 
 def main() -> None:
-    cfg: dict[str, Any] = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    cfg = load_pipeline_config()
+    g = load_gnn_cfg(cfg)
 
-    device_pref = cfg["device"]
-    to_undirected = bool(cfg["to_undirected"])
+    run_dir_arg = RUN_DIR_OVERRIDE.strip() or None
+    checkpoint_arg = CHECKPOINT_PATH_OVERRIDE.strip() or None
+    graph_arg = GRAPH_PATH_OVERRIDE.strip() or None
+    gt_arg = GROUND_TRUTH_PATH_OVERRIDE.strip() or None
+    runs_parent_arg = RUNS_PARENT_OVERRIDE.strip() or None
 
     training_cfg = cfg["training"]
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
@@ -77,32 +78,60 @@ def main() -> None:
         device_pref=device_pref,
         to_undirected=to_undirected,
     )
+    gt_raw = (gt_arg or "").strip()
+    if gt_raw:
+        ground_truth_path_str = resolve_project_path(gt_raw) or str(Path(gt_raw).expanduser().resolve())
+    else:
+        ground_truth_path_str = resolve_project_path(cfg.get("datasets", {}).get("ground_truth_json")) or ""
+    if not ground_truth_path_str:
+        raise ValueError(
+            "Set datasets.ground_truth_json in pipeline_config.json or GROUND_TRUTH_PATH_OVERRIDE for clustering."
+        )
 
-    # Uncomment eval/clustering (same run_id / RUN_DIR as training).
-    run_auroc_ap_stage(
-        graph_path=GRAPH_PATH,
-        checkpoint_path=checkpoint_path,
-        output_dir=run_dir,
-        evaluation_cfg=evaluation_auroc_cfg,
-        device_pref=device_pref,
-        to_undirected=to_undirected,
-    )
+    training_cfg = g["training_cfg"]
+    device_pref = g["device_pref"]
+    to_undirected = g["to_undirected"]
+    clustering_cfg = g["gnn_clustering_cfg"]
+    layout = g["path_layout"]
 
-    run_recall_at_k_stage(
-        graph_path=GRAPH_PATH,
-        checkpoint_path=checkpoint_path,
-        output_dir=run_dir,
-        evaluation_cfg=recall_cfg,
-        device_pref=device_pref,
-        to_undirected=to_undirected,
-    )
-    '''
-    
+    runs_parent_effective = layout.runs_parent
+    if run_dir_arg:
+        runs_parent_effective = str(Path(run_dir_str).resolve().parent)
+
+    # Uncomment to train / eval (same ``run_dir_str`` / checkpoint as clustering).
+    # run_train_stage(
+    #     graph_path=graph_path_str,
+    #     runs_parent=runs_parent_effective,
+    #     run_id=str(g["run_id"]),
+    #     training_cfg=training_cfg,
+    #     path_layout=layout,
+    #     device_pref=device_pref,
+    #     to_undirected=to_undirected,
+    # )
+    # run_auroc_ap_stage(
+    #     graph_path=graph_path_str,
+    #     checkpoint_path=checkpoint_path_str,
+    #     output_dir=run_dir_str,
+    #     evaluation_cfg=g["evaluation_auroc_cfg"],
+    #     path_layout=layout,
+    #     device_pref=device_pref,
+    #     to_undirected=to_undirected,
+    # )
+    # run_recall_at_k_stage(
+    #     graph_path=graph_path_str,
+    #     checkpoint_path=checkpoint_path_str,
+    #     output_dir=run_dir_str,
+    #     evaluation_cfg=g["recall_cfg"],
+    #     path_layout=layout,
+    #     device_pref=device_pref,
+    #     to_undirected=to_undirected,
+    # )
+
     run_clustering_stage(
-        graph_path=GRAPH_PATH,
-        ground_truth_path=GROUND_TRUTH_PATH,
-        checkpoint_path=checkpoint_path,
-        output_dir=run_dir,
+        graph_path=graph_path_str,
+        ground_truth_path=ground_truth_path_str,
+        checkpoint_path=checkpoint_path_str,
+        output_dir=run_dir_str,
         clustering_cfg=clustering_cfg,
         min_coverage_ground_truth=float(
             clustering_selection_cfg.get("min_coverage_ground_truth", 0.5)
@@ -114,14 +143,16 @@ def main() -> None:
             )
         ),
         model_save_name=training_cfg["model_save_name"],
+        path_layout=layout,
         device_pref=device_pref,
         to_undirected=to_undirected,
     )
 
-    # Uncomment to generate clustering analysis plots under <run_dir>/clustering/plots/.
-    # run_clustering_plot_stage(output_dir=run_dir)
+    # run_clustering_plot_stage(output_dir=run_dir_str, path_layout=layout)
 
-    print("Done. run_dir:", run_dir)
+    print("Done. run_dir:", run_dir_str)
+    print("Graph:", graph_path_str)
+    print("Ground truth:", ground_truth_path_str)
 
 
 if __name__ == "__main__":
