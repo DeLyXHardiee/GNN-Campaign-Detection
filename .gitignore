@@ -15,7 +15,6 @@ core/GNN/output/runs/*
 core/GNN/gnn_stage_experiment/*
 core/feature_set_extraction/caches/*
 core/outputs/*
-
 core/GNN/notebooks/models
 core/utils/embeddings/output
 
@@ -26,6 +25,7 @@ __pycache__/
 # Ignore virtual environment directories
 venv/
 .env/
+.venv311/
 
 # Ignore Jupyter Notebook checkpoints
 .ipynb_checkpoints/
