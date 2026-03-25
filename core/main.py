@@ -177,6 +177,15 @@ def run_gnn_clustering(
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         clustering_cfg=g["gnn_clustering_cfg"],
+        min_coverage_ground_truth=float(
+            g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5)
+        ),
+        min_coverage_all=float(
+            g["gnn_clustering_selection_cfg"].get(
+                "min_coverage_all",
+                g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5),
+            )
+        ),
         model_save_name=g["training_cfg"]["model_save_name"],
         path_layout=g["path_layout"],
         device_pref=g["device_pref"],
