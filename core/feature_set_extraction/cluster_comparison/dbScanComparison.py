@@ -1,6 +1,9 @@
 import json
 import os
 from datetime import datetime
+
+import config.blas_env  # noqa: F401 — before sklearn / NumPy
+
 from sklearn.cluster import DBSCAN
 from sklearn.metrics import silhouette_score
 from collections import defaultdict

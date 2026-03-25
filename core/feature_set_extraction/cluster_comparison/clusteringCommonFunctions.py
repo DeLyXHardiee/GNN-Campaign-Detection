@@ -1,7 +1,12 @@
 import json
 import os
+from pathlib import Path
+
+import config.blas_env  # noqa: F401 — before pandas / NumPy
+
 import pandas as pd
 import numpy as np
+from scipy.sparse import csr_matrix, hstack as sparse_hstack
 from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, normalize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction import DictVectorizer
@@ -9,6 +14,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.ensemble import IsolationForest
 from sentence_transformers import SentenceTransformer
 from preprocessing.utils.defang import sanitize_for_json
+from utils.embeddings import DEFAULT_OUTPUT_DIR, MODEL_NAME, get_embeddings
 
 
 _SBERT_MODEL = None
@@ -31,6 +37,54 @@ def _encode_texts_with_sbert(texts, model_name="intfloat/multilingual-e5-large",
         normalize_embeddings=False,
     )
     return np.asarray(embeddings, dtype=float)
+
+
+def _records_as_emails_for_embedder(records):
+    """Shape records into the list[dict] expected by ``utils.embeddings.get_embeddings``."""
+    emails = []
+    for i, record in enumerate(records):
+        ext = record.get("external_id")
+        emails.append(
+            {
+                "external_id": str(ext).strip() if ext is not None else "",
+                "subject": str(record.get("subject") or ""),
+                "body": str(record.get("body") or ""),
+                "email_index": i,
+            }
+        )
+    return emails
+
+
+def _pad_sbert_row(vec, dim: int) -> np.ndarray:
+    """Fixed-width row for stacking (embedder may return [] for empty text)."""
+    if dim <= 0:
+        return np.zeros(0, dtype=float)
+    v = np.asarray(vec, dtype=float)
+    if v.size == 0:
+        return np.zeros(dim, dtype=float)
+    if v.size == dim:
+        return v
+    if v.size > dim:
+        return v[:dim]
+    out = np.zeros(dim, dtype=float)
+    out[: v.size] = v
+    return out
+
+
+def _subject_body_sbert_from_embedder_cache(records, embeddings_output_dir):
+    """
+    Load or compute subject/body SBERT via the shared embeddings cache (same as graph build).
+    Returns dict with optional keys ``subject``, ``body`` -> (n, dim) float arrays.
+    """
+    out: dict[str, np.ndarray] = {}
+    emails = _records_as_emails_for_embedder(records)
+    out_dir = Path(embeddings_output_dir) if embeddings_output_dir else DEFAULT_OUTPUT_DIR
+    subj_vecs, body_vecs, subj_dim, body_dim = get_embeddings(emails, output_dir=out_dir)
+    if subj_dim > 0:
+        out["subject"] = np.stack([_pad_sbert_row(v, subj_dim) for v in subj_vecs])
+    if body_dim > 0:
+        out["body"] = np.stack([_pad_sbert_row(v, body_dim) for v in body_vecs])
+    return out
 
 
 def _normalize_token_list(value):
@@ -95,6 +149,16 @@ def _normalize_numeric_dict(value):
     return norm
 
 
+def _dense_block_to_csr(arr: np.ndarray) -> csr_matrix:
+    """CSR view of a 2-D dense block for sparse horizontal stacking."""
+    arr = np.asarray(arr, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError("Expected 2-D array for feature block")
+    if arr.shape[1] == 0:
+        return csr_matrix((arr.shape[0], 0))
+    return csr_matrix(arr)
+
+
 def _scale_and_normalize_matrix(X, scaler_type="robust", l2_normalize=True):
     """Apply feature scaling and optional row-wise L2 normalization."""
     if scaler_type == "robust":
@@ -155,7 +219,8 @@ def preprocess_for_clustering(
     dict_feature_fields=None,
     scaler_type="robust",
     l2_normalize=True,
-    sbert_model_name="all-MiniLM-L6-v2",
+    sbert_model_name="intfloat/multilingual-e5-large",
+    embeddings_output_dir=None,
 ):
 
     if not records:
@@ -210,7 +275,23 @@ def preprocess_for_clustering(
     print(f"Using {len(text_fields)} text fields: {text_fields}")
     print(f"Using {len(token_list_fields)} token-list fields: {token_list_fields}")
     print(f"Using {len(dict_feature_fields)} dict feature fields: {dict_feature_fields}")
-    
+
+    precomputed_sbert = {}
+    if sbert_model_name == MODEL_NAME and any(f in text_fields for f in ("subject", "body")):
+        emb_dir = Path(embeddings_output_dir) if embeddings_output_dir else DEFAULT_OUTPUT_DIR
+        try:
+            precomputed_sbert = _subject_body_sbert_from_embedder_cache(
+                records, embeddings_output_dir
+            )
+            if precomputed_sbert:
+                print(
+                    f"  SBERT subject/body: using shared embedder cache at {emb_dir} "
+                    f"(fields: {list(precomputed_sbert.keys())})"
+                )
+        except Exception as e:
+            print(f"  SBERT shared cache/embedder failed ({e}); using local SentenceTransformer encode.")
+            precomputed_sbert = {}
+
     X_numeric = []
     for record in records:
         features = []
@@ -218,9 +299,10 @@ def preprocess_for_clustering(
             features.append(float(record.get(fname, 0.0)))
         X_numeric.append(features)
     
-    X_numeric = np.array(X_numeric)
-    
-    feature_parts = [X_numeric]
+    X_numeric = np.asarray(X_numeric, dtype=np.float64)
+
+    # Sparse blocks until SVD: avoids dense (n × sum_features) TF-IDF materialization.
+    feature_parts_sparse = [_dense_block_to_csr(X_numeric)]
     feature_names = numeric_fields.copy()
     
     for text_field in text_fields:
@@ -232,8 +314,11 @@ def preprocess_for_clustering(
         
         try:
             if text_field in {"subject", "body"}:
-                X_text = _encode_texts_with_sbert(texts, model_name=sbert_model_name)
-                feature_parts.append(X_text)
+                if text_field in precomputed_sbert:
+                    X_text = precomputed_sbert[text_field]
+                else:
+                    X_text = _encode_texts_with_sbert(texts, model_name=sbert_model_name)
+                feature_parts_sparse.append(_dense_block_to_csr(X_text))
                 feature_names.extend([f"{text_field}_sbert_{i}" for i in range(X_text.shape[1])])
                 print(f"  {text_field}: extracted {X_text.shape[1]} SBERT features")
                 continue
@@ -245,10 +330,10 @@ def preprocess_for_clustering(
                 max_df=0.8,
                 ngram_range=(1, 2)
             )
-            X_text = tfidf.fit_transform(texts).toarray()
-            
+            X_text = tfidf.fit_transform(texts)
+
             if X_text.shape[1] > 0:
-                feature_parts.append(X_text)
+                feature_parts_sparse.append(X_text.tocsr())
                 feature_names.extend([f"{text_field}_tfidf_{i}" for i in range(X_text.shape[1])])
                 print(f"  {text_field}: extracted {X_text.shape[1]} TF-IDF features")
             else:
@@ -273,11 +358,12 @@ def preprocess_for_clustering(
                 lowercase=True,
             )
             X_tokens_sparse = vectorizer.fit_transform(token_docs)
-            X_tokens = X_tokens_sparse.toarray()
-            if X_tokens.shape[1] > 0:
-                feature_parts.append(X_tokens)
-                feature_names.extend([f"{token_field}_tfidf_{i}" for i in range(X_tokens.shape[1])])
-                print(f"  {token_field}: extracted {X_tokens.shape[1]} TF-IDF token features")
+            if X_tokens_sparse.shape[1] > 0:
+                feature_parts_sparse.append(X_tokens_sparse.tocsr())
+                feature_names.extend(
+                    [f"{token_field}_tfidf_{i}" for i in range(X_tokens_sparse.shape[1])]
+                )
+                print(f"  {token_field}: extracted {X_tokens_sparse.shape[1]} TF-IDF token features")
             else:
                 print(f"  Skipping '{token_field}': no features extracted")
         except Exception as e:
@@ -294,22 +380,27 @@ def preprocess_for_clustering(
         try:
             vectorizer = DictVectorizer(sparse=True)
             X_dict_sparse = vectorizer.fit_transform(dict_docs)
-            X_dict = X_dict_sparse.toarray()
-            if X_dict.shape[1] > 0:
-                feature_parts.append(X_dict)
-                feature_names.extend([f"{dict_field}_dict_{i}" for i in range(X_dict.shape[1])])
-                print(f"  {dict_field}: extracted {X_dict.shape[1]} dict features")
+            if X_dict_sparse.shape[1] > 0:
+                feature_parts_sparse.append(X_dict_sparse.tocsr())
+                feature_names.extend(
+                    [f"{dict_field}_dict_{i}" for i in range(X_dict_sparse.shape[1])]
+                )
+                print(f"  {dict_field}: extracted {X_dict_sparse.shape[1]} dict features")
             else:
                 print(f"  Skipping '{dict_field}': no features extracted")
         except Exception as e:
             print(f"  Error processing dict field '{dict_field}': {e}")
     
-    # combine
-    X = np.hstack(feature_parts)
-    
+    # combine (CSR); TruncatedSVD uses sparse matmuls — much faster than dense SVD on wide TF-IDF.
+    X = sparse_hstack(feature_parts_sparse, format="csr")
+
     if n_components is not None and n_components < X.shape[1]:
         print(f"Applying SVD dimensionality reduction: {X.shape[1]} -> {n_components} components")
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
+        svd = TruncatedSVD(
+            n_components=n_components,
+            random_state=42,
+            algorithm="randomized",
+        )
         X = svd.fit_transform(X)
         
         feature_names = [f"svd_component_{i}" for i in range(n_components)]
@@ -317,6 +408,8 @@ def preprocess_for_clustering(
         explained_variance = svd.explained_variance_ratio_.sum()
         print(f"  Explained variance ratio: {explained_variance:.4f} ({explained_variance*100:.2f}%)")
         print(f"  Reduced to {X.shape[1]} features")
+    else:
+        X = X.toarray()
 
     print(f"Applying scaler: {scaler_type}, l2_normalize={l2_normalize}")
     X = _scale_and_normalize_matrix(X, scaler_type=scaler_type, l2_normalize=l2_normalize)
