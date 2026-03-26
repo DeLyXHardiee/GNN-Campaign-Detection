@@ -16,6 +16,8 @@ import hashlib
 import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 
+from tqdm import tqdm
+
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .common import (
     parse_misp_events,
@@ -500,7 +502,7 @@ def index_entities(
         indices[node_key] = provider(emails)
 
     url_components: Dict[str, Tuple[str, str]] = {}
-    for em in emails:
+    for em in tqdm(emails, total=len(emails), desc="Indexing URL components"):
         for u in _as_email_list(em.get("urls")):
             comp = parse_url_components(u)
             url_components[u] = (comp.get("domain", ""), comp.get("stem", ""))
@@ -546,7 +548,9 @@ def materialize_edges(
         "return_path_domain_email_sets": {},
     }
 
-    for email_idx, em in enumerate(emails):
+    for email_idx, em in enumerate(
+        tqdm(emails, total=len(emails), desc="Materializing edges & email attrs")
+    ):
         urls = _as_email_list(em.get("urls"))
         # external_id: MISP id for joining to ground truth; not used in feature matrix
         ext_id = em.get("external_id")
@@ -704,7 +708,7 @@ def _build_email_feature_matrix(
         len(auth_onehot_rows) if auth_onehot_rows else 0,
     )
     email_x: List[List[float]] = []
-    for i in range(n_emails):
+    for i in tqdm(range(n_emails), total=n_emails, desc="Building email feature matrix"):
         row: List[float] = [
             float(ts[i]) if i < len(ts) else 0.0,
             float(len_body[i]) if i < len(len_body) else 0.0,
@@ -776,7 +780,7 @@ def _assemble_email_attrs(
     n_emails = len(email_meta) or 0
     x_text: List[List[float]] = []
     if subj_dim > 0 or body_dim > 0:
-        for i in range(n_emails):
+        for i in tqdm(range(n_emails), total=n_emails, desc="Assembling email text attrs"):
             comb: List[float] = []
             if subj_vecs:
                 comb.extend(subj_vecs[i] if i < len(subj_vecs) else [0.0] * subj_dim)

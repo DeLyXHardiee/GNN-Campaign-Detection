@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tqdm import tqdm
+
 MODEL_NAME = "intfloat/multilingual-e5-large"
 _CACHE_FILENAME = "embeddings.json"
 
@@ -86,13 +88,13 @@ def _compute_batch(
         body_corpus = [(em.get("body") or "").strip() for em in emails]
         if any(bool(t) for t in subj_corpus):
             subj_inputs = [f"passage: {text}" for text in subj_corpus]
-            subj_vec = model.encode(subj_inputs, show_progress_bar=False, convert_to_numpy=True)
+            subj_vec = model.encode(subj_inputs, show_progress_bar=True, convert_to_numpy=True)
             subj_dim = int(subj_vec.shape[1]) if len(subj_vec.shape) > 1 else 0
             if subj_dim > 0:
                 subj_vecs = subj_vec.astype("float32").tolist()
         if any(bool(t) for t in body_corpus):
             body_inputs = [f"passage: {text}" for text in body_corpus]
-            body_vec = model.encode(body_inputs, show_progress_bar=False, convert_to_numpy=True)
+            body_vec = model.encode(body_inputs, show_progress_bar=True, convert_to_numpy=True)
             body_dim = int(body_vec.shape[1]) if len(body_vec.shape) > 1 else 0
             if body_dim > 0:
                 body_vecs = body_vec.astype("float32").tolist()
@@ -122,7 +124,7 @@ def get_embeddings(
     body_vecs: List[List[float]] = [None] * len(emails)  # type: ignore[list-item]
     missing_indices: List[int] = []
 
-    for i in range(len(emails)):
+    for i in tqdm(range(len(emails)), total=len(emails), desc="Checking embedding cache"):
         k = keys[i]
         entry = cache.get(k) if isinstance(cache.get(k), dict) else None
         if entry and (entry.get("subj") is not None or entry.get("body") is not None):
