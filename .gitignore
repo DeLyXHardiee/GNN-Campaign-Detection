@@ -15,6 +15,7 @@ core/GNN/output/runs/*
 core/GNN/gnn_stage_experiment/*
 core/feature_set_extraction/caches/*
 core/outputs/*
+core/data_analysis/*
 
 core/GNN/notebooks/models
 core/utils/embeddings/output
