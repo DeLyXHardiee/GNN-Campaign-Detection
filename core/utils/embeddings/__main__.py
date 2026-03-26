@@ -8,12 +8,12 @@ import argparse
 import sys
 from pathlib import Path
 
-# Allow running as python -m graph.embeddings from repo root or core/
+# Allow running as python -m utils.embeddings with `core` on sys.path
 if __name__ == "__main__" and __package__ is None:
     _core = Path(__file__).resolve().parent.parent.parent
     if str(_core) not in sys.path:
         sys.path.insert(0, str(_core))
-    from graph.embeddings import DEFAULT_OUTPUT_DIR, run_standalone
+    from utils.embeddings import DEFAULT_OUTPUT_DIR, run_standalone
 else:
     from . import DEFAULT_OUTPUT_DIR, run_standalone
 
