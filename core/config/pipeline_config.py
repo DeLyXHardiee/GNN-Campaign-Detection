@@ -33,6 +33,52 @@ def resolve_project_path(path_value: str | None, *, project_root: Path | None = 
 
 
 @dataclass(frozen=True)
+class GnnPathLayout:
+    """
+    Output layout for core/GNN stages (train, eval, clustering).
+    All directory names are single path segments unless documented otherwise.
+    """
+
+    runs_parent: str
+    models_subdir: str = "models"
+    metrics_csv: str = "metrics.csv"
+    training_config_json: str = "training_config.json"
+    eval_auroc_ap_subdir: str = "eval_auroc_ap"
+    eval_recall_at_k_subdir: str = "eval_recall_at_k"
+    clustering_subdir: str = "clustering"
+    clustering_plots_subdir: str = "plots"
+    stage_result_json: str = "stage_result.json"
+
+
+def gnn_path_layout_from_pipeline(
+    cfg: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> GnnPathLayout:
+    gnn = cfg.get("gnn") or {}
+    runs_raw = gnn.get("runs_parent") or "core/outputs"
+    runs_resolved = resolve_project_path(str(runs_raw), project_root=project_root)
+    if not runs_resolved:
+        raise ValueError("pipeline_config gnn.runs_parent resolved to an empty path.")
+
+    def _s(key: str, default: str) -> str:
+        v = gnn.get(key)
+        return str(v).strip() if v is not None and str(v).strip() else default
+
+    return GnnPathLayout(
+        runs_parent=runs_resolved,
+        models_subdir=_s("models_subdir", "models"),
+        metrics_csv=_s("metrics_csv", "metrics.csv"),
+        training_config_json=_s("training_config_json", "training_config.json"),
+        eval_auroc_ap_subdir=_s("eval_auroc_ap_subdir", "eval_auroc_ap"),
+        eval_recall_at_k_subdir=_s("eval_recall_at_k_subdir", "eval_recall_at_k"),
+        clustering_subdir=_s("clustering_subdir", "clustering"),
+        clustering_plots_subdir=_s("clustering_plots_subdir", "plots"),
+        stage_result_json=_s("stage_result_json", "stage_result.json"),
+    )
+
+
+@dataclass(frozen=True)
 class MemgraphSettings:
     enabled: bool = False
     uri: str = "bolt://localhost:7687"

@@ -1,0 +1,19 @@
+
+================================================================================
+Mean Shift Run - 2026-03-23 13:58:17
+Parameters: quantile_values=[0.025], n_samples=3000, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+
+================================================================================
+Mean Shift Run - 2026-03-23 14:06:31
+Parameters: quantile_values=[0.025], n_samples=3000, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS1 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2459, n=3000, bandwidth=1.2735032320909185
+FS2 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2297, n=3000, bandwidth=1.2754233469183751
+FS3 | quantile=0.025 | n_components=100000 | silhouette=0.9501, H=0.5330, C=0.7257, V=0.6146, clusters=110, noise=0, coverage_ground_truth=0.2459, n=3000, bandwidth=0.055585117507397516
+FS4 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2419, n=3000, bandwidth=1.2819688368603266
+FS5 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2432, n=3000, bandwidth=1.2771528850902918
+FS6 | quantile=0.025 | n_components=100000 | silhouette=0.1527, H=0.4164, C=0.6586, V=0.5102, clusters=8, noise=0, coverage_ground_truth=0.2446, n=3000, bandwidth=0.7422253458076239
+FS7 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2149, n=3000, bandwidth=1.2248778478233244

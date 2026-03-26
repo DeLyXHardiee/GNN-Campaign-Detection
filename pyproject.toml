@@ -30,6 +30,8 @@ dependencies = [
     "beautifulsoup4",
     "tldextract",
     "matplotlib",
+    "pyarrow",
+    "httpx",
     "wheel",  # Install before torch_scatter to avoid legacy setup.py install deprecation (torch_scatter has no pyproject.toml)
 ]
 
