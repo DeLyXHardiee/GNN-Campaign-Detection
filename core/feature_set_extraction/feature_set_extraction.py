@@ -603,6 +603,9 @@ dates of the oldest and the most recent domains, the minimum
 PageRank and popularity, and the maximum PageRank and
 Popularity for the list of URLs.
 
+The top targets on phishtank is also used to compute num blacklist links.
+PageRank and popularity are excluded. Suggested online tools appear to cost money and not entirely sure what these metrics mean anyway.
+
 '''
 
 def extract_url_based_features(urls):
