@@ -408,6 +408,7 @@ def run_preprocessing_lake():
 def run_graph_creation(
     misp_json_path: str | None = None,
     *,
+    max_misp_events: int | None = None,
     to_memgraph: bool | None = None,
     mg_uri: str | None = None,
     mg_user: str | None = None,
@@ -417,6 +418,8 @@ def run_graph_creation(
     MISP JSON → PyTorch Geometric graph (and optionally Memgraph).
     Paths and exclusions come from pipeline_config.json ``graph`` (and ``datasets`` for MISP).
     Pass misp_json_path to override (e.g. output of run_preprocessing).
+    Use graph.max_misp_events in config, or pass max_misp_events here, to use only the first N
+    MISP events after loading the file (full file is still read from disk).
     """
     from graph.graph_builder_pytorch import build_graph
     from graph.graph_builder_memgraph import build_memgraph
@@ -424,12 +427,19 @@ def run_graph_creation(
     cfg = load_pipeline_config()
     settings = graph_build_settings_from_pipeline(cfg)
     path = misp_json_path or settings.misp_json_path
+    limit = (
+        max_misp_events
+        if max_misp_events is not None
+        else settings.max_misp_events
+    )
+    limit_eff = limit if limit is not None and limit > 0 else None
 
     graph, graph_path, meta_path = build_graph(
         misp_json_path=path,
         out_dir=settings.output_dir,
         exclude_nodes=settings.exclude_node_types,
         embeddings_output_dir=settings.embeddings_output_dir,
+        max_misp_events=limit_eff,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -446,6 +456,7 @@ def run_graph_creation(
             clear=mg.clear,
             create_indexes=mg.create_indexes,
             exclude_nodes=settings.exclude_node_types,
+            max_misp_events=limit_eff,
         )
         print("Memgraph load summary:")
         print(json.dumps(summary, indent=2))
@@ -511,11 +522,11 @@ if __name__ == "__main__":
     #misp_path = run_preprocessing()
     #create_feature_sets()
     #run_featureset_clustering()
-    misp_path = "core/preprocessing/output/incidents-lake-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
+    #misp_path = "core/preprocessing/output/incidents-lake-misp.json"
+    #run_graph_creation(max_misp_events=100, misp_json_path=misp_path, to_memgraph=False)
     #run_gnn()
     #run_gnn_evaluation()
-    #run_gnn_clustering()
+    run_gnn_clustering()
     #run_metric_comparison()
     
     # To run the entire pipeline, uncomment the line below:
