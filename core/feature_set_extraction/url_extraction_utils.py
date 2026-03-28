@@ -5,6 +5,7 @@ import idna
 from urllib.parse import urlparse
 from datetime import datetime
 from collections import defaultdict, Counter
+from preprocessing.RDAP_processor import ensure_rdap_cache
 
 # WHOIS import disabled — domain lookups are outcommented per request
 # try:
@@ -136,7 +137,7 @@ def extract_url_features(
 
     num_ip_urls = sum(d["is_ip"] for d in per_url)
     num_short_urls = sum(d["is_shortener"] for d in per_url)
-    num_blacklisted = sum(u in blacklist for u in urls)
+    num_blacklisted_domains = sum(1 for d in unique_domains if d in phishing_target_domains)
 
 
     # ---------- per-URL boolean aggregations ----------
@@ -144,14 +145,18 @@ def extract_url_features(
     any_has_at_symbol = any(d.get("has_at_symbol") for d in per_url)
     any_has_non_ascii = any(d.get("has_non_ascii") for d in per_url)
 
-    # ---------- domain stats (creation dates via WHOIS-derived metadata) ----------
+    # ---------- domain stats (creation dates via RDAP cache) ----------
     creation_dates = []
-    for d in unique_domains:
-        meta = domain_metadata.get(d)
-        if not meta:
-            continue
-        if meta.get("created"):
-            creation_dates.append(meta["created"])
+    if unique_domains:
+        try:
+            cache = ensure_rdap_cache(unique_domains)
+            for d in unique_domains:
+                item = cache.get(d, {})
+                registration_date = item.get("registration_date")
+                if registration_date:
+                    creation_dates.append(registration_date)
+        except Exception:
+            pass
 
     # ---------- domain categories / registrar locations ----------
     domain_category_map = {}
@@ -224,10 +229,10 @@ def extract_url_features(
         "num_ip_urls": num_ip_urls,
         "num_distinct_domains": len(unique_domains),
         "num_short_urls": num_short_urls,
-        "num_blacklisted": num_blacklisted,
+        "num_blacklisted_domains": num_blacklisted_domains,
 
-        #"oldest_domain_registration": oldest_domain,
-        #"newest_domain_registration": newest_domain,
+        "oldest_domain_registration": oldest_domain,
+        "newest_domain_registration": newest_domain,
     }
 
 
