@@ -49,12 +49,17 @@ def run_clustering_plot_stage(
     ``pipeline_config.json`` ``gnn.clustering_subdir`` and ``gnn.clustering_plots_subdir``.
     """
     cfg = load_pipeline_config()
+    layout = path_layout or gnn_path_layout_from_pipeline(cfg)
+    output_dir_p = Path(output_dir)
+    clustering_out = output_dir_p / layout.clustering_subdir
+    plots_out = clustering_out / layout.clustering_plots_subdir
+    plots_out.mkdir(parents=True, exist_ok=True)
+
     training_cfg = cfg.get("training", {})
     model_save_name = training_cfg.get("model_save_name", "best_model.pt")
-    model_stem = Path(model_save_name).stem
 
     # cluster_stage writes the chosen best locked parameters here.
-    stage_result_path = clustering_out / "stage_result.json"
+    stage_result_path = clustering_out / layout.stage_result_json
     best_locked_params: dict[str, dict[str, Any]] = {}
     if stage_result_path.exists():
         try:
