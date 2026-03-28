@@ -18,6 +18,93 @@ from feature_set_extraction.domain_lists_loader import load_url_intelligence_set
 from graph.common import parse_misp_events
 
 
+LSA_TOPIC_KEYS = [f"lsa_topic_{index}" for index in range(10)]
+
+FS1_FEATURE_TYPES = ["time", "subject", "body", "origin", "receiver", "urls", "attachments"]
+
+FS2_FEATURE_TYPES = ["time", "subject", "body", "urls", "origin", "attachments"]
+FS2_OMIT_KEYS = frozenset(["sender_email"])
+
+FS3_FEATURE_TYPES = ["body", "urls", "origin"]
+FS3_OMIT_KEYS = frozenset([
+    "body_word_count",
+    "num_lines",
+    "avg_word_length",
+    "greeting",
+    "body",
+    *LSA_TOPIC_KEYS,
+])
+
+FS4_FEATURE_TYPES = ["subject", "body"]
+FS4_OMIT_KEYS = frozenset([
+    "num_urls_in_body",
+    "has_urls_in_body",
+    "body_word_count",
+    "num_lines",
+    "avg_word_length",
+    "greeting",
+    "subject_length",
+    "subject_whitespace_count",
+    "subject_avg_idf",
+    "subject_max_idf",
+    "subject_n_terms",
+])
+
+FS5_FEATURE_TYPES = ["subject", "body", "receiver", "origin", "urls", "attachments"]
+FS5_OMIT_KEYS = frozenset([
+    "subject_length",
+    "subject_whitespace_count",
+    "subject_avg_idf",
+    "subject_max_idf",
+    "subject_n_terms",
+    "num_urls_in_body",
+    "has_urls_in_body",
+    "body_word_count",
+    "num_lines",
+    "avg_word_length",
+    "greeting",
+    "recipient_email",
+    "domain_categories",
+    "registrar_locations",
+    "subdomain_counts",
+    "hyphen_counts",
+    "any_ev_cert",
+    "any_has_extra_http",
+    "any_multi_part_tld",
+    "any_www_host",
+    "any_has_at_symbol",
+    "any_has_non_ascii",
+    "any_typo_popular_domains",
+    "any_similar_phish_targets",
+    "any_popular_domain_in_subdomain",
+    "num_ip_urls",
+    "num_distinct_domains",
+    "num_short_urls",
+    "num_blacklisted",
+    "has_attachments",
+    "num_attachments",
+    "attachment_sizes_bytes",
+])
+
+FS6_FEATURE_TYPES = ["subject", "time", "body", "origin", "urls", "attachments"]
+FS6_OMIT_KEYS = frozenset([
+    "subject_term_frequency",
+    "bow",
+    "sender_email",
+    "greeting",
+    "body",
+    "subject",
+    *LSA_TOPIC_KEYS,
+    "has_attachments",
+])
+
+FS7_FEATURE_TYPES = ["subject", "body", "origin", "urls"]
+FS7_OMIT_KEYS = frozenset(["bow", "sender_email", "body"])
+
+TEST_SET_FEATURE_TYPES = ["subject", "origin", "receiver", "urls"]
+TEST_SET_OMIT_KEYS = frozenset(["subject_term_frequency", "bow"])
+
+
 '''
 1) TIME-BASED FEATURES
 This feature category covers the time in which the phishing email was received. Phishing campaigns tend to be sent
@@ -603,6 +690,9 @@ dates of the oldest and the most recent domains, the minimum
 PageRank and popularity, and the maximum PageRank and
 Popularity for the list of URLs.
 
+The top targets on phishtank is also used to compute num blacklist links.
+PageRank and popularity are excluded. Suggested online tools appear to cost money and not entirely sure what these metrics mean anyway.
+
 '''
 
 def extract_url_based_features(urls):
@@ -809,6 +899,13 @@ def extract_features(misp_path, features, events=None):
         features_list.append(feat)
     return features_list
 
+
+def omit_feature_keys(features_list, omitted_keys):
+    return [
+        {key: value for key, value in feat.items() if key not in omitted_keys}
+        for feat in features_list
+    ]
+
 def parse_misp_event_attributes(event):
     """Backward-compatible shim that delegates to graph/common schema parser."""
     normalized = parse_misp_events([{"Event": event}] if isinstance(event, dict) else [])
@@ -855,101 +952,37 @@ def get_idf_path_for_misp(misp_path):
     return os.path.join(get_helpers_output_dir(), f"{base_name}_subject_idf.json")
 
 def get_FS1(misp_path, events):
-    return extract_features(misp_path, ["time", "subject", "body", "origin", "receiver", "urls", "attachments"], events=events)
+    return extract_features(misp_path, FS1_FEATURE_TYPES, events=events)
 
 def get_FS2(misp_path, events):
-    features_list = extract_features(misp_path, ["time", "subject", "body", "urls", "origin", "attachments"], events=events)
-
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["sender_email",]
-                        }
-        filtered_features.append(filtered_feat)
-    return filtered_features
+    features_list = extract_features(misp_path, FS2_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS2_OMIT_KEYS)
 
 def get_FS3(misp_path, events):
-    features_list = extract_features(misp_path, ["body", "urls", "origin"], events=events)
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["body_word_count",  "num_lines", "avg_word_length", "greeting","body",
-                                     "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4",
-                                     "lsa_topic_5", "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9"]
-                        }
-        filtered_features.append(filtered_feat)
-
-    return filtered_features
+    features_list = extract_features(misp_path, FS3_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS3_OMIT_KEYS)
 
 def get_FS4(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "body"], events=events)
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["num_urls_in_body", "has_urls_in_body", "body_word_count",  "num_lines", "avg_word_length", "greeting",
-                                     "subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms",]
-                        }
-        filtered_features.append(filtered_feat)
-
-    return filtered_features
+    features_list = extract_features(misp_path, FS4_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS4_OMIT_KEYS)
 
 def get_FS5(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "body", "receiver", "origin", "urls", "attachments"], events=events)
-
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["subject_length", "subject_whitespace_count", "subject_avg_idf", "subject_max_idf", "subject_n_terms",
-                                     "num_urls_in_body", "has_urls_in_body", "body_word_count", "num_lines", "avg_word_length", "greeting",
-                                     "recipient_email", "domain_categories","registrar_locations",
-                                     "subdomain_counts","hyphen_counts","any_ev_cert","any_has_extra_http","any_multi_part_tld",
-                                     "any_www_host","any_has_at_symbol","any_has_non_ascii","any_typo_popular_domains",
-                                     "any_similar_phish_targets","any_popular_domain_in_subdomain",
-                                     "num_ip_urls","num_distinct_domains","num_short_urls","num_blacklisted",
-                                     "has_attachments","num_attachments", "attachment_sizes_bytes",]
-                        }
-        filtered_features.append(filtered_feat)
-
-    return filtered_features
+    features_list = extract_features(misp_path, FS5_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS5_OMIT_KEYS)
 
 
 #Maybe should not include some of the body features, unsure based on description
 def get_FS6(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "time", "body", "origin", "urls", "attachments"], events=events)
-
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["subject_term_frequency", "bow", "sender_email", "greeting", "body", "subject",
-                                         "lsa_topic_0", "lsa_topic_1", "lsa_topic_2", "lsa_topic_3", "lsa_topic_4", "lsa_topic_5",
-                                         "lsa_topic_6", "lsa_topic_7", "lsa_topic_8", "lsa_topic_9",
-                                         "has_attachments"]
-                        }
-        filtered_features.append(filtered_feat)
-
-    return filtered_features
+    features_list = extract_features(misp_path, FS6_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS6_OMIT_KEYS)
 
 def get_FS7(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "body", "origin", "urls"], events=events)
-
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                        if k not in ["bow", "sender_email", "body"]
-                        }
-
-        filtered_features.append(filtered_feat)
-    return filtered_features
+    features_list = extract_features(misp_path, FS7_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, FS7_OMIT_KEYS)
 
 def get_test_set(misp_path, events):
-    features_list = extract_features(misp_path, ["subject", "origin", "receiver", "urls"], events=events)
-
-    filtered_features = []
-    for feat in features_list:
-        filtered_feat = {k: v for k, v in feat.items()
-                         if k not in ["subject_term_frequency", "bow",]}
-        filtered_features.append(filtered_feat)
-    return filtered_features
+    features_list = extract_features(misp_path, TEST_SET_FEATURE_TYPES, events=events)
+    return omit_feature_keys(features_list, TEST_SET_OMIT_KEYS)
 
 
 def _extract_and_save_featureset(args):
