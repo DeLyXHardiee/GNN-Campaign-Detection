@@ -97,6 +97,7 @@ class GraphBuildSettings:
     exclude_node_types: list[str]
     embeddings_output_dir: str | None
     memgraph: MemgraphSettings
+    max_misp_events: int | None = None
 
 
 def graph_build_settings_from_pipeline(
@@ -143,12 +144,28 @@ def graph_build_settings_from_pipeline(
         create_indexes=bool(mg.get("create_indexes", True)),
     )
 
+    raw_max = graph_cfg.get("max_misp_events")
+    max_misp_events: int | None = None
+    if raw_max is not None and not isinstance(raw_max, bool):
+        if isinstance(raw_max, int) and raw_max > 0:
+            max_misp_events = raw_max
+        elif isinstance(raw_max, str) and raw_max.strip():
+            try:
+                v = int(raw_max.strip(), 10)
+            except ValueError as e:
+                raise ValueError(
+                    "pipeline_config graph.max_misp_events must be a positive integer or null."
+                ) from e
+            if v > 0:
+                max_misp_events = v
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
         exclude_node_types=exclude_node_types,
         embeddings_output_dir=embeddings_output_dir,
         memgraph=memgraph,
+        max_misp_events=max_misp_events,
     )
 
 

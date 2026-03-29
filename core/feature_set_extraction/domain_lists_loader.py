@@ -69,5 +69,5 @@ def load_url_intelligence_sets():
         "popular_domains": load_domain_set_from_txt("popular_domains.txt"),
         "webhost_domains": load_domain_set_from_txt("web_hosting_domains.txt"),
         "phishing_target_domains": load_domain_set_from_txt("phishing_target_domains.txt"),
-        "blacklist": load_domain_set_from_txt("url_blacklist.txt"),
+        #"blacklist": load_domain_set_from_txt("url_blacklist.txt"),
     }

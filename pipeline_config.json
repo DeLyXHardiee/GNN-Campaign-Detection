@@ -27,6 +27,7 @@
   },
   "graph": {
     "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
+    "max_misp_events": null,
     "output_dir": "core/graph/output",
     "exclude_node_types": [],
     "embeddings_output_dir": null,
@@ -61,7 +62,7 @@
       "n_samples": 3000
     }
   },
-  "device": "cuda",
+  "device": "cpu",
   "to_undirected": true,
   "run_id": "default_experiment",
   "gnn": {
@@ -135,9 +136,9 @@
         "n_samples": 500
       },
       "hdbscan": {
-        "enabled": false,
+        "enabled": true,
         "min_cluster_size_values": [
-          5
+          2
         ]
       }
     }

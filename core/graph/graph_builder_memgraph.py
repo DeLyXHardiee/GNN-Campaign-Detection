@@ -191,12 +191,16 @@ def build_memgraph(
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
+    max_misp_events: Optional[int] = None,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
         raise ValueError("Provide either misp_events or misp_json_path")
     if misp_events is None:
         misp_events = _load_misp_json(misp_json_path)
+
+    if max_misp_events is not None and max_misp_events > 0:
+        misp_events = misp_events[:max_misp_events]
 
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
