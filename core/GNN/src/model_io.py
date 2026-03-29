@@ -4,6 +4,8 @@ from pathlib import Path
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 from .loaders import make_link_loaders
 
+_CHECKPOINT_EXTS = {".pt", ".pth", ".ckpt"}
+
 
 def get_models_dir() -> Path:
     """
@@ -13,6 +15,17 @@ def get_models_dir() -> Path:
     models_dir = Path(__file__).resolve().parent.parent / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     return models_dir
+
+
+def _validated_checkpoint_path(filename) -> Path:
+    candidate = Path(filename).expanduser()
+    path = candidate if candidate.is_file() else (get_models_dir() / str(filename))
+    path = path.resolve()
+    if path.suffix.lower() not in _CHECKPOINT_EXTS:
+        raise ValueError(f"Unsupported checkpoint extension for {path}.")
+    if not path.is_file():
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+    return path
 
 
 def select_device(preferred=None):
@@ -57,7 +70,7 @@ def save_model_checkpoint(
     base_dir = Path(save_dir) if save_dir is not None else get_models_dir()
     base_dir.mkdir(parents=True, exist_ok=True)
     save_path = base_dir / filename
-    torch.save(
+    torch.save(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         {
             "epoch": epoch,
             "val_loss": val_loss,
@@ -126,9 +139,10 @@ def load_model_checkpoint(device=None, metadata=None, filename="best_model.pt"):
     checkpoint metadata when available.
     """
     device = select_device(device)
-    candidate = Path(filename).expanduser()
-    load_path = candidate if candidate.is_file() else (get_models_dir() / filename)
-    checkpoint = torch.load(load_path, map_location=device)
+    load_path = _validated_checkpoint_path(filename)
+    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        load_path, map_location=device, weights_only=True
+    )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=metadata)
     return model, predictor, checkpoint
 
@@ -189,7 +203,10 @@ def load_training_state(data, device=None, filename="best_model.pt"):
     """
     data_cpu = data.to('cpu')
     device = select_device(device)
-    checkpoint = torch.load(get_models_dir() / filename, map_location=device)
+    load_path = _validated_checkpoint_path(filename)
+    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        load_path, map_location=device, weights_only=True
+    )
 
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 

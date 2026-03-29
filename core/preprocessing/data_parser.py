@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import csv
 import ipaddress
 import json
@@ -8,12 +9,15 @@ import logging
 import os
 import re
 import sys
+from datetime import date, datetime, time, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pathlib import Path
 from typing import Any, Collection, Dict, Iterator, List, Optional, Set, Tuple
-import httpx
 from lake.client import LakeAPIClient
-from preprocessing.body_parser import extract_body_html_css_without_headers
+from preprocessing.body_parser import (
+    extract_body_html_css_without_headers,
+    extract_css_text_from_html,
+)
 from preprocessing.attachment_parser import extract_attachment_metadata_from_email
 from preprocessing.html_css_parser import get_empty_html_structure, parse_css_fast, parse_html_fast
 from preprocessing.utils.url_extractor import extract_urls_from_text, deduplicate_urls
@@ -830,13 +834,103 @@ def _extract_incident_category(
     return analysis_text if analysis_text in {"phishing", "scam"} else ""
 
 
-def _build_lake_stream_sql(
+# Smaller pages + two-stage join (see _iterate_lake_incident_rows) reduce peak memory for large ``parsed`` JSON.
+_DEFAULT_LAKE_PAGE_SIZE = 1000
+_LAKE_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _lake_to_naive_utc(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _lake_parse_timeframe_bound(value: Any) -> Optional[tuple[datetime, bool]]:
+    """Parse ``preprocessing_lake`` start/end config. Returns (naive UTC datetime, is_date_only) or None."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        if _LAKE_DATE_ONLY_RE.match(s):
+            d = date.fromisoformat(s)
+            return (datetime.combine(d, time.min), True)
+        s2 = s[:-1] + "+00:00" if s.endswith("Z") else s
+        try:
+            dt = datetime.fromisoformat(s2)
+        except ValueError as exc:
+            raise ValueError(f"Invalid lake timeframe date/datetime string: {s!r}") from exc
+        return (_lake_to_naive_utc(dt), False)
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return (datetime.combine(value, time.min), True)
+    if isinstance(value, datetime):
+        return (_lake_to_naive_utc(value), False)
+    raise TypeError(
+        f"Lake timeframe value must be str, date, datetime, or null; got {type(value).__name__}."
+    )
+
+
+def _lake_created_at_filter_sql(start: Any, end: Any) -> str:
+    """SQL ``AND`` lines for ``i.created_at`` (empty if both bounds unset). Date-only end is end-exclusive."""
+    parts: list[str] = []
+    start_parsed = _lake_parse_timeframe_bound(start)
+    end_parsed = _lake_parse_timeframe_bound(end)
+    if start_parsed is not None:
+        dt, _ = start_parsed
+        lit = dt.strftime("%Y-%m-%d %H:%M:%S")
+        parts.append(f"i.created_at >= TIMESTAMP '{lit}'")
+    if end_parsed is not None:
+        dt, is_date_only = end_parsed
+        if is_date_only:
+            exclusive = datetime.combine(dt.date() + timedelta(days=1), time.min)
+            lit = exclusive.strftime("%Y-%m-%d %H:%M:%S")
+            parts.append(f"i.created_at < TIMESTAMP '{lit}'")
+        else:
+            lit = dt.strftime("%Y-%m-%d %H:%M:%S")
+            parts.append(f"i.created_at <= TIMESTAMP '{lit}'")
+    if not parts:
+        return ""
+    return "\n    AND " + "\n    AND ".join(parts)
+
+
+def _iterate_lake_incident_rows(
+    client: LakeAPIClient,
     incidents_table: str,
     parsed_emails_table: str,
     *,
-    limit: Optional[int],
-) -> str:
-    sql = f"""
+    page_size: int = _DEFAULT_LAKE_PAGE_SIZE,
+    sql_limit: Optional[int] = None,
+    start_date: Any = None,
+    end_date: Any = None,
+) -> Iterator[Dict[str, Any]]:
+    """Fetch joined incidents via ``/query`` in stable, bounded batches.
+
+    Memory / IO:
+
+    - Pagination uses a **narrow** join: ``incidents`` × ``(SELECT source_id FROM parsed_emails)``
+      so engines can **column-prune** the heavy ``parsed`` payload until the final join.
+    - Only after ``LIMIT``/``OFFSET`` is applied do we join the full ``parsed_emails`` row for
+      that page, so each request materializes at most ``page_size`` large JSON blobs.
+
+    Ordering is ``i.created_at ASC, i.external_id ASC`` (stable, time-ordered pages).
+
+    ``sql_limit`` caps total rows read from the lake (same role as the old SQL ``LIMIT``), not
+    filtered incident count.
+
+    Optional ``start_date`` / ``end_date`` restrict ``i.created_at`` (see :func:`_lake_created_at_filter_sql`).
+    """
+    created_at_filters = _lake_created_at_filter_sql(start_date, end_date)
+    offset = 0
+    while True:
+        batch = page_size
+        if sql_limit is not None:
+            remaining = sql_limit - offset
+            if remaining <= 0:
+                break
+            batch = min(batch, remaining)
+
+        inner_sql = f"""
 SELECT
     i.external_id,
     i.type,
@@ -845,63 +939,146 @@ SELECT
     i.properties,
     i.title,
     i.created_at,
-    s.source_id,
-    s.parsed
+    sk.source_id
 FROM {incidents_table} i
-INNER JOIN {parsed_emails_table} s
-    ON i.external_id = s.source_id
+INNER JOIN (
+    SELECT source_id FROM {parsed_emails_table}
+) sk ON i.external_id = sk.source_id
 WHERE
     LOWER(TRIM(CAST(i.type AS VARCHAR))) = 'phishing'
-    AND NULLIF(TRIM(CAST(i.severity AS VARCHAR)), '') IS NOT NULL
-"""
-    if limit is not None and limit > 0:
-        sql = f"{sql}\nLIMIT {int(limit)}"
-    return sql.strip()
+    AND NULLIF(TRIM(CAST(i.severity AS VARCHAR)), '') IS NOT NULL{created_at_filters}
+ORDER BY i.created_at ASC, i.external_id ASC
+LIMIT {int(batch)} OFFSET {int(offset)}
+""".strip()
 
+        page_sql = f"""
+SELECT
+    b.external_id,
+    b.type,
+    b.analysis,
+    b.severity,
+    b.properties,
+    b.title,
+    b.created_at,
+    b.source_id,
+    pe.parsed
+FROM (
+{inner_sql}
+) AS b
+INNER JOIN {parsed_emails_table} pe ON b.source_id = pe.source_id
+""".strip()
 
-def _iterate_lake_rows(
-    client: LakeAPIClient,
-    sql: str,
-    *,
-    page_size: int = 1000,
-) -> Iterator[Dict[str, Any]]:
-    retryable_status_codes = {502, 503, 504}
-    try:
-        for batch in client.query_stream(sql):
-            for row in batch.to_pylist():
-                yield row
-        return
-    except httpx.HTTPStatusError as exc:
-        status_code = exc.response.status_code if exc.response is not None else None
-        if status_code not in retryable_status_codes:
-            raise
-        logging.warning(
-            "Lake query_stream failed with HTTP %s; falling back to paginated /query endpoint.",
-            status_code,
-        )
-    except (httpx.TimeoutException, httpx.NetworkError):
-        logging.warning(
-            "Lake query_stream failed with a transient network error; "
-            "falling back to paginated /query endpoint."
-        )
-
-    # Fallback path: page results through /query to avoid stream gateway instability.
-    # Wrapping SQL as a subquery preserves filters and projection while adding LIMIT/OFFSET.
-    base_sql = sql.strip().rstrip(";")
-    paged_base_sql = f"SELECT * FROM ({base_sql}) AS base_query"
-    offset = 0
-
-    while True:
-        page_sql = f"{paged_base_sql}\nLIMIT {int(page_size)} OFFSET {int(offset)}"
-        rows = client.query(page_sql, limit=page_size)
+        rows = client.query(page_sql, limit=batch)
         if not rows:
             break
         for row in rows:
             if isinstance(row, dict):
                 yield row
-        if len(rows) < page_size:
+        n = len(rows)
+        if n < batch:
             break
-        offset += page_size
+        offset += n
+        if sql_limit is not None and offset >= sql_limit:
+            break
+
+
+def _first_non_empty_str(data: Dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        val = data.get(key)
+        if val is None:
+            continue
+        if isinstance(val, str) and val.strip():
+            return val
+        if isinstance(val, (bytes, bytearray)):
+            try:
+                s = bytes(val).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+            if s.strip():
+                return s
+    return ""
+
+
+def _lake_raw_email_bytes(parsed_payload: Dict[str, Any]) -> bytes:
+    """Recover RFC822 bytes if the lake row stores them (matches CSV pipeline when present)."""
+    for b64_key in ("raw_email_base64", "rfc822_base64", "raw_bytes_base64"):
+        raw = parsed_payload.get(b64_key)
+        if isinstance(raw, str) and raw.strip():
+            try:
+                return base64.b64decode(raw, validate=False)
+            except Exception:
+                continue
+    raw = parsed_payload.get("raw_email") or parsed_payload.get("rfc822")
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    if isinstance(raw, str) and raw.strip():
+        return raw.encode("utf-8", errors="replace")
+    return b""
+
+
+def _lake_html_css_structures_from_parsed_payload(
+    parsed_payload: Dict[str, Any],
+    sample_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Build ``email_html`` / ``email_css`` feature dicts like :func:`_parse_body_and_headers_with_mailparser`.
+
+    Lake rows expose structured ``parsed`` JSON instead of raw body files; we try (in order):
+
+    1. Full raw message bytes, if present → same extraction as CSV.
+    2. HTML/CSS strings from common column names (and optional ``enrichment`` nesting).
+    """
+    empty_html = get_empty_html_structure()
+    empty_css: Dict[str, Any] = {"style_features": {}}
+
+    raw_b = _lake_raw_email_bytes(parsed_payload)
+    if raw_b:
+        try:
+            _, html_str, css_str = extract_body_html_css_without_headers(raw_b)
+            html_structure = parse_html_fast(html_str, sample_id=sample_id) if html_str.strip() else empty_html
+            css_structure = parse_css_fast(css_str) if css_str.strip() else empty_css
+            return html_structure, css_structure if css_structure else empty_css
+        except Exception:
+            pass
+
+    html_raw = _first_non_empty_str(
+        parsed_payload,
+        "html_body",
+        "body_html",
+        "html",
+        "raw_html",
+        "html_selectolax_cleaned",
+        "html_cleaned",
+    )
+    enrichment = parsed_payload.get("enrichment")
+    if not html_raw and isinstance(enrichment, dict):
+        html_raw = _first_non_empty_str(
+            enrichment,
+            "html_body",
+            "body_html",
+            "html",
+            "raw_html",
+        )
+
+    # Some pipelines only store a single HTML part as ``body`` (no separate html_* column).
+    if not html_raw:
+        body_only = parsed_payload.get("body")
+        if isinstance(body_only, str) and body_only.strip():
+            if re.search(r"<\s*[a-zA-Z!?/]", body_only):
+                html_raw = body_only
+
+    css_raw = _first_non_empty_str(parsed_payload, "css", "css_text", "inline_css")
+    if not css_raw and isinstance(enrichment, dict):
+        css_raw = _first_non_empty_str(enrichment, "css", "css_text", "inline_css")
+
+    if not html_raw and not css_raw:
+        return empty_html, empty_css
+
+    if not css_raw and html_raw:
+        css_raw = extract_css_text_from_html(html_raw)
+
+    html_structure = parse_html_fast(html_raw, sample_id=sample_id) if html_raw.strip() else empty_html
+    css_structure = parse_css_fast(css_raw) if css_raw.strip() else empty_css
+    return html_structure, css_structure if css_structure else empty_css
 
 
 def parse_incidents_from_lake_stream(
@@ -912,6 +1089,8 @@ def parse_incidents_from_lake_stream(
     parsed_emails_table: str = "parsed_emails",
     limit: int | None = None,
     allowed_categories: Optional[Collection[str]] = None,
+    start_date: Any = None,
+    end_date: Any = None,
 ) -> List[Dict[str, Any]]:
     if not base_url.strip():
         raise ValueError("base_url must be provided.")
@@ -919,17 +1098,20 @@ def parse_incidents_from_lake_stream(
         raise ValueError("api_key must be provided.")
 
     category_allow = _normalize_category_allowlist(allowed_categories) or {"phishing", "scam"}
-    sql = _build_lake_stream_sql(
-        incidents_table=incidents_table,
-        parsed_emails_table=parsed_emails_table,
-        limit=limit,
-    )
+    sql_limit = limit if limit is not None and limit > 0 else None
 
     client = LakeAPIClient(base_url=base_url, api_key=api_key)
     parsed_incidents: List[Dict[str, Any]] = []
     row_index = 0
 
-    for row in _iterate_lake_rows(client, sql):
+    for row in _iterate_lake_incident_rows(
+        client,
+        incidents_table=incidents_table,
+        parsed_emails_table=parsed_emails_table,
+        sql_limit=sql_limit,
+        start_date=start_date,
+        end_date=end_date,
+    ):
         row_index += 1
         external_id = _normalize_scalar(_value_from_stream_row(row, "external_id", "i.external_id"))
         properties = _try_parse_mapping(_value_from_stream_row(row, "properties", "i.properties"))
@@ -955,8 +1137,10 @@ def parse_incidents_from_lake_stream(
         body_text = _normalize_scalar(
             parsed_payload.get("body_selectolax_cleaned") or parsed_payload.get("body")
         )
-        html_text: Dict[str, Any] = {"tag_counts": {}, "tree_stats": {}, "structure_fingerprint": ""}
-        css_text: Dict[str, Any] = {"style_features": {}}
+        html_text, css_text = _lake_html_css_structures_from_parsed_payload(
+            parsed_payload,
+            sample_id=external_id or None,
+        )
 
         attachments_raw = parsed_payload.get("attachments")
         attachment_metadata: List[Dict[str, Any]] = (

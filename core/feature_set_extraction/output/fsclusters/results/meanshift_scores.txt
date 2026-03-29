@@ -17,3 +17,16 @@ FS4 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0
 FS5 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2432, n=3000, bandwidth=1.2771528850902918
 FS6 | quantile=0.025 | n_components=100000 | silhouette=0.1527, H=0.4164, C=0.6586, V=0.5102, clusters=8, noise=0, coverage_ground_truth=0.2446, n=3000, bandwidth=0.7422253458076239
 FS7 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.2149, n=3000, bandwidth=1.2248778478233244
+
+================================================================================
+Mean Shift Run - 2026-03-26 15:19:00
+Parameters: quantile_values=[0.025], n_samples=3000, max_tfidf_features=5000, n_components_values=[100000], remove_outliers=True, outlier_contamination=0.05
+================================================================================
+
+FS1 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.9518, n=3000, bandwidth=1.1501472929509962
+FS2 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.9606, n=3000, bandwidth=1.1471073651121928
+FS3 | quantile=0.025 | n_components=100000 | silhouette=0.9749, H=0.4936, C=0.8473, V=0.6238, clusters=89, noise=0, coverage_ground_truth=0.9579, n=3000, bandwidth=0.04731540834346229
+FS4 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.9484, n=3000, bandwidth=1.150920297484205
+FS5 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.9742, n=3000, bandwidth=1.1578410681665325
+FS6 | quantile=0.025 | n_components=100000 | silhouette=0.2806, H=0.6092, C=0.6803, V=0.6428, clusters=57, noise=0, coverage_ground_truth=0.9613, n=3000, bandwidth=0.5130486797299444
+FS7 | quantile=0.025 | n_components=100000 | silhouette=-1.0000, H=0.0000, C=1.0000, V=0.0000, clusters=1, noise=0, coverage_ground_truth=0.9681, n=3000, bandwidth=1.095913602484497

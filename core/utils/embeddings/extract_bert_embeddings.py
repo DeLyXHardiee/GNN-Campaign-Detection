@@ -27,11 +27,16 @@ import sys
 from pathlib import Path
 
 import torch
+from torch_geometric.data import HeteroData
+from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 
 from graph.feature_projection import SCALAR_COUNT, HTML_CSS_LEN, BOOL_ATTR_COUNT, AUTH_ONEHOT_DIM
 
 SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
 _EMAIL_NODE_TYPE = "email"
+_GRAPH_EXTS = {".pt", ".pth"}
+
+torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 
 
 def _infer_text_dims(total_dim: int) -> tuple[int, int]:
@@ -53,7 +58,12 @@ def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[flo
     Layout in email.x: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs(7), auth_onehot(18)].
     Returns (subj_vecs, body_vecs, subj_dim, body_dim).
     """
-    graph = torch.load(str(graph_path), weights_only=False)
+    resolved = Path(graph_path).expanduser().resolve()
+    if resolved.suffix.lower() not in _GRAPH_EXTS:
+        raise ValueError(f"Unsupported graph extension: {resolved}")
+    graph = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        str(resolved), map_location="cpu", weights_only=True
+    )
     if _EMAIL_NODE_TYPE not in getattr(graph, "node_types", []):
         return [], [], 0, 0
     store = graph[_EMAIL_NODE_TYPE]

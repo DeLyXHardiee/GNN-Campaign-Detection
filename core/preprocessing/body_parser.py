@@ -179,8 +179,16 @@ def extract_body_without_headers(raw_bytes: bytes) -> str:
     return body_text
 
 
+def extract_css_text_from_html(html_text: str) -> str:
+    """Extract CSS from ``<style>`` blocks and inline ``style`` attributes in HTML."""
+    if not html_text or not isinstance(html_text, str):
+        return ""
+    return _extract_css_from_html(html_text)
+
+
 __all__ = [
     "extract_body_html_css_without_headers",
     "extract_body_and_html_without_headers",
     "extract_body_without_headers",
+    "extract_css_text_from_html",
 ]
