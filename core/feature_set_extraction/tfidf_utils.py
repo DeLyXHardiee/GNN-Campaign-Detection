@@ -1,17 +1,13 @@
 import os
 import json
-try:
-    import joblib
-    _HAS_JOBLIB = True
-except Exception:
-    import pickle
-    _HAS_JOBLIB = False
+import joblib
+from typing import Optional
 
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-def build_vectorizer(texts, max_features=None, stop_words='english', ngram_range=(1, 2)):
+def build_vectorizer(texts, max_features=None, stop_words: Optional[str] = 'english', ngram_range=(1, 2)):
     """Fit and return a TfidfVectorizer with sensible defaults.
 
     `ngram_range` can be overridden by callers. For subject IDF CSVs we
@@ -35,20 +31,12 @@ def transform_texts(vectorizer, texts):
 def save_vectorizer(path, vectorizer):
     os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
     tmp = path + '.tmp'
-    if _HAS_JOBLIB:
-        joblib.dump(vectorizer, tmp)
-    else:
-        with open(tmp, 'wb') as f:
-            pickle.dump(vectorizer, f)
+    joblib.dump(vectorizer, tmp)
     os.replace(tmp, path)
 
 
 def load_vectorizer(path):
-    if _HAS_JOBLIB:
-        return joblib.load(path)
-    else:
-        with open(path, 'rb') as f:
-            return pickle.load(f)
+    return joblib.load(path)
 
 
 def save_idf_csv(path, vectorizer):
