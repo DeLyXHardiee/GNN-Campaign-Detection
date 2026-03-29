@@ -239,9 +239,9 @@ def plot_coverage_and_noise_fraction(
             label="ground-truth coverage",
         )
 
-    if total_items is not None and "n_noise" in df.columns:
-        noise_frac = df["n_noise"] / max(1, total_items)
-        ax.plot(df[x], noise_frac, linewidth=2, label="noise fraction (ground truth)")
+    if "n_noise" in df.columns and "n_embeddings" in df.columns:
+        noise_frac = df["n_noise"] / df["n_embeddings"].clip(lower=1)
+        ax.plot(df[x], noise_frac, linewidth=2, label="noise fraction")
 
     ax.set_xlabel(x)
     ax.set_ylabel("ground-truth coverage / noise fraction")
@@ -488,8 +488,8 @@ def plot_meanshift_metrics_vs_epoch_at_quantile(
             linewidth=2,
             label="ground-truth coverage",
         )
-    if total_emails is not None and "n_noise" in df.columns:
-        noise_frac = df["n_noise"] / max(1, total_emails)
+    if "n_noise" in df.columns and "n_embeddings" in df.columns:
+        noise_frac = df["n_noise"] / df["n_embeddings"].clip(lower=1)
         ax2.plot(df["epoch"], noise_frac, linewidth=2, label="noise fraction")
     ax2.set_xlabel("epoch")
     ax2.set_ylabel("ground-truth coverage / noise fraction")
@@ -573,8 +573,8 @@ def plot_dbscan_metrics_vs_epoch_at_epsilon(
             linewidth=2,
             label="ground-truth coverage",
         )
-    if total_emails is not None and "n_noise" in df.columns:
-        noise_frac = df["n_noise"] / max(1, total_emails)
+    if "n_noise" in df.columns and "n_embeddings" in df.columns:
+        noise_frac = df["n_noise"] / df["n_embeddings"].clip(lower=1)
         ax2.plot(df["epoch"], noise_frac, linewidth=2, label="noise fraction")
     ax2.set_xlabel("epoch")
     ax2.set_ylabel("ground-truth coverage / noise fraction")

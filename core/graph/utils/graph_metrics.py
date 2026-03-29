@@ -13,6 +13,29 @@ from collections import Counter, deque
 import json
 import os
 from datetime import datetime
+from pathlib import Path
+
+_GRAPH_EXTS = {".pt", ".pth"}
+
+
+def _safe_load_graph(graph_path: str):
+    import torch
+    from torch_geometric.data import HeteroData
+    from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
+
+    resolved = Path(graph_path).expanduser().resolve()
+    if resolved.suffix.lower() not in _GRAPH_EXTS:
+        raise ValueError(f"Unsupported graph extension: {resolved}")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Graph file not found: {resolved}")
+
+    torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
+    graph = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        str(resolved), map_location="cpu", weights_only=True
+    )
+    if not isinstance(graph, HeteroData):
+        raise TypeError(f"Expected HeteroData in {resolved}, got {type(graph)}")
+    return graph
 
 
 def load_graph_metadata(meta_path: str) -> Dict[str, Any]:
@@ -29,9 +52,7 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
     Returns None if the graph is empty or cannot be loaded.
     """
     try:
-        import torch
-
-        graph = torch.load(graph_path, weights_only=False)
+        graph = _safe_load_graph(graph_path)
 
         node_types = list(getattr(graph, "node_types", []))
         if not node_types:
@@ -203,8 +224,7 @@ def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, in
 
 def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
     try:
-        import torch
-        graph = torch.load(graph_path, weights_only=False)
+        graph = _safe_load_graph(graph_path)
         receiver_strings = metadata.get("node_maps", {}).get("receiver", {}).get("index_to_string", [])
         if not receiver_strings or ("email", "has_receiver", "receiver") not in getattr(graph, "edge_types", []):
             return []
@@ -220,9 +240,7 @@ def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_
 
 def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
     try:
-        import torch
-        
-        graph = torch.load(graph_path, weights_only=False)
+        graph = _safe_load_graph(graph_path)
         
         url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
         
@@ -266,8 +284,7 @@ def _md_top_list(title: str, pairs: List[Tuple[str, int]], unit: str) -> str:
 
 def get_top_stems_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
     try:
-        import torch
-        graph = torch.load(graph_path, weights_only=False)
+        graph = _safe_load_graph(graph_path)
         stem_strings = metadata.get("node_maps", {}).get("stem", {}).get("index_to_string", [])
         if not stem_strings or ("url", "has_stem", "stem") not in getattr(graph, "edge_types", []):
             return []
@@ -291,10 +308,9 @@ def md_random_node_features_sample(meta_path: str, graph_path: Optional[str] = N
     samples_md = ["## Random Node Feature Samples", ""]
 
     try:
-        import torch
         graph = None
         if graph_path:
-            graph = torch.load(graph_path, weights_only=False)
+            graph = _safe_load_graph(graph_path)
 
         for node_type, shape in feature_shapes.items():
             count = shape[0] if shape else 0
@@ -347,10 +363,9 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     sections.append(_md_top_list("Top URLs", urls, "emails"))
 
     try:
-        import torch
         dom_pairs: List[Tuple[str,int]] = []
         if graph_path:
-            graph = torch.load(graph_path, weights_only=False)
+            graph = _safe_load_graph(graph_path)
             domain_strings = metadata.get("node_maps", {}).get("domain", {}).get("index_to_string", [])
             if domain_strings and ("url", "has_domain", "domain") in getattr(graph, "edge_types", []):
                 idxs = graph["url", "has_domain", "domain"].edge_index[1].tolist()
@@ -372,8 +387,7 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     send_pairs: List[Tuple[str,int]] = []
     if graph_path:
         try:
-            import torch
-            graph = torch.load(graph_path, weights_only=False)
+            graph = _safe_load_graph(graph_path)
             sender_strings = metadata.get("node_maps", {}).get("sender", {}).get("index_to_string", [])
             if sender_strings and ("email", "has_sender", "sender") in getattr(graph, "edge_types", []):
                 idxs = graph["email", "has_sender", "sender"].edge_index[1].tolist()
@@ -395,8 +409,7 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     comp_md_lines = ["## Connected Components", ""]
     if graph_path:
         try:
-            import torch
-            graph = torch.load(graph_path, weights_only=False)
+            graph = _safe_load_graph(graph_path)
 
             node_types = list(graph.node_types)
             inferred_counts: Dict[str, int] = {nt: 0 for nt in node_types}

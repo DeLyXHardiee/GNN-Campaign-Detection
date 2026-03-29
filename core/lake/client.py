@@ -3,12 +3,34 @@
 from __future__ import annotations
 
 import io
+import logging
 import time
 from typing import Any, Iterator
 
 import httpx
 import pyarrow as pa
 import pyarrow.ipc as ipc
+
+_LOG = logging.getLogger(__name__)
+_ERROR_BODY_MAX_LEN = 16_384
+
+
+def _log_error_response_body(response: httpx.Response) -> None:
+    """Log response body on failed status (helps debug 400/500 from the lake gateway)."""
+    if response.is_success:
+        return
+    try:
+        body = response.text
+    except Exception as exc:  # pragma: no cover - defensive
+        body = f"(could not read body: {exc})"
+    if len(body) > _ERROR_BODY_MAX_LEN:
+        body = body[:_ERROR_BODY_MAX_LEN] + "... (truncated)"
+    _LOG.error(
+        "Lake API HTTP %s for %s — response body: %s",
+        response.status_code,
+        response.request.url,
+        body if body else "(empty)",
+    )
 
 
 class LakeAPIClient:
@@ -38,6 +60,7 @@ class LakeAPIClient:
             verify=False,
             **kwargs,
         )
+        _log_error_response_body(r)
         r.raise_for_status()
         return r
 
@@ -50,6 +73,7 @@ class LakeAPIClient:
             verify=False,
             **kwargs,
         )
+        _log_error_response_body(r)
         r.raise_for_status()
         return r
 
@@ -88,6 +112,7 @@ class LakeAPIClient:
             timeout=self._timeout,
             verify=False,
         )
+        _log_error_response_body(r)
         r.raise_for_status()
         reader = ipc.open_stream(io.BytesIO(r.content))
         return reader.read_all()
@@ -101,6 +126,7 @@ class LakeAPIClient:
             timeout=self._timeout,
             verify=False
         )
+        _log_error_response_body(r)
         r.raise_for_status()
         return r.content
 
@@ -132,6 +158,7 @@ class LakeAPIClient:
                     timeout=None,  # streaming — no timeout
                     verify=False,
                 ) as response:
+                    _log_error_response_body(response)
                     response.raise_for_status()
                     buf = io.BytesIO()
                     for chunk in response.iter_bytes():

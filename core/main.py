@@ -386,9 +386,16 @@ def run_preprocessing_lake():
         resolve_project_path(prep_cfg.get("misp_json_path")),
         "preprocessing misp_json_path",
     )
+    start_date = prep_lake_cfg.get("start_date")
+    end_date = prep_lake_cfg.get("end_date")
+
+    timeframe_note = ""
+    if start_date is not None or end_date is not None:
+        timeframe_note = f", timeframe start_date={start_date!r} end_date={end_date!r}"
+
     print(
         "Parsing incidents from lake stream "
-        f"({incidents_table} JOIN {parsed_emails_table})..."
+        f"({incidents_table} JOIN {parsed_emails_table}){timeframe_note}..."
     )
     incidents = parse_incidents_from_lake_stream(
         base_url=base_url,
@@ -397,6 +404,8 @@ def run_preprocessing_lake():
         parsed_emails_table=parsed_emails_table,
         limit=limit,
         allowed_categories=allowed_categories,
+        start_date=start_date,
+        end_date=end_date,
     )
     print(f"Parsed {len(incidents)} incidents from lake stream.")
 
@@ -508,15 +517,15 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-    misp_path = run_preprocessing_lake()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    # misp_path = "preprocessing/output/incidents-20260211-misp.json"
+    #misp_path = run_preprocessing_lake()
+    # create_feature_sets()
+    # run_featureset_clustering()
+    #misp_path = "preprocessing/output/incidents-lake-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
     #run_gnn()
-    #run_gnn_evaluation()
-    #run_gnn_clustering()
-    #run_metric_comparison()
+    run_gnn_evaluation()
+    run_gnn_clustering()
+    run_metric_comparison()
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
