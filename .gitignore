@@ -7,6 +7,7 @@ core/GNN/notebooks/data
 data/*
 core/results
 core/GNN/models
+core/GNN/outputs/*
 core/graph/utils/results
 core/graph/output
 core/feature_set_extraction/output/featuresets/*
@@ -15,6 +16,7 @@ core/GNN/output/runs/*
 core/GNN/gnn_stage_experiment/*
 core/feature_set_extraction/caches/*
 core/outputs/*
+core/data_analysis/*
 core/GNN/notebooks/models
 core/utils/embeddings/output
 core/GNN/outputs/*
@@ -45,3 +47,4 @@ Thumbs.db
 
 # Ignore cursorignore file
 .cursorignore
+.venv311/

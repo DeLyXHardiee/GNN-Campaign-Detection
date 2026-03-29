@@ -300,6 +300,7 @@ def build_graph(
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
+    max_misp_events: Optional[int] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -307,6 +308,9 @@ def build_graph(
 
     if misp_events is None:
         misp_events = _load_misp_json(misp_json_path)
+
+    if max_misp_events is not None and max_misp_events > 0:
+        misp_events = misp_events[:max_misp_events]
 
     graph, metadata = build_hetero_graph_from_misp(
         misp_events,
