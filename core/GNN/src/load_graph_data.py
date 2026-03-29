@@ -7,6 +7,7 @@ from torch_geometric.transforms import ToUndirected
 from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
+_GRAPH_EXTS = {".pt", ".pth"}
 
 def load_imdb(root: str = "data/IMDB"):
     """
@@ -33,10 +34,16 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     When path is None, uses graph.output_dir and MISP basename from pipeline_config.json.
     """
     path = path or _default_hetero_pt_from_pipeline_config()
-    path = str(Path(path).expanduser())
-    data = torch.load(path, map_location="cpu", weights_only=True)
+    resolved = Path(path).expanduser().resolve()
+    if resolved.suffix.lower() not in _GRAPH_EXTS:
+        raise ValueError(f"Unsupported graph extension for {resolved}")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Graph file not found: {resolved}")
+    data = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        str(resolved), map_location="cpu", weights_only=True
+    )
     if not isinstance(data, HeteroData):
-        raise TypeError(f"Expected HeteroData in {path}, got {type(data)}")
+        raise TypeError(f"Expected HeteroData in {resolved}, got {type(data)}")
     # Remove non-tensor node attributes so PyG loaders (e.g. LinkNeighborLoader) do not fail.
     # external_id is a list; get it from the companion .meta.json (email_attrs.external_id) when needed.
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
