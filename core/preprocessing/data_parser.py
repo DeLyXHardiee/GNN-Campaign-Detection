@@ -834,8 +834,8 @@ def _extract_incident_category(
     return analysis_text if analysis_text in {"phishing", "scam"} else ""
 
 
-# Smaller pages + two-stage join (see _iterate_lake_incident_rows) reduce peak memory for large ``parsed`` JSON.
-_DEFAULT_LAKE_PAGE_SIZE = 1000
+# Smaller pages + two-stage join (see _iterate_lake_incident_rows_stream) reduce peak memory for large ``parsed`` JSON.
+_DEFAULT_LAKE_PAGE_SIZE = 5000
 _LAKE_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -894,43 +894,15 @@ def _lake_created_at_filter_sql(start: Any, end: Any) -> str:
     return "\n    AND " + "\n    AND ".join(parts)
 
 
-def _iterate_lake_incident_rows(
-    client: LakeAPIClient,
+def _lake_incident_join_page_sql(
     incidents_table: str,
     parsed_emails_table: str,
-    *,
-    page_size: int = _DEFAULT_LAKE_PAGE_SIZE,
-    sql_limit: Optional[int] = None,
-    start_date: Any = None,
-    end_date: Any = None,
-) -> Iterator[Dict[str, Any]]:
-    """Fetch joined incidents via ``/query`` in stable, bounded batches.
-
-    Memory / IO:
-
-    - Pagination uses a **narrow** join: ``incidents`` × ``(SELECT source_id FROM parsed_emails)``
-      so engines can **column-prune** the heavy ``parsed`` payload until the final join.
-    - Only after ``LIMIT``/``OFFSET`` is applied do we join the full ``parsed_emails`` row for
-      that page, so each request materializes at most ``page_size`` large JSON blobs.
-
-    Ordering is ``i.created_at ASC, i.external_id ASC`` (stable, time-ordered pages).
-
-    ``sql_limit`` caps total rows read from the lake (same role as the old SQL ``LIMIT``), not
-    filtered incident count.
-
-    Optional ``start_date`` / ``end_date`` restrict ``i.created_at`` (see :func:`_lake_created_at_filter_sql`).
-    """
-    created_at_filters = _lake_created_at_filter_sql(start_date, end_date)
-    offset = 0
-    while True:
-        batch = page_size
-        if sql_limit is not None:
-            remaining = sql_limit - offset
-            if remaining <= 0:
-                break
-            batch = min(batch, remaining)
-
-        inner_sql = f"""
+    created_at_filters: str,
+    batch: int,
+    offset: int,
+) -> str:
+    """SQL for one page of the two-stage incidents × parsed_emails join (shared by query and stream paths)."""
+    inner_sql = f"""
 SELECT
     i.external_id,
     i.type,
@@ -951,7 +923,7 @@ ORDER BY i.created_at ASC, i.external_id ASC
 LIMIT {int(batch)} OFFSET {int(offset)}
 """.strip()
 
-        page_sql = f"""
+    return f"""
 SELECT
     b.external_id,
     b.type,
@@ -968,13 +940,102 @@ FROM (
 INNER JOIN {parsed_emails_table} pe ON b.source_id = pe.source_id
 """.strip()
 
-        rows = client.query(page_sql, limit=batch)
-        if not rows:
-            break
+
+def _iterate_lake_incident_rows_query(
+    client: LakeAPIClient,
+    incidents_table: str,
+    parsed_emails_table: str,
+    *,
+    page_size: int = _DEFAULT_LAKE_PAGE_SIZE,
+    sql_limit: Optional[int] = None,
+    start_date: Any = None,
+    end_date: Any = None,
+) -> Iterator[Dict[str, Any]]:
+    """Fetch joined incidents via :meth:`LakeAPIClient.query` (JSON ``/query``) in stable, bounded batches.
+
+    Same pagination and row semantics as :func:`_iterate_lake_incident_rows_stream`; use that path for
+    large results to avoid buffering full pages as JSON.
+    """
+    created_at_filters = _lake_created_at_filter_sql(start_date, end_date)
+    offset = 0
+    while True:
+        batch = page_size
+        if sql_limit is not None:
+            remaining = sql_limit - offset
+            if remaining <= 0:
+                break
+            batch = min(batch, remaining)
+
+        page_sql = _lake_incident_join_page_sql(
+            incidents_table, parsed_emails_table, created_at_filters, batch, offset
+        )
+        # API ``limit`` must not truncate the page; SQL already applies LIMIT/OFFSET.
+        rows = client.query(page_sql, limit=max(batch, 1))
+        n = 0
         for row in rows:
             if isinstance(row, dict):
                 yield row
-        n = len(rows)
+                n += 1
+        if n == 0:
+            break
+        if n < batch:
+            break
+        offset += n
+        if sql_limit is not None and offset >= sql_limit:
+            break
+
+
+def _iterate_lake_incident_rows_stream(
+    client: LakeAPIClient,
+    incidents_table: str,
+    parsed_emails_table: str,
+    *,
+    page_size: int = _DEFAULT_LAKE_PAGE_SIZE,
+    sql_limit: Optional[int] = None,
+    start_date: Any = None,
+    end_date: Any = None,
+) -> Iterator[Dict[str, Any]]:
+    """Fetch joined incidents via :meth:`LakeAPIClient.query_stream` (``/query/stream``) in stable, bounded batches.
+
+    Memory / IO:
+
+    - Pagination uses a **narrow** join: ``incidents`` × ``(SELECT source_id FROM parsed_emails)``
+      so engines can **column-prune** the heavy ``parsed`` payload until the final join.
+    - Only after ``LIMIT``/``OFFSET`` is applied do we join the full ``parsed_emails`` row for
+      that page, so each request materializes at most ``page_size`` large JSON blobs.
+
+    Each page is read as Arrow record batches, converted to the same ``dict`` row shape as the JSON
+    ``/query`` path via ``RecordBatch.to_pylist()``.
+
+    Ordering is ``i.created_at ASC, i.external_id ASC`` (stable, time-ordered pages).
+
+    ``sql_limit`` caps total rows read from the lake (same role as the SQL ``LIMIT`` in the inner query), not
+    filtered incident count.
+
+    Optional ``start_date`` / ``end_date`` restrict ``i.created_at`` (see :func:`_lake_created_at_filter_sql`).
+    """
+    created_at_filters = _lake_created_at_filter_sql(start_date, end_date)
+    offset = 0
+    while True:
+        batch = page_size
+        if sql_limit is not None:
+            remaining = sql_limit - offset
+            if remaining <= 0:
+                break
+            batch = min(batch, remaining)
+
+        page_sql = _lake_incident_join_page_sql(
+            incidents_table, parsed_emails_table, created_at_filters, batch, offset
+        )
+
+        n = 0
+        for arrow_batch in client.query_stream(page_sql):
+            for row in arrow_batch.to_pylist():
+                if isinstance(row, dict):
+                    yield row
+                    n += 1
+        if n == 0:
+            break
         if n < batch:
             break
         offset += n
@@ -1081,37 +1142,19 @@ def _lake_html_css_structures_from_parsed_payload(
     return html_structure, css_structure if css_structure else empty_css
 
 
-def parse_incidents_from_lake_stream(
+def _parse_incidents_from_lake_rows(
+    rows: Iterator[Dict[str, Any]],
     *,
-    base_url: str,
-    api_key: str,
-    incidents_table: str = "intellagent.public.incidents",
-    parsed_emails_table: str = "parsed_emails",
-    limit: int | None = None,
-    allowed_categories: Optional[Collection[str]] = None,
-    start_date: Any = None,
-    end_date: Any = None,
+    limit: int | None,
+    allowed_categories: Optional[Collection[str]],
 ) -> List[Dict[str, Any]]:
-    if not base_url.strip():
-        raise ValueError("base_url must be provided.")
-    if not api_key.strip():
-        raise ValueError("api_key must be provided.")
-
+    """Build incident dicts from lake join rows (shared by query and stream fetchers)."""
     category_allow = _normalize_category_allowlist(allowed_categories) or {"phishing", "scam"}
-    sql_limit = limit if limit is not None and limit > 0 else None
 
-    client = LakeAPIClient(base_url=base_url, api_key=api_key)
     parsed_incidents: List[Dict[str, Any]] = []
     row_index = 0
 
-    for row in _iterate_lake_incident_rows(
-        client,
-        incidents_table=incidents_table,
-        parsed_emails_table=parsed_emails_table,
-        sql_limit=sql_limit,
-        start_date=start_date,
-        end_date=end_date,
-    ):
+    for row in rows:
         row_index += 1
         external_id = _normalize_scalar(_value_from_stream_row(row, "external_id", "i.external_id"))
         properties = _try_parse_mapping(_value_from_stream_row(row, "properties", "i.properties"))
@@ -1232,8 +1275,75 @@ def parse_incidents_from_lake_stream(
     return parsed_incidents
 
 
+def parse_incidents_from_lake_query(
+    *,
+    base_url: str,
+    api_key: str,
+    incidents_table: str = "intellagent.public.incidents",
+    parsed_emails_table: str = "parsed_emails",
+    limit: int | None = None,
+    allowed_categories: Optional[Collection[str]] = None,
+    start_date: Any = None,
+    end_date: Any = None,
+) -> List[Dict[str, Any]]:
+    """Parse incidents using :meth:`LakeAPIClient.query` (JSON). Prefer :func:`parse_incidents_from_lake_stream` for large pulls."""
+    if not base_url.strip():
+        raise ValueError("base_url must be provided.")
+    if not api_key.strip():
+        raise ValueError("api_key must be provided.")
+
+    sql_limit = limit if limit is not None and limit > 0 else None
+    client = LakeAPIClient(base_url=base_url, api_key=api_key)
+    return _parse_incidents_from_lake_rows(
+        _iterate_lake_incident_rows_query(
+            client,
+            incidents_table=incidents_table,
+            parsed_emails_table=parsed_emails_table,
+            sql_limit=sql_limit,
+            start_date=start_date,
+            end_date=end_date,
+        ),
+        limit=limit,
+        allowed_categories=allowed_categories,
+    )
+
+
+def parse_incidents_from_lake_stream(
+    *,
+    base_url: str,
+    api_key: str,
+    incidents_table: str = "intellagent.public.incidents",
+    parsed_emails_table: str = "parsed_emails",
+    limit: int | None = None,
+    allowed_categories: Optional[Collection[str]] = None,
+    start_date: Any = None,
+    end_date: Any = None,
+) -> List[Dict[str, Any]]:
+    """Parse incidents using :meth:`LakeAPIClient.query_stream` (Arrow over ``/query/stream``)."""
+    if not base_url.strip():
+        raise ValueError("base_url must be provided.")
+    if not api_key.strip():
+        raise ValueError("api_key must be provided.")
+
+    sql_limit = limit if limit is not None and limit > 0 else None
+    client = LakeAPIClient(base_url=base_url, api_key=api_key)
+    return _parse_incidents_from_lake_rows(
+        _iterate_lake_incident_rows_stream(
+            client,
+            incidents_table=incidents_table,
+            parsed_emails_table=parsed_emails_table,
+            sql_limit=sql_limit,
+            start_date=start_date,
+            end_date=end_date,
+        ),
+        limit=limit,
+        allowed_categories=allowed_categories,
+    )
+
+
 __all__ = [
     "parse_incidents_with_email_bodies",
+    "parse_incidents_from_lake_query",
     "parse_incidents_from_lake_stream",
     "INCIDENT_FIELDS",
     "HEADER_FIELDS",
