@@ -9,7 +9,7 @@ from config.pipeline_config import (
     gnn_path_layout_from_pipeline,
     resolve_project_path,
 )
-from steps.pipeline_paths import run_dir_for, sanitize_run_id
+from config.run_output_paths import resolve_session_run_output_dir
 
 
 def _effective_runs_parent(
@@ -75,9 +75,13 @@ def resolve_gnn_paths(
     layout: GnnPathLayout = g["path_layout"]
     runs_parent_eff = _effective_runs_parent(runs_parent, layout, project_root=project_root)
 
-    # run_dir
+    # run_dir — unified allocation under runs_parent (see config.run_output_paths)
     if run_dir is None or str(run_dir).strip() == "":
-        run_dir_path = run_dir_for(runs_parent_eff, sanitize_run_id(str(g["run_id"]))).resolve()
+        run_dir_path = resolve_session_run_output_dir(
+            cfg,
+            project_root=project_root,
+            runs_root=runs_parent_eff,
+        ).resolve()
         run_dir_str = str(run_dir_path)
     else:
         run_dir_str = str(Path(run_dir).resolve())

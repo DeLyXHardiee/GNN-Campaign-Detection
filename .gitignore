@@ -1,3 +1,6 @@
+# Unified pipeline run outputs (see pipeline_config output_runs_root)
+output/runs/
+
 # Ignore data files
 *.csv
 *misp.json
