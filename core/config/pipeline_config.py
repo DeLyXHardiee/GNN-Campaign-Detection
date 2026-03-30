@@ -6,9 +6,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+_RUN_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
 
 def _project_root() -> Path:
@@ -30,6 +33,51 @@ def resolve_project_path(path_value: str | None, *, project_root: Path | None = 
         return str(candidate)
     root = project_root or _project_root()
     return str(root / candidate)
+
+
+def sanitize_run_id(run_id: str) -> str:
+    """
+    ``run_id`` from config: safe folder basename before allocation suffixes like `` (1)``.
+    """
+    s = (run_id or "").strip()
+    if not s:
+        raise ValueError(
+            "Set 'run_id' in pipeline_config.json to a unique experiment name "
+            "(e.g. 'sage_email_v1'). All stages read/write under <output_runs_root>/<run_id>/."
+        )
+    if not _RUN_ID_RE.match(s):
+        raise ValueError(
+            f"Invalid run_id {s!r}: use only letters, digits, '.', '_', '-' "
+            "(max 128 chars, must start with a letter or digit)."
+        )
+    return s
+
+
+def run_dir_for(runs_parent: str | Path, run_folder_name: str) -> Path:
+    """Join ``runs_parent`` with a run directory name (logical or allocated, e.g. ``my_run (1)``)."""
+    return Path(runs_parent).expanduser() / run_folder_name
+
+
+def output_runs_parent_from_pipeline(
+    cfg: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> str:
+    """
+    Parent directory for all runs: top-level ``output_runs_root`` if set, else ``gnn.runs_parent``.
+    """
+    top = cfg.get("output_runs_root")
+    if top is not None and str(top).strip():
+        resolved = resolve_project_path(str(top).strip(), project_root=project_root)
+        if not resolved:
+            raise ValueError("pipeline_config output_runs_root resolved to an empty path.")
+        return resolved
+    gnn = cfg.get("gnn") or {}
+    runs_raw = gnn.get("runs_parent") or "core/outputs"
+    resolved = resolve_project_path(str(runs_raw), project_root=project_root)
+    if not resolved:
+        raise ValueError("pipeline_config gnn.runs_parent resolved to an empty path.")
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -56,10 +104,7 @@ def gnn_path_layout_from_pipeline(
     project_root: Path | None = None,
 ) -> GnnPathLayout:
     gnn = cfg.get("gnn") or {}
-    runs_raw = gnn.get("runs_parent") or "core/outputs"
-    runs_resolved = resolve_project_path(str(runs_raw), project_root=project_root)
-    if not runs_resolved:
-        raise ValueError("pipeline_config gnn.runs_parent resolved to an empty path.")
+    runs_resolved = output_runs_parent_from_pipeline(cfg, project_root=project_root)
 
     def _s(key: str, default: str) -> str:
         v = gnn.get(key)

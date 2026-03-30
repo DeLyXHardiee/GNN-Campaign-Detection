@@ -5,9 +5,9 @@ All filesystem paths come from ``pipeline_config.json`` at the repo root
 (``gnn`` block, ``graph`` / ``datasets`` for the hetero graph, etc.). Optional
 overrides below only apply when non-empty.
 
-One experiment folder per ``run_id``:
+One experiment folder per resolved run (see ``output_runs_root`` / session allocation in ``config.run_output_paths``):
 
-  <gnn.runs_parent>/<run_id>/
+  <output_runs_root>/<run_id or ``run_id (1)`` …>/
     <gnn.models_subdir>/
     <gnn.training_config_json>, <gnn.metrics_csv>, <gnn.run_stage_result_json>
     <gnn.eval_auroc_ap_subdir>/, <gnn.eval_recall_at_k_subdir>/
@@ -26,7 +26,12 @@ for _p in (_CORE_ROOT, _GNN_ROOT):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from config.pipeline_config import load_pipeline_config, resolve_project_path  # noqa: E402
+from config.pipeline_config import (  # noqa: E402
+    load_pipeline_config,
+    output_runs_parent_from_pipeline,
+    resolve_project_path,
+)
+from config.run_output_paths import resolve_session_run_output_dir  # noqa: E402
 from steps.cluster_stage import run_clustering_stage  # noqa: E402
 from steps.clustering_plot_stage import run_clustering_plot_stage  # noqa: E402
 from steps.eval_auroc_ap_stage import run_auroc_ap_stage  # noqa: E402
@@ -60,11 +65,16 @@ def main() -> None:
     clustering_cfg = clustering_root["config"]
     clustering_selection_cfg = clustering_root.get("selection", {})
 
-    run_dir = RUN_DIR.strip()
+    run_dir = run_dir_arg or ""
     if not run_dir:
-        run_dir = str(run_dir_for(RUNS_PARENT, sanitize_run_id(cfg["run_id"])).resolve())
+        run_dir = str(
+            resolve_session_run_output_dir(
+                cfg,
+                runs_root=output_runs_parent_from_pipeline(cfg),
+            ).resolve()
+        )
 
-    checkpoint_path = CHECKPOINT_PATH.strip()
+    checkpoint_path = (checkpoint_arg or "").strip()
     if run_dir and not checkpoint_path:
         checkpoint_path = str(Path(run_dir) / "models" / training_cfg["model_save_name"])
 

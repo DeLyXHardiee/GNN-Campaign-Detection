@@ -9,7 +9,6 @@ preprocessing to `feature_set_extraction.cluster_comparison.clusteringCommonFunc
 
 import json
 import os
-from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -23,11 +22,13 @@ from clustering.clusteringMetrics import (
     run_hdbscan_analysis,
     run_meanshift_analysis,
 )
+from config.pipeline_config import load_pipeline_config, output_runs_parent_from_pipeline
+from config.run_output_paths import resolve_session_run_output_dir
+
 from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
     preprocess_for_clustering,
     record_cluster_id,
     remove_outliers_from_matrix,
-    save_clusters_to_json,
 )
 
 # ---------------------------------------------------------------------------
@@ -43,8 +44,8 @@ def _featuresets_dir() -> Path:
     return _PACKAGE_DIR / "output" / "featuresets"
 
 
-def _results_dir() -> Path:
-    d = _PACKAGE_DIR / "output" / "fsclusters" / "results"
+def _results_dir(run_output_dir: Path) -> Path:
+    d = run_output_dir / "featureset_clustering" / "results"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -116,16 +117,21 @@ def run_featureset_clustering(
     remove_outliers: bool = True,
     outlier_contamination: float = 0.05,
     embeddings_output_dir: str | os.PathLike | None = None,
+    run_output_dir: str | os.PathLike | None = None,
 ) -> None:
     """
     Run DBSCAN, Mean Shift, and (optionally) HDBSCAN grid searches over all feature
     sets, computing clustering metrics via the shared `clustering.clusteringMetrics`
     helpers (including `run_hdbscan_analysis`, aligned with the GNN clustering stage).
 
-    Results are appended to:
-      core/feature_set_extraction/output/fsclusters/results/dbscan_scores.txt
-      core/feature_set_extraction/output/fsclusters/results/meanshift_scores.txt
-      core/feature_set_extraction/output/fsclusters/results/hdbscan_scores.txt
+    Score files are written under
+    ``<run_output_dir>/featureset_clustering/results/`` (see ``output_runs_root`` /
+    :func:`config.run_output_paths.resolve_session_run_output_dir`). When
+    ``run_output_dir`` is omitted, the session run directory is used (same folder as
+    GNN train/eval/clustering when run in one process).
+
+    Per-invocation score files (overwrite each run):
+      dbscan_scores.txt, meanshift_scores.txt, hdbscan_scores.txt
     """
     eps_values = eps_values or [1, 1.5, 2]
     quantile_values = quantile_values or [0.25]
@@ -142,7 +148,16 @@ def run_featureset_clustering(
         f"{len(set(ground_truth_labels.values()))} clusters"
     )
 
-    results_dir = _results_dir()
+    if run_output_dir is None:
+        cfg_fc = load_pipeline_config()
+        run_output_path = resolve_session_run_output_dir(
+            cfg_fc,
+            runs_root=output_runs_parent_from_pipeline(cfg_fc),
+        )
+    else:
+        run_output_path = Path(run_output_dir)
+    print(f"Run output directory: {run_output_path.resolve()}")
+    results_dir = _results_dir(run_output_path)
 
     # ------------------------------------------------------------------ DBSCAN
     print(f"\n{'='*80}")
@@ -153,7 +168,7 @@ def run_featureset_clustering(
     print(f"{'='*80}\n")
 
     dbscan_scores_path = results_dir / "dbscan_scores.txt"
-    with open(dbscan_scores_path, "a", encoding="utf-8") as score_f:
+    with open(dbscan_scores_path, "w", encoding="utf-8") as score_f:
         _write_run_header(
             score_f,
             "DBSCAN",
@@ -230,7 +245,7 @@ def run_featureset_clustering(
     print(f"{'='*80}\n")
 
     meanshift_scores_path = results_dir / "meanshift_scores.txt"
-    with open(meanshift_scores_path, "a", encoding="utf-8") as score_f:
+    with open(meanshift_scores_path, "w", encoding="utf-8") as score_f:
         _write_run_header(
             score_f,
             "Mean Shift",
@@ -315,7 +330,7 @@ def run_featureset_clustering(
         )
         print(f"{'='*80}\n")
 
-        with open(hdbscan_scores_path, "a", encoding="utf-8") as score_f:
+        with open(hdbscan_scores_path, "w", encoding="utf-8") as score_f:
             _write_run_header(
                 score_f,
                 "HDBSCAN",

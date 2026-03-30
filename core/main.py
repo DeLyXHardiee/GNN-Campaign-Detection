@@ -22,7 +22,6 @@ from steps.cluster_stage import run_clustering_stage  # noqa: E402
 from steps.eval_auroc_ap_stage import run_auroc_ap_stage  # noqa: E402
 from steps.eval_recall_at_k_stage import run_recall_at_k_stage  # noqa: E402
 from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths  # noqa: E402
-from steps.pipeline_paths import run_dir_for, sanitize_run_id  # noqa: E402
 from steps.train_stage import run_train_stage  # noqa: E402
 from steps.clustering_plot_stage import run_clustering_plot_stage  # noqa: E402
 
@@ -81,20 +80,14 @@ def run_gnn(
         require_ground_truth=False,
     )
 
-    # Make sure the training output directory matches `run_dir` override (if provided).
-    runs_parent_effective: str | Path = g["path_layout"].runs_parent
-    if run_dir is not None and str(run_dir).strip() != "":
-        expected = sanitize_run_id(str(g["run_id"]))
-        if Path(run_dir_str).name != expected:
-            raise ValueError(
-                f"run_dir override basename {Path(run_dir_str).name!r} must match sanitize_run_id(run_id)={expected!r}"
-            )
-        runs_parent_effective = Path(run_dir_str).parent
+    run_path = Path(run_dir_str)
+    runs_parent_effective = run_path.parent
+    run_folder_name = run_path.name
 
     return run_train_stage(
         graph_path=graph_path_str,
         runs_parent=runs_parent_effective,
-        run_id=g["run_id"],
+        run_id=run_folder_name,
         training_cfg=g["training_cfg"],
         path_layout=g["path_layout"],
         device_pref=device_pref if device_pref is not None else g["device_pref"],
@@ -534,10 +527,10 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #create_feature_sets()
-    run_featureset_clustering()
+    #run_featureset_clustering()
     #misp_path = "preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
-    #run_gnn()
+    # run_graph_creation(misp_path, to_memgraph=False)
+    run_gnn()
     run_gnn_evaluation()
     run_gnn_clustering()
     run_metric_comparison()
