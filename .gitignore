@@ -21,6 +21,7 @@ core/GNN/notebooks/models
 core/utils/embeddings/output
 core/GNN/outputs/*
 core/feature_set_extraction/output/*
+reports/*
 
 # Ignore Python cache files
 __pycache__/
