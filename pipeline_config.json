@@ -12,8 +12,8 @@
   "preprocessing_lake": {
     "incidents_table": "intellagent.public.incidents",
     "parsed_emails_table": "parsed_emails",
-    "start_date": "2026-01-01",
-    "end_date": "2026-03-25",
+    "start_date": "",
+    "end_date": "",
     "limit": 0,
     "category_allowlist": [
       "phishing",
@@ -51,18 +51,25 @@
     },
     "dbscan": {
       "eps_values": [
-        0.5
+        0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
       ],
       "min_samples": 5
     },
     "meanshift": {
       "quantile_values": [
-        0.025
+        0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
       ],
       "n_samples": 3000
+    },
+    "hdbscan": {
+      "enabled": true,
+      "min_cluster_size_values": [
+        2
+      ],
+      "min_samples": null
     }
   },
-  "device": "cpu",
+  "device": "cuda",
   "to_undirected": true,
   "run_id": "default_experiment",
   "gnn": {

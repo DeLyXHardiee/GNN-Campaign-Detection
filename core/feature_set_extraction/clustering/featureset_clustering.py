@@ -20,6 +20,7 @@ import numpy as np
 from clustering.clusteringMetrics import (
     extract_ground_truth_labels,
     run_db_scan_analysis,
+    run_hdbscan_analysis,
     run_meanshift_analysis,
 )
 from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
@@ -105,6 +106,10 @@ def run_featureset_clustering(
     # Mean Shift
     quantile_values: list[float] | None = None,
     n_samples: int = 500,
+    # HDBSCAN
+    hdbscan_enabled: bool = True,
+    min_cluster_size_values: list[int] | None = None,
+    hdbscan_min_samples: int | None = None,
     # shared
     n_components_values: list[int] | None = None,
     max_tfidf_features: int | None = None,
@@ -113,16 +118,19 @@ def run_featureset_clustering(
     embeddings_output_dir: str | os.PathLike | None = None,
 ) -> None:
     """
-    Run DBSCAN and Mean Shift grid searches over all feature sets, computing
-    clustering metrics via the shared `clustering.clusteringMetrics` helpers.
+    Run DBSCAN, Mean Shift, and (optionally) HDBSCAN grid searches over all feature
+    sets, computing clustering metrics via the shared `clustering.clusteringMetrics`
+    helpers (including `run_hdbscan_analysis`, aligned with the GNN clustering stage).
 
     Results are appended to:
       core/feature_set_extraction/output/fsclusters/results/dbscan_scores.txt
       core/feature_set_extraction/output/fsclusters/results/meanshift_scores.txt
+      core/feature_set_extraction/output/fsclusters/results/hdbscan_scores.txt
     """
     eps_values = eps_values or [1, 1.5, 2]
     quantile_values = quantile_values or [0.25]
     n_components_values = n_components_values or [1000]
+    min_cluster_size_values = min_cluster_size_values or [2]
 
     if not ground_truth_json or not Path(ground_truth_json).exists():
         raise FileNotFoundError(
@@ -291,9 +299,100 @@ def run_featureset_clustering(
     print(f"Results saved to: {meanshift_scores_path}")
     print(f"{'='*80}\n")
 
+    # --------------------------------------------------------------- HDBSCAN
+    hdbscan_scores_path = results_dir / "hdbscan_scores.txt"
+    if hdbscan_enabled:
+        print(f"\n{'='*80}")
+        print("HDBSCAN Parameter Grid Search")
+        print(
+            f"Testing {len(min_cluster_size_values)} min_cluster_size values: "
+            f"{min_cluster_size_values}"
+        )
+        print(f"Testing {len(n_components_values)} SVD components: {n_components_values}")
+        print(
+            f"Total configurations: "
+            f"{len(min_cluster_size_values) * len(n_components_values)}"
+        )
+        print(f"{'='*80}\n")
+
+        with open(hdbscan_scores_path, "a", encoding="utf-8") as score_f:
+            _write_run_header(
+                score_f,
+                "HDBSCAN",
+                f"min_cluster_size_values={min_cluster_size_values}, "
+                f"hdbscan_min_samples={hdbscan_min_samples}, "
+                f"max_tfidf_features={max_tfidf_features}, "
+                f"n_components_values={n_components_values}, "
+                f"remove_outliers={remove_outliers}, "
+                f"outlier_contamination={outlier_contamination}",
+            )
+
+            for min_cluster_size in min_cluster_size_values:
+                for n_components in n_components_values:
+                    print(f"\n{'='*80}")
+                    print(
+                        f"min_cluster_size={min_cluster_size}, "
+                        f"n_components={n_components}, "
+                        f"hdbscan_min_samples={hdbscan_min_samples}, "
+                        f"remove_outliers={remove_outliers}"
+                    )
+                    print(f"{'='*80}")
+
+                    for fs_name in FEATURE_SETS:
+                        records, fs_path = _load_records(dataset_base, fs_name)
+                        if records is None:
+                            msg = f"{fs_name}: SKIPPED (file not found: {fs_path})"
+                            print(msg)
+                            score_f.write(msg + "\n")
+                            continue
+
+                        embedding_map = _build_embedding_map(
+                            records,
+                            max_tfidf_features,
+                            n_components,
+                            remove_outliers,
+                            outlier_contamination,
+                            embeddings_output_dir=embeddings_output_dir,
+                        )
+                        if not embedding_map:
+                            msg = f"{fs_name}: SKIPPED (empty embedding map)"
+                            print(msg)
+                            score_f.write(msg + "\n")
+                            continue
+
+                        metrics = run_hdbscan_analysis(
+                            id_to_embedding_map=embedding_map,
+                            ground_truth_labels=ground_truth_labels,
+                            min_cluster_size=min_cluster_size,
+                            min_samples=hdbscan_min_samples,
+                        )
+                        ms_note = metrics.get("min_samples")
+                        metric_text = (
+                            f"{fs_name} | min_cluster_size={min_cluster_size} | "
+                            f"n_components={n_components} | "
+                            f"silhouette={metrics['silhouette']:.4f}, "
+                            f"H={metrics['homogeneity']:.4f}, "
+                            f"C={metrics['completeness']:.4f}, "
+                            f"V={metrics['v_measure']:.4f}, "
+                            f"clusters={metrics['n_clusters']}, "
+                            f"noise={metrics['n_noise']}, "
+                            f"coverage_ground_truth={metrics['coverage_ground_truth']:.4f}, "
+                            f"n={metrics['n_samples']}, "
+                            f"hdbscan_min_samples={ms_note}"
+                        )
+                        print(metric_text)
+                        score_f.write(metric_text + "\n")
+
+        print(f"\n{'='*80}")
+        print("HDBSCAN grid search complete!")
+        print(f"Results saved to: {hdbscan_scores_path}")
+        print(f"{'='*80}\n")
+
     print(f"\n{'='*80}")
     print("All grid searches complete!")
-    print(f"Review homogeneity scores to find optimal parameters:")
+    print("Review homogeneity scores to find optimal parameters:")
     print(f"  - DBSCAN:     {dbscan_scores_path}")
     print(f"  - Mean Shift: {meanshift_scores_path}")
+    if hdbscan_enabled:
+        print(f"  - HDBSCAN:    {hdbscan_scores_path}")
     print(f"{'='*80}")

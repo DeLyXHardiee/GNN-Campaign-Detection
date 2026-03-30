@@ -480,7 +480,7 @@ def create_feature_sets():
 
 def run_featureset_clustering():
     """
-    Run DBSCAN and Mean Shift clustering with grid search over parameters.
+    Run DBSCAN, Mean Shift, and (when enabled) HDBSCAN clustering with grid search.
     Delegates to feature_set_extraction.clustering.featureset_clustering.
     """
     from feature_set_extraction.clustering.featureset_clustering import (
@@ -492,6 +492,7 @@ def run_featureset_clustering():
     clustering_cfg = cfg.get("featureset-clustering", cfg.get("clustering", {}))
     dbscan_cfg = clustering_cfg.get("dbscan", {})
     meanshift_cfg = clustering_cfg.get("meanshift", {})
+    hdbscan_cfg = clustering_cfg.get("hdbscan", {})
     outlier_cfg = clustering_cfg.get("outlier_removal", {})
 
     _run(
@@ -505,6 +506,9 @@ def run_featureset_clustering():
         min_samples=dbscan_cfg.get("min_samples", 5),
         quantile_values=meanshift_cfg.get("quantile_values", [0.25]),
         n_samples=meanshift_cfg.get("n_samples", 500),
+        hdbscan_enabled=hdbscan_cfg.get("enabled", True),
+        min_cluster_size_values=hdbscan_cfg.get("min_cluster_size_values", [2]),
+        hdbscan_min_samples=hdbscan_cfg.get("min_samples"),
         n_components_values=clustering_cfg.get("n_components_values", [1000]),
         max_tfidf_features=clustering_cfg.get("max_tfidf_features"),
         remove_outliers=outlier_cfg.get("enabled", True),
@@ -528,27 +532,15 @@ def run_pipeline():
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
-<<<<<<< HEAD
     #misp_path = run_preprocessing_lake()
-    # create_feature_sets()
-    # run_featureset_clustering()
+    #create_feature_sets()
+    run_featureset_clustering()
     #misp_path = "preprocessing/output/incidents-lake-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
     #run_gnn()
     run_gnn_evaluation()
     run_gnn_clustering()
     run_metric_comparison()
-=======
-    #misp_path = run_preprocessing()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    #misp_path = "core/preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(max_misp_events=100, misp_json_path=misp_path, to_memgraph=False)
-    #run_gnn()
-    #run_gnn_evaluation()
-    run_gnn_clustering()
-    #run_metric_comparison()
->>>>>>> 0110332886d4e15bd5a955db2b3fb5a8a54f6032
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
