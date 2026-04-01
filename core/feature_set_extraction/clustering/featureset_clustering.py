@@ -2,9 +2,11 @@
 Feature-set clustering pipeline.
 
 Coordinates grid-search clustering over all feature-set JSON files produced by
-`feature_set_extraction.feature_set_extraction`.  Delegates clustering and metric
-computation to `clustering.clusteringMetrics` (shared module) and feature-vector
-preprocessing to `feature_set_extraction.cluster_comparison.clusteringCommonFunctions`.
+`feature_set_extraction.feature_set_extraction`.  Embeddings are built once per
+(feature set, ``n_components``) and reused across DBSCAN / Mean Shift / HDBSCAN
+parameter sweeps.  Delegates clustering and metric computation to
+`clustering.clusteringMetrics` (shared module) and feature-vector preprocessing to
+`feature_set_extraction.cluster_comparison.clusteringCommonFunctions`.
 """
 
 import json
@@ -87,6 +89,94 @@ def _build_embedding_map(
     return {eid: np.asarray(vec, dtype=np.float64) for eid, vec in zip(idxs, X)}
 
 
+def _build_featureset_embedding_cache(
+    *,
+    dataset_base: str,
+    n_components_values: list[int],
+    max_tfidf_features: int | None,
+    remove_outliers: bool,
+    outlier_contamination: float,
+    embeddings_output_dir: str | os.PathLike | None,
+) -> tuple[
+    dict[tuple[str, int], dict[str, np.ndarray]],
+    dict[tuple[str, int], str],
+]:
+    """
+    Build each (feature set name, n_components) embedding map once.
+
+    Returns ``(cache, skip_messages)``. Keys present in ``skip_messages`` failed
+    preprocessing or had no data; successful maps live only in ``cache``.
+    """
+    cache: dict[tuple[str, int], dict[str, np.ndarray]] = {}
+    skip_messages: dict[tuple[str, int], str] = {}
+
+    total = len(n_components_values) * len(FEATURE_SETS)
+    done = 0
+    print(
+        f"\nBuilding embedding cache: {len(n_components_values)} n_components × "
+        f"{len(FEATURE_SETS)} feature sets = {total} combinations "
+        f"(shared across all clustering sweeps)\n"
+    )
+
+    for n_components in n_components_values:
+        for fs_name in FEATURE_SETS:
+            done += 1
+            key = (fs_name, n_components)
+            records, fs_path = _load_records(dataset_base, fs_name)
+            if records is None:
+                skip_messages[key] = (
+                    f"{fs_name}: SKIPPED (file not found: {fs_path})"
+                )
+                print(f"  [{done}/{total}] {skip_messages[key]}")
+                continue
+
+            print(
+                f"  [{done}/{total}] {fs_name}, n_components={n_components} "
+                f"(preprocess + optional outlier removal)…"
+            )
+            embedding_map = _build_embedding_map(
+                records,
+                max_tfidf_features,
+                n_components,
+                remove_outliers,
+                outlier_contamination,
+                embeddings_output_dir=embeddings_output_dir,
+            )
+            if not embedding_map:
+                skip_messages[key] = f"{fs_name}: SKIPPED (empty embedding map)"
+                print(f"  [{done}/{total}] {skip_messages[key]}")
+                continue
+
+            cache[key] = embedding_map
+            print(
+                f"  [{done}/{total}] {fs_name}, n_components={n_components} "
+                f"→ cached {len(embedding_map)} embeddings"
+            )
+
+    n_ok = len(cache)
+    n_skip = len(skip_messages)
+    print(
+        f"\nEmbedding cache ready: {n_ok} usable, {n_skip} skipped "
+        f"(total keys {n_ok + n_skip}).\n"
+    )
+    return cache, skip_messages
+
+
+def _embedding_for_sweep(
+    cache: dict[tuple[str, int], dict[str, np.ndarray]],
+    skip_messages: dict[tuple[str, int], str],
+    fs_name: str,
+    n_components: int,
+) -> tuple[dict[str, np.ndarray] | None, str | None]:
+    """Return (embedding_map, None) or (None, message) for score file / print."""
+    key = (fs_name, n_components)
+    if key in cache:
+        return cache[key], None
+    if key in skip_messages:
+        return None, skip_messages[key]
+    return None, f"{fs_name}: SKIPPED (no cache entry for n_components={n_components})"
+
+
 def _write_run_header(score_f, algorithm: str, params: str) -> None:
     score_f.write("\n" + "=" * 80 + "\n")
     score_f.write(f"{algorithm} Run - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -124,6 +214,9 @@ def run_featureset_clustering(
     sets, computing clustering metrics via the shared `clustering.clusteringMetrics`
     helpers (including `run_hdbscan_analysis`, aligned with the GNN clustering stage).
 
+    Preprocessed embeddings are computed once per (feature set, ``n_components``) and
+    reused for every clustering hyperparameter combination.
+
     Score files are written under
     ``<run_output_dir>/featureset_clustering/results/`` (see ``output_runs_root`` /
     :func:`config.run_output_paths.resolve_session_run_output_dir`). When
@@ -159,6 +252,15 @@ def run_featureset_clustering(
     print(f"Run output directory: {run_output_path.resolve()}")
     results_dir = _results_dir(run_output_path)
 
+    embedding_cache, embedding_skip_messages = _build_featureset_embedding_cache(
+        dataset_base=dataset_base,
+        n_components_values=n_components_values,
+        max_tfidf_features=max_tfidf_features,
+        remove_outliers=remove_outliers,
+        outlier_contamination=outlier_contamination,
+        embeddings_output_dir=embeddings_output_dir,
+    )
+
     # ------------------------------------------------------------------ DBSCAN
     print(f"\n{'='*80}")
     print("DBSCAN Parameter Grid Search")
@@ -190,23 +292,17 @@ def run_featureset_clustering(
                 print(f"{'='*80}")
 
                 for fs_name in FEATURE_SETS:
-                    records, fs_path = _load_records(dataset_base, fs_name)
-                    if records is None:
-                        msg = f"{fs_name}: SKIPPED (file not found: {fs_path})"
-                        print(msg)
-                        score_f.write(msg + "\n")
-                        continue
-
-                    embedding_map = _build_embedding_map(
-                        records,
-                        max_tfidf_features,
+                    embedding_map, skip_msg = _embedding_for_sweep(
+                        embedding_cache,
+                        embedding_skip_messages,
+                        fs_name,
                         n_components,
-                        remove_outliers,
-                        outlier_contamination,
-                        embeddings_output_dir=embeddings_output_dir,
                     )
-                    if not embedding_map:
-                        msg = f"{fs_name}: SKIPPED (empty embedding map)"
+                    if embedding_map is None:
+                        msg = skip_msg or (
+                            f"{fs_name}: SKIPPED (no cache entry for "
+                            f"n_components={n_components})"
+                        )
                         print(msg)
                         score_f.write(msg + "\n")
                         continue
@@ -267,23 +363,17 @@ def run_featureset_clustering(
                 print(f"{'='*80}")
 
                 for fs_name in FEATURE_SETS:
-                    records, fs_path = _load_records(dataset_base, fs_name)
-                    if records is None:
-                        msg = f"{fs_name}: SKIPPED (file not found: {fs_path})"
-                        print(msg)
-                        score_f.write(msg + "\n")
-                        continue
-
-                    embedding_map = _build_embedding_map(
-                        records,
-                        max_tfidf_features,
+                    embedding_map, skip_msg = _embedding_for_sweep(
+                        embedding_cache,
+                        embedding_skip_messages,
+                        fs_name,
                         n_components,
-                        remove_outliers,
-                        outlier_contamination,
-                        embeddings_output_dir=embeddings_output_dir,
                     )
-                    if not embedding_map:
-                        msg = f"{fs_name}: SKIPPED (empty embedding map)"
+                    if embedding_map is None:
+                        msg = skip_msg or (
+                            f"{fs_name}: SKIPPED (no cache entry for "
+                            f"n_components={n_components})"
+                        )
                         print(msg)
                         score_f.write(msg + "\n")
                         continue
@@ -354,23 +444,17 @@ def run_featureset_clustering(
                     print(f"{'='*80}")
 
                     for fs_name in FEATURE_SETS:
-                        records, fs_path = _load_records(dataset_base, fs_name)
-                        if records is None:
-                            msg = f"{fs_name}: SKIPPED (file not found: {fs_path})"
-                            print(msg)
-                            score_f.write(msg + "\n")
-                            continue
-
-                        embedding_map = _build_embedding_map(
-                            records,
-                            max_tfidf_features,
+                        embedding_map, skip_msg = _embedding_for_sweep(
+                            embedding_cache,
+                            embedding_skip_messages,
+                            fs_name,
                             n_components,
-                            remove_outliers,
-                            outlier_contamination,
-                            embeddings_output_dir=embeddings_output_dir,
                         )
-                        if not embedding_map:
-                            msg = f"{fs_name}: SKIPPED (empty embedding map)"
+                        if embedding_map is None:
+                            msg = skip_msg or (
+                                f"{fs_name}: SKIPPED (no cache entry for "
+                                f"n_components={n_components})"
+                            )
                             print(msg)
                             score_f.write(msg + "\n")
                             continue
