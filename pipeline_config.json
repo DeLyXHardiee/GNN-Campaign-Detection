@@ -31,6 +31,11 @@
     "output_dir": "core/graph/output",
     "exclude_node_types": [],
     "embeddings_output_dir": null,
+    "email_feature_projection": {
+      "seed": 42,
+      "bert_out_dim": 69,
+      "other_out_dim": 69
+    },
     "memgraph": {
       "enabled": false,
       "uri": "bolt://localhost:7687",
@@ -50,15 +55,15 @@
       "contamination": 0.05
     },
     "dbscan": {
-      "eps_values": [0.5],
+      "eps_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
       "min_samples": 5
     },
     "meanshift": {
-      "quantile_values": [0.5],
+      "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
       "n_samples": 3000
     },
     "hdbscan": {
-      "enabled": false,
+      "enabled": true,
       "min_cluster_size_values": [ 
         2
       ],
@@ -67,7 +72,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "default_experiment",
+  "run_id": "email_bert_down_other_up",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -127,12 +132,12 @@
     "config": {
       "dbscan": {
         "enabled": true,
-        "epsilon_values": [0.5],
+        "epsilon_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         "min_samples": 5
       },
       "meanshift": {
         "enabled": true,
-        "quantile_values": [0.5],
+        "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         "n_samples": 500
       },
       "hdbscan": {

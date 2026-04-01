@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 from config.pipeline_config import (
+    EmailFeatureProjectionSettings,
     graph_build_settings_from_pipeline,
     load_pipeline_config,
     resolve_project_path,
@@ -436,12 +437,14 @@ def run_graph_creation(
     )
     limit_eff = limit if limit is not None and limit > 0 else None
 
+    email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
     graph, graph_path, meta_path = build_graph(
         misp_json_path=path,
         out_dir=settings.output_dir,
         exclude_nodes=settings.exclude_node_types,
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
+        email_feature_projection=email_proj,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -526,10 +529,10 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
-    # run_graph_creation(misp_path, to_memgraph=False)
+    create_feature_sets()
+    run_featureset_clustering()
+    misp_path = "preprocessing/output/incidents-lake-misp.json"
+    run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()
     run_gnn_evaluation()
     run_gnn_clustering()

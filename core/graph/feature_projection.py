@@ -5,9 +5,10 @@ Raw email features are laid out as:
   [scalars (4), SBERT(subject), SBERT(body), html_css (40), bool_attrs (7), auth_onehot (18)]
   = [ts, len_body, n_urls, len_subject, subj_emb, body_emb, html_css, bools, spf/dkim/dmarc one-hot]
 
-BERT embeddings dominate the feature space (e.g. 1024 dims each). This module
-projects BERT down and projects the rest (scalars + html_css + bools + auth_onehot) up,
-then concatenates for a balanced email feature vector.
+BERT embeddings dominate the raw feature space (e.g. 1024 dims each). This module
+projects only the BERT block down to the same width as the structured block (50/50),
+and passes scalars + html_css + bools + auth_onehot through unchanged (no learned
+down-projection on structured attributes).
 
 Usage:
   from graph.feature_projection import EmailFeatureProjection, email_feature_layout
@@ -17,6 +18,7 @@ Usage:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Tuple
 
 from .common import AUTH_ONEHOT_DIM
@@ -28,6 +30,55 @@ BOOL_ATTR_COUNT = 7  # cyrillic_domain, contains_symbols, body_has_tracking_*, e
 
 # Non-BERT feature dim: scalars + html_css + bools + auth_onehot (AUTH_ONEHOT_DIM from common)
 OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM  # 69
+
+# After projection with defaults (both *_out_dim null): BERT -> OTHER_FEATURE_DIM + structured passthrough
+PROJECTED_EMAIL_FEATURE_DIM = 2 * OTHER_FEATURE_DIM
+
+
+@dataclass(frozen=True)
+class ResolvedEmailProjectionDims:
+    """Effective output widths and whether a linear maps the structured block."""
+
+    bert_out: int
+    other_out: int
+    project_other: bool
+
+
+def resolve_email_projection_dims(
+    other_in_dim: int,
+    *,
+    bert_out_dim: int | None,
+    other_out_dim: int | None,
+) -> ResolvedEmailProjectionDims:
+    """
+    Pipeline / CLI resolution for ``bert_out_dim`` and ``other_out_dim``.
+
+    - ``other_out_dim`` None: keep structured features at full width (no linear).
+    - ``other_out_dim`` set: ``Linear(other_in_dim → other_out_dim)``.
+    - ``bert_out_dim`` None: SBERT maps to ``other_out`` so channel counts match (50/50 when both sides use the same width).
+    - ``bert_out_dim`` set: SBERT maps to that width.
+    """
+    if other_out_dim is None:
+        other_eff = other_in_dim
+        project_other = False
+    else:
+        if other_out_dim <= 0:
+            raise ValueError("other_out_dim must be positive when set.")
+        other_eff = other_out_dim
+        project_other = True
+
+    if bert_out_dim is None:
+        bert_eff = other_eff
+    else:
+        if bert_out_dim <= 0:
+            raise ValueError("bert_out_dim must be positive when set.")
+        bert_eff = bert_out_dim
+
+    return ResolvedEmailProjectionDims(
+        bert_out=bert_eff,
+        other_out=other_eff,
+        project_other=project_other,
+    )
 
 
 def email_feature_layout(
@@ -67,10 +118,8 @@ except ImportError:
 
 class EmailFeatureProjection:
     """
-    Projects raw email node features into a balanced space:
-      - BERT part (subject + body embeddings) → linear down to bert_out_dim (default 128)
-      - Other part (scalars + html_css + bools) → linear up to other_out_dim (default 32)
-      - Output = concat(bert_proj, other_proj)
+    SBERT block → linear; structured block → optional linear or passthrough; concat.
+    Defaults (both ``*_out_dim`` unset): BERT to structured width + full structured vector (50/50 channels).
     """
 
     def __init__(
@@ -78,27 +127,37 @@ class EmailFeatureProjection:
         subj_dim: int,
         body_dim: int,
         *,
-        bert_out_dim: int = 128,
-        other_out_dim: int = 32,
         html_css_len: int = HTML_CSS_LEN,
+        bert_out_dim: int | None = None,
+        other_out_dim: int | None = None,
     ):
         if subj_dim < 0 or body_dim < 0:
             raise ValueError("subj_dim and body_dim must be non-negative")
         self.subj_dim = subj_dim
         self.body_dim = body_dim
         self.bert_in_dim = subj_dim + body_dim
-        self.bert_out_dim = bert_out_dim
-        self.other_out_dim = other_out_dim
         self.html_css_len = html_css_len
         self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
 
+        resolved = resolve_email_projection_dims(
+            self.other_in_dim,
+            bert_out_dim=bert_out_dim,
+            other_out_dim=other_out_dim,
+        )
+        self._resolved = resolved
+
         nn = _get_nn()
         if self.bert_in_dim > 0:
-            self.bert_proj = nn.Linear(self.bert_in_dim, bert_out_dim)
+            self.bert_proj = nn.Linear(self.bert_in_dim, resolved.bert_out)
         else:
             self.bert_proj = None
-        self.other_proj = nn.Linear(self.other_in_dim, other_out_dim)
-        self._out_dim = (bert_out_dim if self.bert_in_dim > 0 else 0) + other_out_dim
+        if resolved.project_other:
+            self.other_proj = nn.Linear(self.other_in_dim, resolved.other_out)
+        else:
+            self.other_proj = None
+        self._out_dim = (
+            (resolved.bert_out if self.bert_in_dim > 0 else 0) + resolved.other_out
+        )
 
     @property
     def out_dim(self) -> int:
@@ -119,13 +178,16 @@ class EmailFeatureProjection:
             x[:, start_html:end_html],
             x[:, -trail_len:],
         ]
-        other = torch.cat(other_parts, dim=1)
-        other_proj = self.other_proj(other)
+        other_cat = torch.cat(other_parts, dim=1)
+        if self.other_proj is not None:
+            other_out = self.other_proj(other_cat)
+        else:
+            other_out = other_cat
         if self.bert_proj is not None:
             bert_part = x[:, SCALAR_COUNT : SCALAR_COUNT + self.bert_in_dim]
-            bert_proj = self.bert_proj(bert_part)
-            return torch.cat([bert_proj, other_proj], dim=1)
-        return other_proj
+            bert_out = self.bert_proj(bert_part)
+            return torch.cat([bert_out, other_out], dim=1)
+        return other_out
 
     def __call__(self, x: "torch.Tensor") -> "torch.Tensor":
         return self.forward(x)
@@ -133,8 +195,7 @@ class EmailFeatureProjection:
 
 class EmailFeatureProjectionModule(_ProjectionBase):
     """
-    nn.Module version of EmailFeatureProjection for use in PyTorch models.
-    Use this when the projection should be a trainable part of the model.
+    nn.Module version of EmailFeatureProjection for use in PyTorch graph builds.
     """
 
     def __init__(
@@ -142,9 +203,9 @@ class EmailFeatureProjectionModule(_ProjectionBase):
         subj_dim: int,
         body_dim: int,
         *,
-        bert_out_dim: int = 128,
-        other_out_dim: int = 32,
         html_css_len: int = HTML_CSS_LEN,
+        bert_out_dim: int | None = None,
+        other_out_dim: int | None = None,
     ):
         super().__init__()
         if subj_dim < 0 or body_dim < 0:
@@ -152,18 +213,28 @@ class EmailFeatureProjectionModule(_ProjectionBase):
         self.subj_dim = subj_dim
         self.body_dim = body_dim
         self.bert_in_dim = subj_dim + body_dim
-        self.bert_out_dim = bert_out_dim
-        self.other_out_dim = other_out_dim
         self.html_css_len = html_css_len
         self.other_in_dim = SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
 
+        resolved = resolve_email_projection_dims(
+            self.other_in_dim,
+            bert_out_dim=bert_out_dim,
+            other_out_dim=other_out_dim,
+        )
+        self._resolved = resolved
+
         nn = _get_nn()
         if self.bert_in_dim > 0:
-            self.bert_proj = nn.Linear(self.bert_in_dim, bert_out_dim)
+            self.bert_proj = nn.Linear(self.bert_in_dim, resolved.bert_out)
         else:
             self.bert_proj = None
-        self.other_proj = nn.Linear(self.other_in_dim, other_out_dim)
-        self._out_dim = (bert_out_dim if self.bert_in_dim > 0 else 0) + other_out_dim
+        if resolved.project_other:
+            self.other_proj = nn.Linear(self.other_in_dim, resolved.other_out)
+        else:
+            self.other_proj = None
+        self._out_dim = (
+            (resolved.bert_out if self.bert_in_dim > 0 else 0) + resolved.other_out
+        )
 
     @property
     def out_dim(self) -> int:
@@ -181,13 +252,16 @@ class EmailFeatureProjectionModule(_ProjectionBase):
             x[:, start_html:end_html],
             x[:, -trail_len:],
         ]
-        other = torch.cat(other_parts, dim=1)
-        other_proj = self.other_proj(other)
+        other_cat = torch.cat(other_parts, dim=1)
+        if self.other_proj is not None:
+            other_out = self.other_proj(other_cat)
+        else:
+            other_out = other_cat
         if self.bert_proj is not None:
             bert_part = x[:, SCALAR_COUNT : SCALAR_COUNT + self.bert_in_dim]
-            bert_proj = self.bert_proj(bert_part)
-            return torch.cat([bert_proj, other_proj], dim=1)
-        return other_proj
+            bert_out = self.bert_proj(bert_part)
+            return torch.cat([bert_out, other_out], dim=1)
+        return other_out
 
 
 __all__ = [
@@ -196,6 +270,9 @@ __all__ = [
     "BOOL_ATTR_COUNT",
     "AUTH_ONEHOT_DIM",
     "OTHER_FEATURE_DIM",
+    "PROJECTED_EMAIL_FEATURE_DIM",
+    "ResolvedEmailProjectionDims",
+    "resolve_email_projection_dims",
     "email_feature_layout",
     "EmailFeatureProjection",
     "EmailFeatureProjectionModule",

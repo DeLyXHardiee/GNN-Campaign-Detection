@@ -19,7 +19,7 @@ Capabilities:
 - URLs are parsed into domain and stem components for better deduplication.
 - Email addresses are normalized (lowercase, angle brackets removed) and connected to their 
     domain nodes (email_domain) to increase graph connectivity.
-- Email features include normalized scalars (ts_minmax, len_body_z, n_urls_z, len_subject_z) and optional SBERT embeddings.
+- Email features include normalized scalars (ts_minmax, len_body_z, n_urls_z, len_subject_z) and optional SBERT embeddings (projected to match structured width for a 50/50 concat).
 - Creates simple numeric features for nodes (lengths) to keep tensors valid.
 - Saves both the graph (.pt via torch.save) and a companion metadata JSON mapping node indices to original strings.
 """
@@ -33,6 +33,8 @@ from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.pipeline_config import EmailFeatureProjectionSettings
+
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir
@@ -45,9 +47,6 @@ from .feature_projection import (
     EmailFeatureProjectionModule,
 )
 from preprocessing.utils.defang import sanitize_for_json
-
-# Fixed seed for email feature projection so graph builds are reproducible
-_EMAIL_PROJECTION_SEED = 42
 
 
 if TYPE_CHECKING:  
@@ -126,7 +125,13 @@ def _infer_email_embedding_dims(total_dim: int) -> Tuple[int, int]:
     return half, half
 
 
-def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
+def _set_node_features_from_ir(
+    data: Any,
+    ir: Any,
+    schema: GraphSchema,
+    *,
+    email_projection: EmailFeatureProjectionSettings,
+) -> None:
     _ensure_heterodata()
     torch_lib = _ensure_torch()
     N = schema.nodes
@@ -139,13 +144,12 @@ def _set_node_features_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
         raw = torch_lib.tensor(email_x, dtype=torch_lib.float)
         total_dim = raw.size(1)
         subj_dim, body_dim = _infer_email_embedding_dims(total_dim)
-        # Apply balanced projection so BERT is down-projected and other features up-projected
-        torch_lib.manual_seed(_EMAIL_PROJECTION_SEED)
+        torch_lib.manual_seed(email_projection.seed)
         proj = EmailFeatureProjectionModule(
             subj_dim=subj_dim,
             body_dim=body_dim,
-            bert_out_dim=128,
-            other_out_dim=32,
+            bert_out_dim=email_projection.bert_out_dim,
+            other_out_dim=email_projection.other_out_dim,
         )
         data[N["email"].pyg].x = proj(raw)
     else:
@@ -223,6 +227,7 @@ def build_hetero_graph_from_misp(
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
+    email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -261,7 +266,8 @@ def build_hetero_graph_from_misp(
     HData = _ensure_heterodata()
     data = HData()
 
-    _set_node_features_from_ir(data, ir, schema)
+    proj_settings = email_feature_projection or EmailFeatureProjectionSettings()
+    _set_node_features_from_ir(data, ir, schema, email_projection=proj_settings)
     _set_edges_from_ir(data, ir, schema)
 
     data = normalize_graph(data)
@@ -301,6 +307,7 @@ def build_graph(
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
+    email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -317,6 +324,7 @@ def build_graph(
         schema=schema,
         exclude_nodes=exclude_nodes,
         embeddings_output_dir=embeddings_output_dir,
+        email_feature_projection=email_feature_projection,
     )
 
     if out_name is None:
