@@ -46,9 +46,9 @@
     }
   },
   "featureset-clustering": {
-    "max_tfidf_features": 5000,
+    "max_tfidf_features": 500,
     "n_components_values": [
-      100000
+      500
     ],
     "outlier_removal": {
       "enabled": false,
@@ -72,7 +72,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "email_bert_down_other_up",
+  "run_id": "test",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
