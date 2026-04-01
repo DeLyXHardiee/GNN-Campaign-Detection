@@ -134,6 +134,22 @@ class MemgraphSettings:
 
 
 @dataclass(frozen=True)
+class EmailFeatureProjectionSettings:
+    """
+    Email node SBERT / structured feature projection (see ``graph.feature_projection``).
+
+    - ``other_out_dim`` null: structured block is not passed through a linear layer (full width).
+    - ``other_out_dim`` set: ``Linear(other_in_dim → other_out_dim)`` on the structured block.
+    - ``bert_out_dim`` null: SBERT maps to the same width as the structured *output* (50/50 by channel count when both sides match).
+    - ``bert_out_dim`` set: SBERT maps to that width explicitly.
+    """
+
+    seed: int = 42
+    bert_out_dim: int | None = None
+    other_out_dim: int | None = None
+
+
+@dataclass(frozen=True)
 class GraphBuildSettings:
     """Resolved paths and options for MISP → PyG / Memgraph graph build."""
 
@@ -143,6 +159,7 @@ class GraphBuildSettings:
     embeddings_output_dir: str | None
     memgraph: MemgraphSettings
     max_misp_events: int | None = None
+    email_feature_projection: EmailFeatureProjectionSettings | None = None
 
 
 def graph_build_settings_from_pipeline(
@@ -189,6 +206,43 @@ def graph_build_settings_from_pipeline(
         create_indexes=bool(mg.get("create_indexes", True)),
     )
 
+    proj_raw = graph_cfg.get("email_feature_projection")
+    email_feature_projection: EmailFeatureProjectionSettings | None = None
+    if proj_raw is not None:
+        if not isinstance(proj_raw, dict):
+            raise TypeError("graph.email_feature_projection must be an object or omitted.")
+        seed_raw = proj_raw.get("seed", 42)
+        try:
+            proj_seed = int(seed_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                "graph.email_feature_projection.seed must be an integer."
+            ) from e
+
+        def _opt_pos_int(key: str) -> int | None:
+            v = proj_raw.get(key)
+            if v is None or v == "":
+                return None
+            if isinstance(v, bool):
+                raise ValueError(f"graph.email_feature_projection.{key} must be a positive integer or null.")
+            try:
+                iv = int(v)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"graph.email_feature_projection.{key} must be a positive integer or null."
+                ) from e
+            if iv <= 0:
+                raise ValueError(
+                    f"graph.email_feature_projection.{key} must be positive when set."
+                )
+            return iv
+
+        email_feature_projection = EmailFeatureProjectionSettings(
+            seed=proj_seed,
+            bert_out_dim=_opt_pos_int("bert_out_dim"),
+            other_out_dim=_opt_pos_int("other_out_dim"),
+        )
+
     raw_max = graph_cfg.get("max_misp_events")
     max_misp_events: int | None = None
     if raw_max is not None and not isinstance(raw_max, bool):
@@ -211,6 +265,7 @@ def graph_build_settings_from_pipeline(
         embeddings_output_dir=embeddings_output_dir,
         memgraph=memgraph,
         max_misp_events=max_misp_events,
+        email_feature_projection=email_feature_projection,
     )
 
 
