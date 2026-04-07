@@ -175,6 +175,12 @@ def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
     """
     cfg = load_pipeline_config(project_root=project_root)
+    graph_cfg = cfg.get("graph") or {}
+    raw_override = graph_cfg.get("graph_pt_path_override")
+    if raw_override is not None and str(raw_override).strip():
+        resolved = resolve_project_path(str(raw_override), project_root=project_root)
+        if resolved:
+            return resolved
     s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
     base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
     return os.path.join(s.output_dir, f"{base}_hetero.pt")

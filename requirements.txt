@@ -5,6 +5,8 @@ torch_scatter
 pandas
 numpy
 networkx
+python-igraph
+leidenalg
 scikit-learn
 sentence-transformers
 neo4j

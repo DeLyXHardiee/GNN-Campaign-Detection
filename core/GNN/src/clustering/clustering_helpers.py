@@ -1,4 +1,5 @@
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -23,6 +24,44 @@ from core.clustering.clusteringMetrics import (  # noqa: E402
     run_hdbscan_analysis,
     run_meanshift_analysis,
 )
+
+
+def _l2_normalize_vector(vec: np.ndarray) -> np.ndarray:
+    """Unit L2 norm; if norm is zero, return the vector unchanged."""
+    v = np.asarray(vec, dtype=np.float64).reshape(-1)
+    n = float(np.linalg.norm(v))
+    if n <= 0.0:
+        return v.copy()
+    return (v / n).astype(np.float64)
+
+
+def build_hybrid_embedding_map(
+    id_to_gnn: dict[str, np.ndarray],
+    id_to_raw: dict[str, np.ndarray],
+    *,
+    weight_raw: float,
+    weight_gnn: float,
+) -> dict[str, np.ndarray]:
+    """
+    Per email: L2-normalize raw and GNN vectors, scale by weights, concatenate,
+    then L2-normalize the concatenated vector.
+    """
+    wr = float(weight_raw)
+    wg = float(weight_gnn)
+    if id_to_gnn.keys() != id_to_raw.keys():
+        missing_g = set(id_to_raw) - set(id_to_gnn)
+        missing_r = set(id_to_gnn) - set(id_to_raw)
+        raise ValueError(
+            "Hybrid embeddings require identical key sets for GNN and raw maps; "
+            f"missing_from_gnn={len(missing_g)} missing_from_raw={len(missing_r)}"
+        )
+    out: dict[str, np.ndarray] = {}
+    for eid in id_to_gnn:
+        r_hat = _l2_normalize_vector(id_to_raw[eid])
+        g_hat = _l2_normalize_vector(id_to_gnn[eid])
+        concat = np.concatenate([wr * r_hat, wg * g_hat], axis=0)
+        out[eid] = _l2_normalize_vector(concat)
+    return out
 
 @torch.no_grad()
 def extract_email_embeddings(model, data, device, external_ids):
@@ -56,6 +95,85 @@ def extract_email_embeddings(model, data, device, external_ids):
         str(eid.item() if isinstance(eid, np.generic) else eid): email_vecs[i].copy()
         for i, eid in enumerate(external_ids)
     }
+
+
+def extract_raw_email_embeddings(data, external_ids):
+    """
+    Return raw graph email-node features keyed by email ``external_id``.
+
+    This is the pre-training baseline representation directly from the graph
+    (`data["email"].x`) with no encoder forward pass.
+    """
+    if "email" not in data.node_types:
+        raise ValueError("Node type 'email' not found in graph.")
+    email_x = data["email"].x
+    if email_x is None:
+        raise ValueError("data['email'].x is missing; cannot build raw embedding baseline.")
+    if not isinstance(email_x, torch.Tensor):
+        raise ValueError(f"Expected tensor data['email'].x, got {type(email_x).__name__}.")
+
+    email_vecs = email_x.detach().cpu().numpy()
+    external_ids = list(external_ids)
+    if len(external_ids) != len(email_vecs):
+        raise ValueError(
+            f"Email external_id length ({len(external_ids)}) does not match number of raw email rows ({len(email_vecs)})."
+        )
+    if len(set(map(str, external_ids))) != len(external_ids):
+        raise ValueError("Duplicate `external_id` values found on email nodes; cannot build a unique id->embedding map.")
+
+    return {
+        str(eid.item() if isinstance(eid, np.generic) else eid): email_vecs[i].copy()
+        for i, eid in enumerate(external_ids)
+    }
+
+
+def load_transformer_subject_body_embeddings_from_cache(
+    *,
+    embeddings_json_path: str | Path,
+) -> dict[str, np.ndarray]:
+    """
+    Load untouched transformer subject+body embeddings from embeddings cache JSON.
+
+    Expected cache format is utils.embeddings/embedder.py output:
+      {
+        "by_key": {
+          "<external_id>": {"subj": [...], "body": [...], ...},
+          ...
+        },
+        ...
+      }
+
+    Returns id->concat(subject, body) without any projection/reduction.
+    """
+    p = Path(embeddings_json_path).expanduser().resolve()
+    if not p.exists():
+        raise FileNotFoundError(f"Transformer embeddings cache not found: {p}")
+    with p.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    by_key = payload.get("by_key")
+    if not isinstance(by_key, dict):
+        raise ValueError(
+            f"Invalid transformer embeddings cache format at {p}: missing dict `by_key`."
+        )
+
+    id_to_emb: dict[str, np.ndarray] = {}
+    for k, v in by_key.items():
+        if not isinstance(v, dict):
+            continue
+        subj = np.asarray(v.get("subj") or [], dtype=np.float32).reshape(-1)
+        body = np.asarray(v.get("body") or [], dtype=np.float32).reshape(-1)
+        if subj.size == 0 and body.size == 0:
+            continue
+        eid = str(v.get("external_id") or k)
+        id_to_emb[eid] = np.concatenate([subj, body], axis=0)
+
+    if not id_to_emb:
+        raise ValueError(
+            f"No subject/body vectors found in transformer embeddings cache: {p}"
+        )
+    if len(set(id_to_emb.keys())) != len(id_to_emb):
+        raise ValueError("Duplicate external_id entries in transformer embeddings cache.")
+    return id_to_emb
 
 
 def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, clustering_config):
@@ -97,6 +215,20 @@ def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, 
     raise ValueError(f"Unknown cluster_algorithm={algo!r}. Expected: dbscan, meanshift, hdbscan.")
 
 
+def _restrict_embeddings_to_ground_truth(
+    id_to_embedding_map: dict[str, np.ndarray],
+    ground_truth_labels: dict[str, object],
+) -> dict[str, np.ndarray]:
+    """Keep only embeddings whose external_id appears in ground_truth_labels."""
+    gt_ids = set(map(str, ground_truth_labels.keys()))
+    filtered = {eid: vec for eid, vec in id_to_embedding_map.items() if str(eid) in gt_ids}
+    if not filtered:
+        raise ValueError(
+            "cluster_only_ground_truth=True but no overlap between embedding ids and ground truth ids."
+        )
+    return filtered
+
+
 def save_metrics_csv(rows, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +239,7 @@ def save_metrics_csv(rows, path):
     preferred_order = [
         # Identifiers / algorithm
         "model",
+        "embedding_mode",
         "clustering_type",
         # DBSCAN
         "epsilon",
@@ -156,18 +289,101 @@ def sweep_clustering_for_one_model(
     model_column_name="model",
     *,
     email_external_ids,
+    cluster_only_ground_truth: bool = False,
+    use_hybrid_embeddings: bool = False,
+    hybrid_raw_weight: float = 1.0,
+    hybrid_gnn_weight: float = 1.0,
 ):
     """
     Run clustering sweep for one model. Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``
     (e.g. best_model_dbscan_sweep.csv). Use training.model_save_name stem for consistency.
     email_external_ids: list of external_id per email node from metadata (email_attrs.external_id).
+
+    When ``use_hybrid_embeddings`` is True, each embedding is built from L2-normalized raw
+    and GNN vectors with configurable weights, concatenated, then L2-normalized again.
     """
-    id_to_emb = extract_email_embeddings(model, data, device, external_ids=email_external_ids)
+    id_to_gnn = extract_email_embeddings(model, data, device, external_ids=email_external_ids)
+    if use_hybrid_embeddings:
+        id_to_raw = extract_raw_email_embeddings(data, external_ids=email_external_ids)
+        id_to_emb = build_hybrid_embedding_map(
+            id_to_gnn,
+            id_to_raw,
+            weight_raw=hybrid_raw_weight,
+            weight_gnn=hybrid_gnn_weight,
+        )
+    else:
+        id_to_emb = id_to_gnn
+    if cluster_only_ground_truth:
+        id_to_emb = _restrict_embeddings_to_ground_truth(id_to_emb, ground_truth_labels)
     cfg = dict(clustering_config)
 
     rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
+    _mode = "hybrid" if use_hybrid_embeddings else "gnn"
+    csv_stem = f"{model_column_name}_hybrid" if use_hybrid_embeddings else model_column_name
+    for r in rows:
+        r["model"] = csv_stem
+        r["embedding_mode"] = _mode
+
+    algo = str(cfg["cluster_algorithm"]).lower()
+    output_dir = Path(output_dir)
+    csv_path = output_dir / f"{csv_stem}_{algo}_sweep.csv"
+    save_metrics_csv(rows, csv_path)
+    return {"csv_path": str(csv_path), "rows": rows}
+
+
+def sweep_clustering_for_raw_email_embeddings(
+    *,
+    data,
+    ground_truth_labels,
+    clustering_config,
+    output_dir,
+    email_external_ids,
+    model_column_name: str = "raw_email_embeddings",
+    cluster_only_ground_truth: bool = False,
+):
+    """
+    Run clustering sweep on raw graph email features (`data['email'].x`) as a baseline.
+    Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``.
+    """
+    id_to_emb = extract_raw_email_embeddings(data, external_ids=email_external_ids)
+    if cluster_only_ground_truth:
+        id_to_emb = _restrict_embeddings_to_ground_truth(id_to_emb, ground_truth_labels)
+    cfg = dict(clustering_config)
+    rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
     for r in rows:
         r["model"] = model_column_name
+        r["embedding_mode"] = "raw"
+
+    algo = str(cfg["cluster_algorithm"]).lower()
+    output_dir = Path(output_dir)
+    csv_path = output_dir / f"{model_column_name}_{algo}_sweep.csv"
+    save_metrics_csv(rows, csv_path)
+    return {"csv_path": str(csv_path), "rows": rows}
+
+
+def sweep_clustering_for_transformer_text_embeddings(
+    *,
+    ground_truth_labels,
+    clustering_config,
+    output_dir,
+    embeddings_json_path: str | Path,
+    model_column_name: str = "transformer_text_embeddings",
+    cluster_only_ground_truth: bool = False,
+):
+    """
+    Run clustering sweep on untouched transformer subject+body embeddings baseline.
+    Embeddings are loaded from the cache JSON produced by utils.embeddings.
+    """
+    id_to_emb = load_transformer_subject_body_embeddings_from_cache(
+        embeddings_json_path=embeddings_json_path
+    )
+    if cluster_only_ground_truth:
+        id_to_emb = _restrict_embeddings_to_ground_truth(id_to_emb, ground_truth_labels)
+    cfg = dict(clustering_config)
+    rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
+    for r in rows:
+        r["model"] = model_column_name
+        r["embedding_mode"] = "transformer_subject_body_raw"
 
     algo = str(cfg["cluster_algorithm"]).lower()
     output_dir = Path(output_dir)
@@ -185,6 +401,10 @@ def sweep_clustering_for_many_models(
     output_dir,
     *,
     email_external_ids,
+    cluster_only_ground_truth: bool = False,
+    use_hybrid_embeddings: bool = False,
+    hybrid_raw_weight: float = 1.0,
+    hybrid_gnn_weight: float = 1.0,
 ):
     """
     Run the same clustering sweep across multiple checkpoint files.
@@ -213,6 +433,10 @@ def sweep_clustering_for_many_models(
                 output_dir=output_dir,
                 model_column_name=model_column_name,
                 email_external_ids=email_external_ids,
+                cluster_only_ground_truth=cluster_only_ground_truth,
+                use_hybrid_embeddings=use_hybrid_embeddings,
+                hybrid_raw_weight=hybrid_raw_weight,
+                hybrid_gnn_weight=hybrid_gnn_weight,
             )
         )
     return results
@@ -228,6 +452,10 @@ def run_locked_param_across_checkpoints(
     output_dir,
     *,
     email_external_ids,
+    cluster_only_ground_truth: bool = False,
+    use_hybrid_embeddings: bool = False,
+    hybrid_raw_weight: float = 1.0,
+    hybrid_gnn_weight: float = 1.0,
 ):
     """
     Keep one clustering parameter fixed and run it across multiple checkpoints.
@@ -253,4 +481,8 @@ def run_locked_param_across_checkpoints(
         clustering_config=locked_cfg,
         output_dir=output_dir,
         email_external_ids=email_external_ids,
+        cluster_only_ground_truth=cluster_only_ground_truth,
+        use_hybrid_embeddings=use_hybrid_embeddings,
+        hybrid_raw_weight=hybrid_raw_weight,
+        hybrid_gnn_weight=hybrid_gnn_weight,
     )

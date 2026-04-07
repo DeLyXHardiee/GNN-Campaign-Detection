@@ -41,73 +41,6 @@ def batch_loss(model, predictor, batch, edge_type, pos_weight_fixed=None):
 
     return loss, acc
 
-def batch_loss_contrastive(model, predictor, batch, edge_type,
-                           pos_weight_fixed=None,
-                           contrastive_edges=None,
-                           contrastive_weight=0.2):
-    """
-    BCE link-prediction loss + GraphStorm-style contrastive term.
-
-    - BCE uses logits vs y (0/1) with optional pos_weight.
-    - Contrastive term (if enabled for this edge_type) is:
-
-        loss_contr = - mean_i log(
-            exp(pos_score_i) / sum_j exp(score_{i,j})
-        )
-
-      where for each positive edge i, the denominator sums over
-      {that positive} U {all negatives in the batch}.
-    """
-    # Forward pass to get embeddings and logits
-    h_dict = model(batch.x_dict, batch.edge_index_dict)
-    e_store = batch[edge_type]
-    idx = e_store.edge_label_index
-    y   = e_store.edge_label.float()     # [B] in {0,1}
-
-    src_t, _, dst_t = edge_type
-    src = h_dict[src_t][idx[0]]
-    dst = h_dict[dst_t][idx[1]]
-    logits = predictor(src, dst, edge_type)
-
-    if isinstance(pos_weight_fixed, dict):
-        pw = torch.tensor(float(pos_weight_fixed.get(edge_type, 1.0)), device=logits.device)
-    elif isinstance(pos_weight_fixed, (int, float)):
-        pw = torch.tensor(float(pos_weight_fixed), device=logits.device)
-    else:
-        pw = torch.tensor(1.0, device=logits.device)
-
-    loss = F.binary_cross_entropy_with_logits(logits, y, pos_weight=pw)
-
-    use_contrastive = (contrastive_edges is None) or (edge_type in contrastive_edges)
-
-    if use_contrastive and contrastive_weight > 0.0:
-        pos_mask = (y == 1)
-        neg_mask = (y == 0)
-
-        pos_scores = logits[pos_mask]
-        neg_scores = logits[neg_mask]
-
-        if pos_scores.numel() > 0 and neg_scores.numel() > 0:
-            P = pos_scores.shape[0]
-            N = neg_scores.shape[0]
-
-            pos_expanded = pos_scores.view(P, 1)                
-            neg_expanded = neg_scores.view(1, N).expand(P, N)
-            all_scores = torch.cat([pos_expanded, neg_expanded], dim=1)
-
-            log_denom = torch.logsumexp(all_scores, dim=1)
-
-            contrastive_loss = -(pos_scores - log_denom).mean()
-
-            loss = loss + contrastive_weight * contrastive_loss
-
-    with torch.no_grad():
-        prob = torch.sigmoid(logits)
-        pred = (prob >= 0.5).float()
-        acc  = (pred == y).float().mean().item()
-
-    return loss, acc
-
 
 def train_epoch(DEVICE, model, predictor, optimizer, loaders_train, pos_weight_fixed=1.0, 
                 contrastive_edges=None, contrastive_weight=0.2):
@@ -121,15 +54,9 @@ def train_epoch(DEVICE, model, predictor, optimizer, loaders_train, pos_weight_f
         for batch in loader:
             batch = batch.to(DEVICE)
             optimizer.zero_grad()
-            if contrastive_edges:
-                loss, acc = batch_loss_contrastive(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed,
-                                                   contrastive_edges=contrastive_edges,
-                                                   contrastive_weight=contrastive_weight)
-            else:
-                loss, acc = batch_loss(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed)
+            loss, acc = batch_loss(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed)
             loss.backward()
             optimizer.step()
-
             total_loss += loss.item()
             total_acc += acc
             total_batches += 1
@@ -150,12 +77,7 @@ def eval_epoch(DEVICE, model, predictor, loaders_eval, pos_weight_fixed=1.0,
     for et, loader in loaders_eval.items():
         for batch in loader:
             batch = batch.to(DEVICE)
-            if contrastive_edges:
-                loss, acc = batch_loss_contrastive(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed,
-                                                   contrastive_edges=contrastive_edges,
-                                                   contrastive_weight=contrastive_weight)
-            else:
-                loss, acc = batch_loss(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed)
+            loss, acc = batch_loss(model, predictor, batch, et, pos_weight_fixed=pos_weight_fixed)
             total_loss += loss.item()
             total_acc += acc
             total_batches += 1
@@ -271,8 +193,6 @@ def run_training(DEVICE, TORCH_SEED, data,
         "lr_reduce_min": lr_reduce_min,
         "supervised_edge_types": supervised_edge_types,
         "model_save_name": model_save_name,
-        "contrastive_edges": contrastive_edges,
-        "contrastive_weight": contrastive_weight,
         "supervised_edge_types_resolved": [list(et) for et in sup_ets],
     }
     with open(run_dir / training_config_json, "w", encoding="utf-8") as f:
@@ -335,7 +255,8 @@ def run_training(DEVICE, TORCH_SEED, data,
                 best_model_state=model.state_dict(), best_predictor_state=predictor.state_dict(),
                 training_params=training_params,
                 save_dir=ckpt_dir,
-                filename=f"model_epoch_{epoch}.pt"
+                filename=f"model_epoch_{epoch}.pt",
+                training_objective="link_prediction",
             )
 
         if va_loss < best_val:
@@ -353,6 +274,7 @@ def run_training(DEVICE, TORCH_SEED, data,
                 training_params=training_params,
                 save_dir=ckpt_dir,
                 filename=model_save_name,
+                training_objective="link_prediction",
             )
             print(f"Best val-loss checkpoint saved to {ckpt_dir / model_save_name}")
         else:
