@@ -10,8 +10,9 @@ from config.pipeline_config import (
     load_pipeline_config,
     resolve_project_path,
 )
-from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
-from preprocessing.misp_converter import incidents_to_misp_file
+
+# Preprocessing imports are deferred inside run_preprocessing* / run_preprocessing_trec so that
+# stages like run_gnn_clustering() can run without optional deps (e.g. pyarrow for the lake client).
 
 # Make `core/GNN/steps/*` and `core/GNN/src/*` importable from here.
 _GNN_ROOT = Path(__file__).resolve().parent / "GNN"
@@ -159,6 +160,10 @@ def run_gnn_clustering(
     checkpoint_path: str | Path | None = None,
     make_plots: bool = True,
 ):
+    print(
+        "[clustering diag] entered run_gnn_clustering()",
+        flush=True,
+    )
     cfg = load_pipeline_config()
     g = load_gnn_cfg(cfg)
     run_dir_str, checkpoint_path_str, graph_path_str, ground_truth_path_str = resolve_gnn_paths(
@@ -170,6 +175,19 @@ def run_gnn_clustering(
         ground_truth_path=ground_truth_path,
         require_ground_truth=True,
     )
+    print(
+        "[clustering diag] resolve_gnn_paths OK | "
+        f"run_dir={run_dir_str!r} graph={graph_path_str!r}",
+        flush=True,
+    )
+    tf_cfg = (g["gnn_clustering_selection_cfg"].get("transformer_text_baseline", {}) or {})
+    tf_enabled = bool(tf_cfg.get("enabled", False))
+    tf_json_cfg = tf_cfg.get("embeddings_json_path")
+    tf_json_resolved = resolve_project_path(tf_json_cfg) if tf_json_cfg else ""
+    if not tf_json_resolved:
+        tf_json_resolved = str(
+            (_GNN_ROOT.parent / "utils" / "embeddings" / "output" / "embeddings.json").resolve()
+        )
 
     res = run_clustering_stage(
         graph_path=graph_path_str,
@@ -177,6 +195,9 @@ def run_gnn_clustering(
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         clustering_cfg=g["gnn_clustering_cfg"],
+        cluster_only_ground_truth=bool(
+            g["gnn_clustering_selection_cfg"].get("cluster_only_ground_truth", False)
+        ),
         min_coverage_ground_truth=float(
             g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5)
         ),
@@ -186,10 +207,21 @@ def run_gnn_clustering(
                 g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5),
             )
         ),
+        hybrid_embeddings=bool(
+            g["gnn_clustering_selection_cfg"].get("hybrid_embeddings", False)
+        ),
+        hybrid_raw_weight=float(
+            g["gnn_clustering_selection_cfg"].get("hybrid_raw_weight", 1.0)
+        ),
+        hybrid_gnn_weight=float(
+            g["gnn_clustering_selection_cfg"].get("hybrid_gnn_weight", 1.0)
+        ),
         model_save_name=g["training_cfg"]["model_save_name"],
         path_layout=g["path_layout"],
         device_pref=g["device_pref"],
         to_undirected=g["to_undirected"],
+        transformer_baseline_enabled=tf_enabled,
+        transformer_embeddings_json_path=tf_json_resolved,
     )
 
     if make_plots:
@@ -202,30 +234,64 @@ def run_gnn_clustering(
     return res
 
 
-def run_preprocessing_trec():
+def run_preprocessing_trec(
+    *,
+    incidents_csv_path: str | Path | None = None,
+    misp_json_path: str | Path | None = None,
+    limit: int | None = None,
+):
     """
-    Loads the TREC-07-only-phishing-6m.csv path from config and creates a MISP JSON file from it.
+    Parse a TREC-style CSV (columns: sender, receiver, date, subject, body, label, urls)
+    and write MISP JSON.
+
+    Paths default from ``pipeline_config.json`` ``preprocessing``:
+
+    - CSV: ``trec_csv_path`` if set, else ``data/csv/TREC-07-only-phishing-6m.csv``
+    - Output: ``misp_json_path`` (required in config unless passed explicitly; parent dirs are created)
+    - Row cap: ``limit`` if > 0 (from config unless passed explicitly)
+
+    For the same downstream behavior as ``run_preprocessing()``, keep ``datasets.misp_json_path``
+    and ``graph.misp_json_path`` aligned with ``preprocessing.misp_json_path``, and set
+    ``datasets.featureset_base_name`` to the basename of that MISP file without ``.json``.
+
+    Pass keyword arguments to override config without editing this file.
     """
+    from preprocessing.misp_converter import incidents_to_misp_file
+
     cfg = load_pipeline_config()
     prep_cfg = cfg.get("preprocessing", {})
-    # Force the incidents_csv_path to the TREC-07-only-phishing-6m.csv from config
-    incidents_csv_path = _require_path(
-        resolve_project_path("data/csv/TREC-07-only-phishing-6m.csv"),
-        "preprocessing incidents_csv_path",
+
+    if incidents_csv_path is not None and str(incidents_csv_path).strip():
+        csv_rel = str(incidents_csv_path).strip()
+    else:
+        csv_rel = prep_cfg.get("trec_csv_path") or "data/csv/TREC-07-only-phishing-6m.csv"
+    incidents_csv_path_resolved = _require_path(
+        resolve_project_path(csv_rel),
+        "TREC-style CSV (preprocessing.trec_csv_path or incidents_csv_path argument)",
     )
-    misp_json_path = _require_path(
-        resolve_project_path(prep_cfg.get("misp_json_path")),
+
+    if misp_json_path is not None and str(misp_json_path).strip():
+        misp_rel = str(misp_json_path).strip()
+    else:
+        misp_rel = prep_cfg.get("misp_json_path")
+    misp_json_path_resolved = _require_path(
+        resolve_project_path(misp_rel),
         "preprocessing misp_json_path",
     )
-    limit = prep_cfg.get("limit")
 
-    print(f"Parsing TREC-07-only-phishing-6m incidents from {incidents_csv_path}...")
+    if limit is None:
+        limit = prep_cfg.get("limit")
+    limit_eff = _coerce_limit(limit)
+    if limit_eff is None:
+        limit_eff = 0
+
+    print(f"Parsing TREC-style CSV incidents from {incidents_csv_path_resolved}...")
 
     import pandas as pd
-    if limit > 0:
-        df = pd.read_csv(incidents_csv_path, encoding="utf-8-sig", nrows=limit)
+    if limit_eff > 0:
+        df = pd.read_csv(incidents_csv_path_resolved, encoding="utf-8-sig", nrows=limit_eff)
     else:
-        df = pd.read_csv(incidents_csv_path, encoding="utf-8-sig")
+        df = pd.read_csv(incidents_csv_path_resolved, encoding="utf-8-sig")
     df = df.fillna("")
 
     # Align source columns with the incident schema used by synthetic data preprocessing.
@@ -294,10 +360,10 @@ def run_preprocessing_trec():
 
     print(f"Parsed {len(incidents)} incidents from CSV using pandas.")
 
-    print(f"Converting incidents to MISP and writing secure output at {misp_json_path}...")
-    incidents_to_misp_file(incidents, misp_json_path)
+    print(f"Converting incidents to MISP and writing secure output at {misp_json_path_resolved}...")
+    incidents_to_misp_file(incidents, misp_json_path_resolved)
     print("MISP conversion complete.")
-    return misp_json_path
+    return misp_json_path_resolved
 
 def run_preprocessing():
     """
@@ -345,6 +411,9 @@ def run_preprocessing_lake():
     Parse incidents by streaming joined rows from lake tables, then convert to MISP JSON.
     Secrets must come from environment variables.
     """
+    from preprocessing.data_parser import parse_incidents_from_lake_stream
+    from preprocessing.misp_converter import incidents_to_misp_file
+
     cfg = load_pipeline_config()
     prep_cfg = cfg.get("preprocessing", {})
     prep_lake_cfg = cfg.get("preprocessing_lake", {})
@@ -527,28 +596,21 @@ def run_pipeline():
     run_metric_comparison()
 
 if __name__ == "__main__":
+    print(
+        f"[clustering diag] __main__ in {__file__!r} — starting run_gnn_clustering",
+        flush=True,
+    )
     # For individual stages of the pipeline, uncomment as needed:
-<<<<<<< HEAD
     #misp_path = run_preprocessing_lake()
+    #misp_path = run_preprocessing_trec()
     # create_feature_sets()
     # run_featureset_clustering()
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
+    #misp_path = "data/misp/incidents-lake-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
-    #run_gnn()
-    run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metric_comparison()
-=======
-    #misp_path = run_preprocessing()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    #misp_path = "core/preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(max_misp_events=100, misp_json_path=misp_path, to_memgraph=False)
     #run_gnn()
     #run_gnn_evaluation()
     run_gnn_clustering()
     #run_metric_comparison()
->>>>>>> 0110332886d4e15bd5a955db2b3fb5a8a54f6032
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()

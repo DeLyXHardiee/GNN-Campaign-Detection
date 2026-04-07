@@ -5,6 +5,7 @@
 core/GNN/data
 core/GNN/notebooks/data
 data/*
+test_data/*
 core/results
 core/GNN/models
 core/GNN/outputs/*
