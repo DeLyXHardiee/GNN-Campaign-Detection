@@ -33,7 +33,14 @@ from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 from graph.feature_projection import SCALAR_COUNT, HTML_CSS_LEN, BOOL_ATTR_COUNT, AUTH_ONEHOT_DIM
 
 SBERT_MODEL_NAME = "intfloat/multilingual-e5-large"
-_EMAIL_NODE_TYPE = "email"
+def _hub_node_type(graph: HeteroData) -> str | None:
+    """Prefer ``email_cluster`` supernodes when present, else ``email``."""
+    ntypes = getattr(graph, "node_types", []) or []
+    if "email_cluster" in ntypes:
+        return "email_cluster"
+    if "email" in ntypes:
+        return "email"
+    return None
 _GRAPH_EXTS = {".pt", ".pth"}
 
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
@@ -64,9 +71,10 @@ def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[flo
     graph = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         str(resolved), map_location="cpu", weights_only=True
     )
-    if _EMAIL_NODE_TYPE not in getattr(graph, "node_types", []):
+    hub = _hub_node_type(graph)
+    if hub is None:
         return [], [], 0, 0
-    store = graph[_EMAIL_NODE_TYPE]
+    store = graph[hub]
     if not hasattr(store, "x") or store.x is None or store.x.numel() == 0:
         return [], [], 0, 0
 

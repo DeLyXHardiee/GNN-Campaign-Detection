@@ -14,11 +14,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import math
+from itertools import combinations
 from typing import Any, Callable, Dict, List, Optional, Tuple, Set
 
 from tqdm import tqdm
 
-from .graph_schema import GraphSchema, DEFAULT_SCHEMA
+from config.pipeline_config import EmailPreclusteringSettings
+
+from .email_preclustering import PreclusterResult, precluster_email_embeddings
+from .graph_schema import DEFAULT_SCHEMA, EMAIL_CLUSTER_SUPER_SCHEMA, GraphSchema
 from .common import (
     parse_misp_events,
     extract_email_domain,
@@ -493,7 +497,7 @@ def index_entities(
     """Registry-driven entity indexing pass."""
     indices: Dict[str, Dict[str, int]] = {}
     for node_key in schema.nodes:
-        if node_key == "email":
+        if node_key in ("email", "email_cluster"):
             continue
         provider = registry.node_indexers.get(node_key)
         if provider is None:
@@ -657,7 +661,7 @@ def build_node_features(
     node_meta: Dict[str, List[str]] = {}
     node_attrs: Dict[str, Dict[str, List[Any]]] = {}
     for node_key in schema.nodes:
-        if node_key == "email":
+        if node_key in ("email", "email_cluster"):
             continue
         provider = registry.node_feature_builders.get(node_key)
         if provider is None:
@@ -741,7 +745,7 @@ def _assemble_nodes(
 ) -> Dict[str, NodeIR]:
     nodes: Dict[str, NodeIR] = {"email": NodeIR(index={}, x=email_x, index_to_meta=email_meta)}
     for node_key in schema.nodes:
-        if node_key == "email":
+        if node_key in ("email", "email_cluster"):
             continue
         nodes[node_key] = NodeIR(
             index=indices.get(node_key, {}),
@@ -807,6 +811,142 @@ def _assemble_email_attrs(
         out[k] = email_attrs_raw.get(k, [])
     out["external_id"] = [str(m.get("external_id") or "") for m in email_meta]
     return out
+
+
+# Default relative weights for type-aware cluster<->cluster edges (overridable via config).
+DEFAULT_CLUSTER_INFRA_WEIGHTS: Dict[str, float] = {
+    "has_sender": 1.0,
+    "has_receiver": 1.0,
+    "has_url": 1.0,
+    "has_domain": 1.0,
+    "has_stem": 1.0,
+    "has_attachment": 1.0,
+    "has_origin_ip": 1.0,
+    "has_received_host": 1.0,
+    "has_return_path_email": 1.0,
+    "has_return_path_domain": 1.0,
+}
+
+
+def promote_email_ir_to_supernodes(
+    ir: GraphIR,
+    pre: PreclusterResult,
+    settings: EmailPreclusteringSettings,
+) -> GraphIR:
+    """
+    Collapse per-email hub nodes into ``email_cluster`` nodes and add ``linked_by_shared_infra`` edges.
+    Input ``ir`` must use ``DEFAULT_SCHEMA`` (``nodes['email']``).
+    """
+    email_node = ir.nodes.get("email")
+    if email_node is None or not email_node.x:
+        raise ValueError("promote_email_ir_to_supernodes requires non-empty ir.nodes['email'].")
+
+    n_emails = len(email_node.x)
+    if len(pre.labels) != n_emails:
+        raise ValueError(
+            f"Precluster label count ({len(pre.labels)}) != email rows ({n_emails})."
+        )
+
+    email_to_cluster = [int(pre.labels[i]) for i in range(n_emails)]
+    n_clusters = int(pre.n_clusters)
+    if n_clusters <= 0:
+        raise ValueError("email preclustering produced zero clusters.")
+
+    dim = len(email_node.x[0]) if email_node.x else 0
+    cluster_x: List[List[float]] = [[0.0] * dim for _ in range(n_clusters)]
+    counts = [0] * n_clusters
+    for i, row in enumerate(email_node.x):
+        c = email_to_cluster[i]
+        if c < 0 or c >= n_clusters:
+            continue
+        counts[c] += 1
+        for k, v in enumerate(row):
+            cluster_x[c][k] += float(v)
+    for c in range(n_clusters):
+        if counts[c] > 0:
+            inv = 1.0 / float(counts[c])
+            cluster_x[c] = [v * inv for v in cluster_x[c]]
+
+    email_meta = email_node.index_to_meta or []
+    cluster_meta: List[Dict[str, Any]] = []
+    for c in range(n_clusters):
+        members = [i for i in range(n_emails) if email_to_cluster[i] == c]
+        ext_ids = [
+            str((email_meta[i] or {}).get("external_id", "")) for i in members if i < len(email_meta)
+        ]
+        cluster_meta.append(
+            {
+                "cluster_id": c,
+                "member_email_indices": members,
+                "size": len(members),
+                "external_ids": ext_ids,
+            }
+        )
+
+    weights_cfg = dict(DEFAULT_CLUSTER_INFRA_WEIGHTS)
+    if settings.edge_type_weights:
+        weights_cfg.update(settings.edge_type_weights)
+
+    new_edges: Dict[str, Tuple[List[int], List[int]]] = {}
+    for edge_name, e_def in DEFAULT_SCHEMA.edges.items():
+        if e_def.src != "email":
+            continue
+        srcs, dsts = ir.edges.get(edge_name, ([], []))
+        mapped_src = [email_to_cluster[s] for s in srcs]
+        seen: Set[Tuple[int, int]] = set()
+        out_s: List[int] = []
+        out_d: List[int] = []
+        for s, d in zip(mapped_src, dsts):
+            key = (s, d)
+            if key not in seen:
+                seen.add(key)
+                out_s.append(s)
+                out_d.append(d)
+        new_edges[edge_name] = (out_s, out_d)
+
+    for edge_name, e_def in DEFAULT_SCHEMA.edges.items():
+        if e_def.src == "email":
+            continue
+        if edge_name in ir.edges:
+            s, d = ir.edges[edge_name]
+            new_edges[edge_name] = (list(s), list(d))
+
+    pair_w: Dict[Tuple[int, int], float] = {}
+    for edge_name, e_def in DEFAULT_SCHEMA.edges.items():
+        if e_def.src != "email":
+            continue
+        w = float(weights_cfg.get(edge_name, 1.0))
+        srcs, dsts = ir.edges.get(edge_name, ([], []))
+        ent_to_cl: Dict[int, Set[int]] = {}
+        for s, d in zip(srcs, dsts):
+            c = email_to_cluster[s]
+            ent_to_cl.setdefault(d, set()).add(c)
+        for _ent, cl_set in ent_to_cl.items():
+            cs = sorted(cl_set)
+            for c1, c2 in combinations(cs, 2):
+                key = (c1, c2) if c1 < c2 else (c2, c1)
+                pair_w[key] = pair_w.get(key, 0.0) + w
+
+    min_w = float(settings.cluster_edge_min_weight)
+    cc_src: List[int] = []
+    cc_dst: List[int] = []
+    for (c1, c2), w in pair_w.items():
+        if w >= min_w:
+            cc_src.append(c1)
+            cc_dst.append(c2)
+    new_edges["linked_by_shared_infra"] = (cc_src, cc_dst)
+
+    new_nodes: Dict[str, NodeIR] = {k: v for k, v in ir.nodes.items() if k != "email"}
+    new_nodes["email_cluster"] = NodeIR(
+        index={},
+        x=cluster_x,
+        index_to_meta=cluster_meta,
+    )
+
+    ea = dict(ir.email_attrs)
+    ea["email_cluster_index"] = email_to_cluster
+
+    return GraphIR(nodes=new_nodes, edges=new_edges, email_attrs=ea)
 
 
 def _compute_degrees(ir: GraphIR, schema: GraphSchema, node_type: str) -> List[int]:
@@ -948,6 +1088,7 @@ def assemble_misp_graph_ir(
     *,
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
+    email_preclustering: Optional[EmailPreclusteringSettings] = None,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -957,14 +1098,18 @@ def assemble_misp_graph_ir(
     3) Build email->component edges and raw email attributes.
     4) Compute per-node features/attributes and text vectors.
     5) Assemble nodes, edges, and email_attrs blocks.
+
+    When ``email_preclustering`` is enabled, steps 3–5 first build per-email hubs, then
+    collapse to ``email_cluster`` supernodes (see ``EMAIL_CLUSTER_SUPER_SCHEMA``).
     """
-    schema = schema or DEFAULT_SCHEMA
+    use_supernodes = email_preclustering is not None and email_preclustering.enabled
+    work_schema = DEFAULT_SCHEMA if use_supernodes else (schema or DEFAULT_SCHEMA)
     emails = parse_misp_events(misp_events)
-    indexed = index_entities(emails, schema, DEFAULT_PROVIDER_REGISTRY)
+    indexed = index_entities(emails, work_schema, DEFAULT_PROVIDER_REGISTRY)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
     edges_idx, email_meta, email_attrs_raw, docfreq_maps = materialize_edges(
-        emails, indices, schema, DEFAULT_PROVIDER_REGISTRY
+        emails, indices, work_schema, DEFAULT_PROVIDER_REGISTRY
     )
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
         indices["sender"], indices["receiver"], indices["email_domain"]
@@ -979,7 +1124,7 @@ def assemble_misp_graph_ir(
         body_dim,
     ) = build_node_features(
         emails,
-        schema,
+        work_schema,
         indices,
         url_components,
         docfreq_maps,
@@ -1019,7 +1164,7 @@ def assemble_misp_graph_ir(
 
 
     nodes = _assemble_nodes(
-        schema,
+        work_schema,
         node_x,
         node_meta,
         node_attrs,
@@ -1029,7 +1174,7 @@ def assemble_misp_graph_ir(
     )
 
     edges = _assemble_edges(
-        schema,
+        work_schema,
         edges_idx,
         snd_dom_src, snd_dom_dst,
         rcv_dom_src, rcv_dom_dst,
@@ -1045,7 +1190,18 @@ def assemble_misp_graph_ir(
     )
 
     ir = GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
-    return _collapse_graph_ir(ir, schema)
+    if use_supernodes:
+        assert email_preclustering is not None
+        pre = precluster_email_embeddings(
+            subj_vecs,
+            body_vecs,
+            subj_dim,
+            body_dim,
+            email_preclustering,
+        )
+        ir = promote_email_ir_to_supernodes(ir, pre, email_preclustering)
+        return _collapse_graph_ir(ir, EMAIL_CLUSTER_SUPER_SCHEMA)
+    return _collapse_graph_ir(ir, work_schema)
 
 
-__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir"]
+__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir", "promote_email_ir_to_supernodes"]

@@ -10,6 +10,7 @@ from .graph_schema import GraphSchema
 
 class NodeType(Enum):
     EMAIL = "email"
+    EMAIL_CLUSTER = "email_cluster"
     SENDER = "sender"
     RECEIVER = "receiver"
     URL = "url"
@@ -175,8 +176,8 @@ def filter_graph_ir_by_degree(
             out_dst.append(nd)
         new_edges[edge_key] = (out_src, out_dst)
 
-    # email_attrs (external_id, ts, etc.) is aligned to email node row order; keep it in sync
-    # when emails are removed so metadata / clustering match data["email"].num_nodes.
+    # email_attrs (external_id, ts, etc.) is aligned to per-email rows; keep it in sync when
+    # email or email_cluster nodes are removed / remapped.
     new_email_attrs = ir.email_attrs
     if "email" in remove_indices and remove_indices["email"]:
         email_node = ir.nodes.get("email")
@@ -190,5 +191,26 @@ def filter_graph_ir_by_degree(
                 else:
                     sliced[k] = vals
             new_email_attrs = sliced
+
+    if "email_cluster" in remove_indices and remove_indices["email_cluster"]:
+        idx_per_email = new_email_attrs.get("email_cluster_index")
+        if isinstance(idx_per_email, list) and idx_per_email:
+            c_map = old_to_new_by_type.get("email_cluster", {})
+            n_email = len(idx_per_email)
+            kept_email_idx = [
+                i
+                for i in range(n_email)
+                if i < len(idx_per_email) and c_map.get(idx_per_email[i]) is not None
+            ]
+            sliced2: Dict[str, list] = {}
+            for k, vals in new_email_attrs.items():
+                if isinstance(vals, list) and len(vals) == n_email:
+                    sliced2[k] = [vals[i] for i in kept_email_idx]
+                else:
+                    sliced2[k] = vals
+            # Remap cluster indices to new dense ids
+            remapped_idx = [c_map[idx_per_email[i]] for i in kept_email_idx]
+            sliced2["email_cluster_index"] = remapped_idx
+            new_email_attrs = sliced2
 
     return replace(ir, nodes=new_nodes, edges=new_edges, email_attrs=new_email_attrs)

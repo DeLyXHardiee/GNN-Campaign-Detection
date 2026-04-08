@@ -7,7 +7,11 @@ from pathlib import Path
 import torch
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 from .loaders import make_link_loaders
-from .build_graph_splits import pick_supervised_edge_types, split_edges_and_build_train_graph
+from .build_graph_splits import (
+    pick_supervised_edge_types,
+    resolve_primary_ntype_for_graph,
+    split_edges_and_build_train_graph,
+)
 from .model_io import save_model_checkpoint, load_training_state
 from torch import nn
 import time
@@ -220,6 +224,14 @@ def run_training(DEVICE, TORCH_SEED, data,
 
     data_cpu = data.to('cpu')
     print("Metadata:", data_cpu.metadata())
+
+    _primary_requested = primary_ntype
+    primary_ntype = resolve_primary_ntype_for_graph(data_cpu, primary_ntype)
+    if primary_ntype != _primary_requested:
+        print(
+            f"Resolved primary_ntype {_primary_requested!r} -> {primary_ntype!r} "
+            "to match loaded graph node types."
+        )
 
     checkpoint_config = {
         'hidden': hidden,

@@ -150,6 +150,27 @@ class EmailFeatureProjectionSettings:
 
 
 @dataclass(frozen=True)
+class EmailPreclusteringSettings:
+    """
+    Pre-cluster emails by subject+body embeddings, then build ``email_cluster`` supernodes
+    instead of per-email nodes (see graph assembler).
+    """
+
+    enabled: bool = False
+    algorithm: str = "hdbscan"  # hdbscan | dbscan
+    min_cluster_size: int = 5
+    min_samples: int | None = None
+    dbscan_eps: float = 0.5
+    dbscan_min_samples: int = 5
+    noise_policy: str = "singleton"  # singleton: each noise point becomes its own cluster
+    l2_normalize_embedding: bool = True
+    # Per canonical email->entity edge name; used when aggregating cluster<->cluster link weights
+    edge_type_weights: dict[str, float] | None = None
+    cluster_edge_min_weight: float = 1.0
+    random_seed: int = 42
+
+
+@dataclass(frozen=True)
 class DegreeNodeFilterSettings:
     """
     Degree-based node pruning for graph construction.
@@ -176,6 +197,7 @@ class GraphBuildSettings:
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
     degree_node_filter: DegreeNodeFilterSettings | None = None
+    email_preclustering: EmailPreclusteringSettings | None = None
 
 
 def graph_build_settings_from_pipeline(
@@ -296,6 +318,94 @@ def graph_build_settings_from_pipeline(
             min_degree=min_degree,
         )
 
+    ep_raw = graph_cfg.get("email_preclustering")
+    email_preclustering: EmailPreclusteringSettings | None = None
+    if ep_raw is not None:
+        if not isinstance(ep_raw, dict):
+            raise TypeError("graph.email_preclustering must be an object or omitted.")
+        enabled_ep = bool(ep_raw.get("enabled", False))
+        algo = str(ep_raw.get("algorithm", "hdbscan")).strip().lower()
+        if algo not in ("hdbscan", "dbscan"):
+            raise ValueError("graph.email_preclustering.algorithm must be 'hdbscan' or 'dbscan'.")
+
+        mcs_raw = ep_raw.get("min_cluster_size", 5)
+        try:
+            min_cluster_size = int(mcs_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.email_preclustering.min_cluster_size must be a positive integer.") from e
+        if min_cluster_size < 1:
+            raise ValueError("graph.email_preclustering.min_cluster_size must be >= 1.")
+
+        ms_raw = ep_raw.get("min_samples")
+        min_samples_ep: int | None = None
+        if ms_raw is not None and ms_raw != "":
+            try:
+                min_samples_ep = int(ms_raw)
+            except (TypeError, ValueError) as e:
+                raise ValueError("graph.email_preclustering.min_samples must be a positive integer or null.") from e
+            if min_samples_ep < 1:
+                raise ValueError("graph.email_preclustering.min_samples must be >= 1 when set.")
+
+        eps_raw = ep_raw.get("dbscan_eps", 0.5)
+        try:
+            dbscan_eps = float(eps_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.email_preclustering.dbscan_eps must be a number.") from e
+        if dbscan_eps <= 0.0:
+            raise ValueError("graph.email_preclustering.dbscan_eps must be > 0.")
+
+        dbs_ms_raw = ep_raw.get("dbscan_min_samples", 5)
+        try:
+            dbscan_min_samples = int(dbs_ms_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.email_preclustering.dbscan_min_samples must be a positive integer.") from e
+        if dbscan_min_samples < 1:
+            raise ValueError("graph.email_preclustering.dbscan_min_samples must be >= 1.")
+
+        noise_pol = str(ep_raw.get("noise_policy", "singleton")).strip().lower()
+        if noise_pol not in ("singleton",):
+            raise ValueError("graph.email_preclustering.noise_policy must be 'singleton'.")
+
+        l2_norm = bool(ep_raw.get("l2_normalize_embedding", True))
+
+        etw_raw = ep_raw.get("edge_type_weights")
+        edge_type_weights: dict[str, float] | None = None
+        if etw_raw is not None:
+            if not isinstance(etw_raw, dict):
+                raise TypeError("graph.email_preclustering.edge_type_weights must be an object or null.")
+            edge_type_weights = {}
+            for k, v in etw_raw.items():
+                try:
+                    edge_type_weights[str(k)] = float(v)
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"graph.email_preclustering.edge_type_weights[{k!r}] must be numeric.") from e
+
+        cmin_raw = ep_raw.get("cluster_edge_min_weight", 1.0)
+        try:
+            cluster_edge_min_weight = float(cmin_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.email_preclustering.cluster_edge_min_weight must be a number.") from e
+
+        seed_raw = ep_raw.get("random_seed", 42)
+        try:
+            ep_seed = int(seed_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.email_preclustering.random_seed must be an integer.") from e
+
+        email_preclustering = EmailPreclusteringSettings(
+            enabled=enabled_ep,
+            algorithm=algo,
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples_ep,
+            dbscan_eps=dbscan_eps,
+            dbscan_min_samples=dbscan_min_samples,
+            noise_policy=noise_pol,
+            l2_normalize_embedding=l2_norm,
+            edge_type_weights=edge_type_weights,
+            cluster_edge_min_weight=cluster_edge_min_weight,
+            random_seed=ep_seed,
+        )
+
     raw_max = graph_cfg.get("max_misp_events")
     max_misp_events: int | None = None
     if raw_max is not None and not isinstance(raw_max, bool):
@@ -320,6 +430,7 @@ def graph_build_settings_from_pipeline(
         max_misp_events=max_misp_events,
         email_feature_projection=email_feature_projection,
         degree_node_filter=degree_node_filter,
+        email_preclustering=email_preclustering,
     )
 
 

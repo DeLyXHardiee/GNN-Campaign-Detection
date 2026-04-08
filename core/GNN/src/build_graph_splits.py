@@ -2,6 +2,24 @@ import math
 import torch
 from torch import nn
 
+
+def resolve_primary_ntype_for_graph(data, primary_ntype: str) -> str:
+    """
+    Align config ``primary_ntype`` with the loaded HeteroData.
+
+    When the graph was built with email-cluster supernodes, the hub type is
+    ``email_cluster`` while ``pipeline_config.json`` may still say ``email``.
+    """
+    ntypes = list(getattr(data, "node_types", []) or [])
+    if primary_ntype in ntypes:
+        return primary_ntype
+    if primary_ntype == "email" and "email_cluster" in ntypes:
+        return "email_cluster"
+    if primary_ntype == "email_cluster" and "email" in ntypes:
+        return "email"
+    return primary_ntype
+
+
 def pick_supervised_edge_types(data, primary_ntype='movie', direction='out'):
     """
     Return edge types to supervise that involve the primary node type.

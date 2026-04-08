@@ -429,6 +429,7 @@ def run_graph_creation(
 
     cfg = load_pipeline_config()
     settings = graph_build_settings_from_pipeline(cfg)
+    ep = settings.email_preclustering
     path = misp_json_path or settings.misp_json_path
     limit = (
         max_misp_events
@@ -446,6 +447,7 @@ def run_graph_creation(
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
+        email_preclustering=ep,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -463,6 +465,7 @@ def run_graph_creation(
             create_indexes=mg.create_indexes,
             exclude_nodes=settings.exclude_node_types,
             max_misp_events=limit_eff,
+            email_preclustering=ep,
         )
         print("Memgraph load summary:")
         print(json.dumps(summary, indent=2))

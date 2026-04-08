@@ -33,9 +33,13 @@ from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProjectionSettings
+from config.pipeline_config import (
+    DegreeNodeFilterSettings,
+    EmailFeatureProjectionSettings,
+    EmailPreclusteringSettings,
+)
 
-from .graph_schema import GraphSchema, DEFAULT_SCHEMA
+from .graph_schema import DEFAULT_SCHEMA, EMAIL_CLUSTER_SUPER_SCHEMA, GraphSchema
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
@@ -136,12 +140,14 @@ def _set_node_features_from_ir(
     torch_lib = _ensure_torch()
     N = schema.nodes
 
-    if "email" not in ir.nodes:
-        data[N["email"].pyg].num_nodes = 0
+    hub_key = "email_cluster" if "email_cluster" in ir.nodes else "email"
+    hub_pyg = N[hub_key].pyg
+    if hub_key not in ir.nodes:
+        data[hub_pyg].num_nodes = 0
         return
-    email_x = ir.nodes["email"].x
-    if email_x:
-        raw = torch_lib.tensor(email_x, dtype=torch_lib.float)
+    hub_x = ir.nodes[hub_key].x
+    if hub_x:
+        raw = torch_lib.tensor(hub_x, dtype=torch_lib.float)
         total_dim = raw.size(1)
         subj_dim, body_dim = _infer_email_embedding_dims(total_dim)
         torch_lib.manual_seed(email_projection.seed)
@@ -151,9 +157,9 @@ def _set_node_features_from_ir(
             bert_out_dim=email_projection.bert_out_dim,
             other_out_dim=email_projection.other_out_dim,
         )
-        data[N["email"].pyg].x = proj(raw)
+        data[hub_pyg].x = proj(raw)
     else:
-        data[N["email"].pyg].num_nodes = 0
+        data[hub_pyg].num_nodes = 0
 
     def set_simple(node_key: str, extra_keys: Optional[List[str]] = None):
         if node_key not in ir.nodes:
@@ -168,7 +174,7 @@ def _set_node_features_from_ir(
             data[N[node_key].pyg].num_nodes = 0
 
     for node_key, node_map in schema.nodes.items():
-        if node_key == "email":
+        if node_key in ("email", "email_cluster"):
             continue
         set_simple(node_key, list(node_map.extra_attr_keys))
 
@@ -193,14 +199,15 @@ def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
 def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str, Any]:
     """Construct the metadata dict summarizing node maps, feature shapes, and edge counts."""
     N = schema.nodes
-    email_meta = (ir.nodes.get("email") and ir.nodes["email"].index_to_meta) or []
-    node_maps: Dict[str, Dict[str, Any]] = {N["email"].pyg: {"index_to_meta": email_meta}}
+    hub_key = "email_cluster" if "email_cluster" in ir.nodes else "email"
+    hub_meta = (ir.nodes.get(hub_key) and ir.nodes[hub_key].index_to_meta) or []
+    node_maps: Dict[str, Dict[str, Any]] = {N[hub_key].pyg: {"index_to_meta": hub_meta}}
     feature_shapes: Dict[str, List[int]] = {}
     edge_counts: Dict[str, int] = {}
 
     for node_key, node_map in schema.nodes.items():
         pyg_label = node_map.pyg
-        if node_key != "email":
+        if node_key not in ("email", "email_cluster"):
             labels: List[str] = list((ir.nodes.get(node_key) and ir.nodes[node_key].index_to_string) or [])
             node_maps[pyg_label] = {"index_to_string": labels}
         feature_shapes[pyg_label] = list(data[pyg_label].x.shape) if "x" in data[pyg_label] else [0, 0]
@@ -215,9 +222,17 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
         "node_maps": node_maps,
         "feature_shapes": feature_shapes,
         "edge_counts": edge_counts,
+        "primary_ntype": N[hub_key].pyg,
     }
     if getattr(ir, "email_attrs", None):
         meta["email_attrs"] = ir.email_attrs
+    if hub_key == "email_cluster":
+        meta["email_cluster_supernode"] = {
+            "enabled": True,
+            "n_clusters": len(hub_meta),
+        }
+    else:
+        meta["email_cluster_supernode"] = {"enabled": False}
     return meta
 
 
@@ -229,6 +244,7 @@ def build_hetero_graph_from_misp(
     degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
     embeddings_output_dir: Optional[str] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    email_preclustering: Optional[EmailPreclusteringSettings] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -254,12 +270,13 @@ def build_hetero_graph_from_misp(
 
     Returns (graph, metadata) where metadata contains mappings for node indices.
     """
-    schema = schema or DEFAULT_SCHEMA
-    N = schema.nodes
+    use_pc = email_preclustering is not None and email_preclustering.enabled
+    schema = EMAIL_CLUSTER_SUPER_SCHEMA if use_pc else (schema or DEFAULT_SCHEMA)
     ir = assemble_misp_graph_ir(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
+        email_preclustering=email_preclustering,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
@@ -323,6 +340,7 @@ def build_graph(
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    email_preclustering: Optional[EmailPreclusteringSettings] = None,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -343,6 +361,7 @@ def build_graph(
         degree_node_filter=degree_node_filter,
         embeddings_output_dir=embeddings_output_dir,
         email_feature_projection=email_feature_projection,
+        email_preclustering=email_preclustering,
     )
 
     if out_name is None:

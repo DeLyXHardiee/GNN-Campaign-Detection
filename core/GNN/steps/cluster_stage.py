@@ -15,6 +15,8 @@ from src.clustering.clustering_helpers import (
 from src.load_graph_data import load_hetero_pt
 from src.model_io import load_model_checkpoint, select_device
 
+from config.pipeline_config import GnnPathLayout, gnn_path_layout_from_pipeline, load_pipeline_config
+
 
 def run_clustering_stage(
     *,
@@ -108,6 +110,7 @@ def run_clustering_stage(
             output_dir=algo_out,
             model_column_name=model_stem,
             email_external_ids=email_external_ids,
+            graph_meta=meta,
         )
         algo_entry: dict[str, Any] = {
             "csv_path": str(sweep_res["csv_path"]),
@@ -184,6 +187,7 @@ def run_clustering_stage(
                 locked_param_value=locked_param_value,
                 output_dir=algo_out,
                 email_external_ids=email_external_ids,
+                graph_meta=meta,
             )
 
     result = {

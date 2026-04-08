@@ -25,28 +25,49 @@ from core.clustering.clusteringMetrics import (  # noqa: E402
 )
 
 @torch.no_grad()
-def extract_email_embeddings(model, data, device, external_ids):
+def extract_email_embeddings(model, data, device, external_ids, graph_meta=None):
     """
-    Run the model and return email-node embeddings keyed by email ``external_id``.
+    Run the model and return per-email embeddings keyed by ``external_id``.
 
-    PyG orders email nodes 0 .. n-1; row i of h['email'] is the embedding for
-    that node. Pass ``external_ids`` from the graph metadata (e.g.
-    metadata["email_attrs"]["external_id"]) when loading the graph; the graph
-    itself does not store external_id (PyG loaders require tensor-only node stores).
+    For standard graphs, row i of ``h['email']`` matches email i.
+
+    For ``email_cluster`` supernode graphs, cluster embeddings are broadcast to each
+    member email using ``graph_meta['email_attrs']['email_cluster_index']`` (same
+    order as ``external_id``).
     """
     model.eval()
     graph = data.to(device)
     x_dict = graph.x_dict
     edge_index_dict = graph.edge_index_dict
     h = model(x_dict, edge_index_dict)
-    email_vecs = h["email"].cpu().numpy()
+
+    meta = graph_meta or {}
+    primary = meta.get("primary_ntype")
+    if primary is None:
+        primary = "email_cluster" if "email_cluster" in h else "email"
 
     external_ids = list(external_ids)
 
-    if len(external_ids) != len(email_vecs):
-        raise ValueError(
-            f"Email external_id length ({len(external_ids)}) does not match number of email embeddings ({len(email_vecs)})."
-        )
+    if primary == "email_cluster":
+        if "email_cluster" not in h:
+            raise KeyError("Graph metadata indicates primary_ntype=email_cluster but model output has no 'email_cluster'.")
+        cluster_vecs = h["email_cluster"].cpu().numpy()
+        ea = meta.get("email_attrs") or {}
+        idx_list = ea.get("email_cluster_index")
+        if not idx_list or len(idx_list) != len(external_ids):
+            raise ValueError(
+                "email_cluster supernode graph requires metadata email_attrs.email_cluster_index "
+                f"with same length as external_id ({len(external_ids)} vs {len(idx_list or [])})."
+            )
+        email_vecs = np.stack([cluster_vecs[int(idx_list[i])] for i in range(len(external_ids))], axis=0)
+    else:
+        if "email" not in h:
+            raise KeyError("Model output has no 'email' node type.")
+        email_vecs = h["email"].cpu().numpy()
+        if len(external_ids) != len(email_vecs):
+            raise ValueError(
+                f"Email external_id length ({len(external_ids)}) does not match number of email embeddings ({len(email_vecs)})."
+            )
 
     # external_id must be unique; otherwise dict keys collide.
     if len(set(map(str, external_ids))) != len(external_ids):
@@ -156,13 +177,17 @@ def sweep_clustering_for_one_model(
     model_column_name="model",
     *,
     email_external_ids,
+    graph_meta=None,
 ):
     """
     Run clustering sweep for one model. Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``
     (e.g. best_model_dbscan_sweep.csv). Use training.model_save_name stem for consistency.
     email_external_ids: list of external_id per email node from metadata (email_attrs.external_id).
+    graph_meta: optional companion .meta.json dict (primary_ntype, email_attrs.email_cluster_index).
     """
-    id_to_emb = extract_email_embeddings(model, data, device, external_ids=email_external_ids)
+    id_to_emb = extract_email_embeddings(
+        model, data, device, external_ids=email_external_ids, graph_meta=graph_meta
+    )
     cfg = dict(clustering_config)
 
     rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
@@ -185,6 +210,7 @@ def sweep_clustering_for_many_models(
     output_dir,
     *,
     email_external_ids,
+    graph_meta=None,
 ):
     """
     Run the same clustering sweep across multiple checkpoint files.
@@ -213,6 +239,7 @@ def sweep_clustering_for_many_models(
                 output_dir=output_dir,
                 model_column_name=model_column_name,
                 email_external_ids=email_external_ids,
+                graph_meta=graph_meta,
             )
         )
     return results
@@ -228,6 +255,7 @@ def run_locked_param_across_checkpoints(
     output_dir,
     *,
     email_external_ids,
+    graph_meta=None,
 ):
     """
     Keep one clustering parameter fixed and run it across multiple checkpoints.
@@ -253,4 +281,5 @@ def run_locked_param_across_checkpoints(
         clustering_config=locked_cfg,
         output_dir=output_dir,
         email_external_ids=email_external_ids,
+        graph_meta=graph_meta,
     )

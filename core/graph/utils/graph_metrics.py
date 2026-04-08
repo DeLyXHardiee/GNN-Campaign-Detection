@@ -351,13 +351,19 @@ def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, in
     return []
 
 
+def _primary_hub(metadata: Dict[str, Any]) -> str:
+    return str(metadata.get("primary_ntype", "email"))
+
+
 def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
     try:
         graph = _safe_load_graph(graph_path)
+        hub = _primary_hub(metadata)
         receiver_strings = metadata.get("node_maps", {}).get("receiver", {}).get("index_to_string", [])
-        if not receiver_strings or ("email", "has_receiver", "receiver") not in getattr(graph, "edge_types", []):
+        et = (hub, "has_receiver", "receiver")
+        if not receiver_strings or et not in getattr(graph, "edge_types", []):
             return []
-        idxs = graph["email", "has_receiver", "receiver"].edge_index[1].tolist()
+        idxs = graph[et].edge_index[1].tolist()
         c = Counter()
         for i in idxs:
             if 0 <= i < len(receiver_strings):
@@ -378,8 +384,10 @@ def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], t
         
         url_counts = Counter()
         
-        if ("email", "has_url", "url") in graph.edge_types:
-            edge_index = graph["email", "has_url", "url"].edge_index
+        hub = _primary_hub(metadata)
+        et_url = (hub, "has_url", "url")
+        if et_url in graph.edge_types:
+            edge_index = graph[et_url].edge_index
             
             # edge_index[1] contains URL node indices
             url_indices = edge_index[1].tolist()
@@ -519,9 +527,11 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     if graph_path:
         try:
             graph = _safe_load_graph(graph_path)
+            hub = _primary_hub(metadata)
             sender_strings = metadata.get("node_maps", {}).get("sender", {}).get("index_to_string", [])
-            if sender_strings and ("email", "has_sender", "sender") in getattr(graph, "edge_types", []):
-                idxs = graph["email", "has_sender", "sender"].edge_index[1].tolist()
+            et_s = (hub, "has_sender", "sender")
+            if sender_strings and et_s in getattr(graph, "edge_types", []):
+                idxs = graph[et_s].edge_index[1].tolist()
                 c = Counter(i for i in idxs if 0 <= i < len(sender_strings))
                 send_pairs = [(sender_strings[i], cnt) for i, cnt in c.most_common(5)]
         except Exception:

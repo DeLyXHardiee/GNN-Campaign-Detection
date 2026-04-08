@@ -5,7 +5,9 @@ import os
 from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple
 
-from .graph_schema import GraphSchema, DEFAULT_SCHEMA
+from config.pipeline_config import EmailPreclusteringSettings
+
+from .graph_schema import DEFAULT_SCHEMA, EMAIL_CLUSTER_SUPER_SCHEMA, GraphSchema
 from .assembler import assemble_misp_graph_ir, AUTH_ATTR_KEYS
 from .graph_filter import NodeType, filter_graph_ir
 
@@ -72,6 +74,7 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
 
     email_rows: List[Dict[str, Any]] = []
     email_node = ir.nodes.get("email")
+    cluster_node = ir.nodes.get("email_cluster")
     email_meta = (email_node and email_node.index_to_meta) or []
     n_emails = len(email_meta)
     _email_bool_attrs = (
@@ -109,7 +112,21 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
             arr = get_attr(k)
             row[k] = str(arr[eid]) if eid < len(arr) and arr[eid] is not None else ""
         email_rows.append(row)
-    out[N["email"].memgraph] = email_rows
+    if email_node is not None:
+        out[N["email"].memgraph] = email_rows
+
+    cluster_rows: List[Dict[str, Any]] = []
+    if cluster_node is not None:
+        cmeta = cluster_node.index_to_meta or []
+        for cid, em in enumerate(cmeta):
+            cluster_rows.append(
+                {
+                    "cid": int(cid),
+                    "size": int(em.get("size", 0)),
+                    "cluster_id": int(em.get("cluster_id", cid)),
+                }
+            )
+        out[N["email_cluster"].memgraph] = cluster_rows
 
     # Helper to pack simple string-keyed nodes with optional attributes aligned by index
     def pack_string_nodes(node_key: str, extra_fields: Dict[str, List[Any]] = None) -> List[Dict[str, Any]]:
@@ -134,7 +151,7 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         return rows
 
     for node_key, node_map in schema.nodes.items():
-        if node_key == "email":
+        if node_key in ("email", "email_cluster"):
             continue
         out[node_map.memgraph] = pack_string_nodes(node_key)
 
@@ -170,8 +187,18 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         for l, r in zip(src, dst):
             rows.append({"l": left_meta[l], "r": right_meta[r]})
 
+    def add_cluster_cluster_rows(edge_key: str, mem_type: str):
+        if edge_key not in ir.edges:
+            return
+        rows = out[mem_type]
+        src, dst = ir.edges[edge_key]
+        for l, r in zip(src, dst):
+            rows.append({"l": int(l), "r": int(r)})
+
     for edge_key, edge_map in E.items():
-        if edge_map.edge_strategy == "email_to_entity" or edge_map.src == "email":
+        if edge_map.edge_strategy == "cluster_to_cluster":
+            add_cluster_cluster_rows(edge_key, edge_map.memgraph_type)
+        elif edge_map.edge_strategy == "email_to_entity" or edge_map.src in ("email", "email_cluster"):
             add_email_edge_rows(edge_key, edge_map.dst, edge_map.memgraph_type)
         else:
             add_string_edge_rows(edge_key, edge_map.src, edge_map.dst, edge_map.memgraph_type)
@@ -192,6 +219,7 @@ def build_memgraph(
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
+    email_preclustering: Optional[EmailPreclusteringSettings] = None,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
@@ -202,7 +230,8 @@ def build_memgraph(
     if max_misp_events is not None and max_misp_events > 0:
         misp_events = misp_events[:max_misp_events]
 
-    schema = schema or DEFAULT_SCHEMA
+    use_pc = email_preclustering is not None and email_preclustering.enabled
+    schema = EMAIL_CLUSTER_SUPER_SCHEMA if use_pc else (schema or DEFAULT_SCHEMA)
     N = schema.nodes
     E = schema.edges
 
@@ -210,6 +239,7 @@ def build_memgraph(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
+        email_preclustering=email_preclustering,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)

@@ -48,6 +48,8 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     # external_id is a list; get it from the companion .meta.json (email_attrs.external_id) when needed.
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
         del data["email"].external_id
+    if "email_cluster" in data.node_stores and hasattr(data["email_cluster"], "external_id"):
+        del data["email_cluster"].external_id
     if to_undirected:
         return ToUndirected()(data)
     return data

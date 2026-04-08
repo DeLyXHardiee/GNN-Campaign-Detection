@@ -397,10 +397,81 @@ DEFAULT_SCHEMA = GraphSchema(
 validate_schema(DEFAULT_SCHEMA)
 
 
+def email_cluster_supernode_schema(base: GraphSchema) -> GraphSchema:
+    """
+    Schema where per-email hubs are replaced by ``email_cluster`` supernodes and an extra
+    ``linked_by_shared_infra`` relation connects clusters that share infrastructure.
+    """
+    if "email" not in base.nodes:
+        raise ValueError("email_cluster_supernode_schema expects base schema to define 'email'.")
+    email_node = base.nodes["email"]
+    ec = NodeMapping(
+        canonical="email_cluster",
+        pyg="email_cluster",
+        memgraph="EmailCluster",
+        memgraph_id_key="cid",
+        feature_strategy=email_node.feature_strategy,
+    )
+    new_nodes: Dict[str, NodeMapping] = {k: v for k, v in base.nodes.items() if k != "email"}
+    new_nodes["email_cluster"] = ec
+
+    new_edges: Dict[str, EdgeMapping] = {}
+    for k, e in base.edges.items():
+        src = "email_cluster" if e.src == "email" else e.src
+        dst = "email_cluster" if e.dst == "email" else e.dst
+        ml = "EmailCluster" if e.memgraph_left_label == "Email" else e.memgraph_left_label
+        mr = "EmailCluster" if e.memgraph_right_label == "Email" else e.memgraph_right_label
+        mk_l = "cid" if e.memgraph_left_key == "eid" else e.memgraph_left_key
+        mk_r = "cid" if e.memgraph_right_key == "eid" else e.memgraph_right_key
+        new_edges[k] = EdgeMapping(
+            canonical=e.canonical,
+            src=src,
+            rel_pyg=e.rel_pyg,
+            dst=dst,
+            memgraph_type=e.memgraph_type,
+            memgraph_left_label=ml,
+            memgraph_left_key=mk_l,
+            memgraph_right_label=mr,
+            memgraph_right_key=mk_r,
+            edge_strategy=e.edge_strategy,
+        )
+
+    new_edges["linked_by_shared_infra"] = EdgeMapping(
+        canonical="linked_by_shared_infra",
+        src="email_cluster",
+        rel_pyg="shared_infra",
+        dst="email_cluster",
+        memgraph_type="LINKED_BY_SHARED_INFRA",
+        memgraph_left_label="EmailCluster",
+        memgraph_left_key="cid",
+        memgraph_right_label="EmailCluster",
+        memgraph_right_key="cid",
+        edge_strategy="cluster_to_cluster",
+    )
+
+    new_collapse: Tuple[Tuple[str, str, str], ...] = tuple(
+        (
+            "email_cluster" if p == "email" else p,
+            "email_cluster" if c == "email" else c,
+            ek,
+        )
+        for p, c, ek in base.collapse_rules
+    )
+
+    out = GraphSchema(nodes=new_nodes, edges=new_edges, collapse_rules=new_collapse)
+    validate_schema(out)
+    return out
+
+
+EMAIL_CLUSTER_SUPER_SCHEMA = email_cluster_supernode_schema(DEFAULT_SCHEMA)
+
+
 __all__ = [
     "NodeMapping",
     "EdgeMapping",
     "GraphSchema",
     "validate_schema",
     "DEFAULT_SCHEMA",
+    "email_cluster_supernode_schema",
+    "EMAIL_CLUSTER_SUPER_SCHEMA",
 ]
