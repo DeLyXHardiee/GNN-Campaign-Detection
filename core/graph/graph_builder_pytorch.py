@@ -33,11 +33,11 @@ from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.pipeline_config import EmailFeatureProjectionSettings
+from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProjectionSettings
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
-from .graph_filter import NodeType, filter_graph_ir
+from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
 from .feature_projection import (
     SCALAR_COUNT,
@@ -155,7 +155,7 @@ def _set_node_features_from_ir(
     else:
         data[N["email"].pyg].num_nodes = 0
 
-    def set_simple(node_key: str, extra_keys: List[str] = None):
+    def set_simple(node_key: str, extra_keys: Optional[List[str]] = None):
         if node_key not in ir.nodes:
             return
         x = ir.nodes[node_key].x
@@ -201,8 +201,8 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
     for node_key, node_map in schema.nodes.items():
         pyg_label = node_map.pyg
         if node_key != "email":
-            meta = (ir.nodes.get(node_key) and ir.nodes[node_key].index_to_string) or []
-            node_maps[pyg_label] = {"index_to_string": meta}
+            labels: List[str] = list((ir.nodes.get(node_key) and ir.nodes[node_key].index_to_string) or [])
+            node_maps[pyg_label] = {"index_to_string": labels}
         feature_shapes[pyg_label] = list(data[pyg_label].x.shape) if "x" in data[pyg_label] else [0, 0]
 
     for edge_key, edge in schema.edges.items():
@@ -226,6 +226,7 @@ def build_hetero_graph_from_misp(
     *,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
+    degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
     embeddings_output_dir: Optional[str] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
@@ -262,6 +263,19 @@ def build_hetero_graph_from_misp(
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
+    if degree_node_filter and degree_node_filter.enabled and degree_node_filter.strength > 0:
+        target_types = (
+            NodeType.canonical_set(degree_node_filter.target_node_types, schema=schema)
+            if degree_node_filter.target_node_types is not None
+            else None
+        )
+        ir = filter_graph_ir_by_degree(
+            ir,
+            schema=schema,
+            strength=degree_node_filter.strength,
+            target_node_types=target_types,
+            min_degree=degree_node_filter.min_degree,
+        )
 
     HData = _ensure_heterodata()
     data = HData()
@@ -305,6 +319,7 @@ def build_graph(
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
+    degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
@@ -314,6 +329,8 @@ def build_graph(
         raise ValueError("Provide either misp_events (in-memory) or misp_json_path (file path).")
 
     if misp_events is None:
+        if misp_json_path is None:
+            raise ValueError("misp_json_path must be set when misp_events is not provided.")
         misp_events = _load_misp_json(misp_json_path)
 
     if max_misp_events is not None and max_misp_events > 0:
@@ -323,6 +340,7 @@ def build_graph(
         misp_events,
         schema=schema,
         exclude_nodes=exclude_nodes,
+        degree_node_filter=degree_node_filter,
         embeddings_output_dir=embeddings_output_dir,
         email_feature_projection=email_feature_projection,
     )
