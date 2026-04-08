@@ -5,10 +5,12 @@ import ast
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from config.pipeline_config import (
     EmailFeatureProjectionSettings,
     graph_build_settings_from_pipeline,
     load_pipeline_config,
+    output_runs_parent_from_pipeline,
     resolve_project_path,
 )
 from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
@@ -475,6 +477,109 @@ def create_feature_sets():
     misp_path = resolve_project_path(cfg.get("datasets", {}).get("misp_json_path"))
     run_featureset_extraction(misp_path=misp_path)
 
+def visualize_clusters(
+    *,
+    run_dir: str | Path | None = None,
+    run_id: str | None = None,
+    misp_json_path: str | Path | None = None,
+    include_attribute_similarity: bool | None = None,
+) -> dict[str, Any]:
+    """
+    Build ``<run_dir>/visualization/data.json`` and optionally start the Docker Compose UI.
+
+    Exactly one of ``run_dir`` or ``run_id`` should be set, or neither to use the current
+    session run directory (see ``PIPELINE_RUN_OUTPUT_DIR`` / allocation).
+
+    ``run_id`` is resolved under ``output_runs_root``: either an exact folder name
+    (e.g. ``my_run`` or ``my_run (1)``) or a unique prefix among subdirectory names.
+
+    Reads optional ``visualization`` block from ``pipeline_config.json``:
+    - ``enabled`` (default True): run ``docker compose`` for :file:`docker-compose.visualization.yml`
+    - ``port`` (default 8787): host port mapping
+    - ``compose_file`` (default ``docker-compose.visualization.yml``): path relative to repo root
+    - ``include_attribute_similarity`` (default True): SBERT similarity vs campaign peer average
+    """
+    from config.run_output_paths import resolve_session_run_output_dir
+
+    cfg = load_pipeline_config()
+    runs_root = output_runs_parent_from_pipeline(cfg)
+
+    if run_dir is not None and run_id is not None:
+        raise ValueError("Pass at most one of run_dir or run_id.")
+
+    if run_id is not None:
+        try:
+            from core.visualization.run_paths import resolve_run_dir_by_run_id
+        except ModuleNotFoundError:
+            from visualization.run_paths import resolve_run_dir_by_run_id
+        run_path = resolve_run_dir_by_run_id(cfg, run_id)
+    elif run_dir is None:
+        run_path = resolve_session_run_output_dir(cfg, runs_root=runs_root)
+    else:
+        run_path = Path(run_dir).expanduser().resolve()
+
+    if misp_json_path is None:
+        misp_raw = graph_build_settings_from_pipeline(cfg).misp_json_path
+        misp_resolved = misp_raw
+    else:
+        misp_resolved = resolve_project_path(str(misp_json_path)) or str(
+            Path(misp_json_path).expanduser().resolve()
+        )
+
+    try:
+        from core.visualization.data_builder import write_visualization_data_json
+    except ModuleNotFoundError:
+        from visualization.data_builder import write_visualization_data_json
+
+    viz_cfg = cfg.get("visualization") or {}
+    sim_default = bool(viz_cfg.get("include_attribute_similarity", True))
+    include_sim = sim_default if include_attribute_similarity is None else bool(
+        include_attribute_similarity
+    )
+
+    out_json = write_visualization_data_json(
+        run_dir=run_path,
+        misp_json_path=str(misp_resolved),
+        include_attribute_similarity=include_sim,
+    )
+    print(f"Visualization data written to: {out_json}")
+
+    if not viz_cfg.get("enabled", True):
+        print("visualization.enabled is false; skipping docker compose.")
+        return {"visualization_json": str(out_json), "compose": None}
+
+    port = int(viz_cfg.get("port", 8787))
+    compose_name = str(viz_cfg.get("compose_file", "docker-compose.visualization.yml")).strip()
+    repo_root = Path(__file__).resolve().parent.parent
+    compose_path = repo_root / compose_name
+    if not compose_path.is_file():
+        print(f"Warning: compose file not found at {compose_path}; skip docker compose.")
+        return {"visualization_json": str(out_json), "compose": None}
+
+    import subprocess
+
+    env = os.environ.copy()
+    env["RUN_DIR"] = str(run_path.resolve())
+    env["VIZ_PORT"] = str(port)
+
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_path), "up", "-d", "--build"],
+            cwd=str(repo_root),
+            env=env,
+            check=True,
+        )
+        print(f"Cluster visualization UI: http://localhost:{port}/")
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(f"Warning: could not start visualization stack ({exc}). Data file is still at {out_json}")
+
+    return {
+        "visualization_json": str(out_json),
+        "url": f"http://localhost:{port}/",
+        "compose": str(compose_path),
+    }
+
+
 def run_featureset_clustering():
     """
     Run DBSCAN, Mean Shift, and (when enabled) HDBSCAN clustering with grid search.
@@ -491,6 +596,11 @@ def run_featureset_clustering():
     meanshift_cfg = clustering_cfg.get("meanshift", {})
     hdbscan_cfg = clustering_cfg.get("hdbscan", {})
     outlier_cfg = clustering_cfg.get("outlier_removal", {})
+    gnn_sel = (cfg.get("gnn_clustering") or {}).get("selection") or {}
+    min_cov_gt = float(gnn_sel.get("min_coverage_ground_truth", 0.5))
+    min_cov_all = float(
+        gnn_sel.get("min_coverage_all", gnn_sel.get("min_coverage_ground_truth", 0.5))
+    )
 
     _run(
         dataset_base=cfg.get("datasets", {}).get(
@@ -511,6 +621,8 @@ def run_featureset_clustering():
         remove_outliers=outlier_cfg.get("enabled", True),
         outlier_contamination=outlier_cfg.get("contamination", 0.05),
         embeddings_output_dir=graph_s.embeddings_output_dir,
+        min_coverage_ground_truth=min_cov_gt,
+        min_coverage_all=min_cov_all,
     )
 
 def run_metric_comparison():
@@ -526,18 +638,20 @@ def run_pipeline():
     run_gnn_evaluation()
     run_gnn_clustering()
     run_metric_comparison()
+    visualize_clusters()
 
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #create_feature_sets()
     #run_featureset_clustering()
-    misp_path = "preprocessing/output/incidents-lake-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
-    run_gnn()
-    run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metric_comparison()
+    #misp_path = "preprocessing/output/incidents-lake-misp.json"
+    #run_graph_creation(misp_path, to_memgraph=False)
+    #run_gnn()
+    #run_gnn_evaluation()
+    #run_gnn_clustering()
+    #run_metric_comparison()
+    visualize_clusters(run_id="test_visualization")
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
