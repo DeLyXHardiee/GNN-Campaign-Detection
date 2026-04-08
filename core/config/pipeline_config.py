@@ -150,6 +150,21 @@ class EmailFeatureProjectionSettings:
 
 
 @dataclass(frozen=True)
+class DegreeNodeFilterSettings:
+    """
+    Degree-based node pruning for graph construction.
+
+    ``strength`` in [0, 1]: low values prune only top-degree hubs; higher values
+    progressively lower the degree threshold and prune more nodes.
+    """
+
+    enabled: bool = False
+    strength: float = 0.0
+    target_node_types: list[str] | None = None
+    min_degree: int = 2
+
+
+@dataclass(frozen=True)
 class GraphBuildSettings:
     """Resolved paths and options for MISP → PyG / Memgraph graph build."""
 
@@ -160,6 +175,7 @@ class GraphBuildSettings:
     memgraph: MemgraphSettings
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
+    degree_node_filter: DegreeNodeFilterSettings | None = None
 
 
 def graph_build_settings_from_pipeline(
@@ -243,6 +259,43 @@ def graph_build_settings_from_pipeline(
             other_out_dim=_opt_pos_int("other_out_dim"),
         )
 
+    degree_raw = graph_cfg.get("degree_node_filter")
+    degree_node_filter: DegreeNodeFilterSettings | None = None
+    if degree_raw is not None:
+        if not isinstance(degree_raw, dict):
+            raise TypeError("graph.degree_node_filter must be an object or omitted.")
+        enabled = bool(degree_raw.get("enabled", False))
+        strength_raw = degree_raw.get("strength", 0.0)
+        try:
+            strength = float(strength_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.degree_node_filter.strength must be a number in [0, 1].") from e
+        if strength < 0.0 or strength > 1.0:
+            raise ValueError("graph.degree_node_filter.strength must be within [0, 1].")
+
+        target_node_types = degree_raw.get("target_node_types")
+        if target_node_types is not None:
+            if not isinstance(target_node_types, list):
+                raise TypeError("graph.degree_node_filter.target_node_types must be a list of strings or null.")
+            target_node_types = [str(x) for x in target_node_types]
+
+        min_degree_raw = degree_raw.get("min_degree", 2)
+        if isinstance(min_degree_raw, bool):
+            raise ValueError("graph.degree_node_filter.min_degree must be a non-negative integer.")
+        try:
+            min_degree = int(min_degree_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("graph.degree_node_filter.min_degree must be a non-negative integer.") from e
+        if min_degree < 0:
+            raise ValueError("graph.degree_node_filter.min_degree must be >= 0.")
+
+        degree_node_filter = DegreeNodeFilterSettings(
+            enabled=enabled,
+            strength=strength,
+            target_node_types=target_node_types,
+            min_degree=min_degree,
+        )
+
     raw_max = graph_cfg.get("max_misp_events")
     max_misp_events: int | None = None
     if raw_max is not None and not isinstance(raw_max, bool):
@@ -266,6 +319,7 @@ def graph_build_settings_from_pipeline(
         memgraph=memgraph,
         max_misp_events=max_misp_events,
         email_feature_projection=email_feature_projection,
+        degree_node_filter=degree_node_filter,
     )
 
 

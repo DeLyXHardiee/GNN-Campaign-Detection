@@ -442,6 +442,7 @@ def run_graph_creation(
         misp_json_path=path,
         out_dir=settings.output_dir,
         exclude_nodes=settings.exclude_node_types,
+        degree_node_filter=settings.degree_node_filter,
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
@@ -529,8 +530,8 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    create_feature_sets()
-    run_featureset_clustering()
+    #create_feature_sets()
+    #run_featureset_clustering()
     misp_path = "preprocessing/output/incidents-lake-misp.json"
     run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()

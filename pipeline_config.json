@@ -30,6 +30,12 @@
     "max_misp_events": null,
     "output_dir": "core/graph/output",
     "exclude_node_types": [],
+    "degree_node_filter": {
+      "enabled": false,
+      "strength": 0.2,
+      "target_node_types": null,
+      "min_degree": 2
+    },
     "embeddings_output_dir": null,
     "email_feature_projection": {
       "seed": 42,
@@ -72,7 +78,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test",
+  "run_id": "degree_filter_strength_0.2",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",

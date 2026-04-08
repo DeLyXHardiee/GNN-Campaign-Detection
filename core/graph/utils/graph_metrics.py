@@ -5,6 +5,7 @@ Now filter-aware: all functions gracefully handle missing node/edge types
 when graphs are built with excluded nodes.
 
 Provides utilities to analyze graph structure, node counts, edge counts,
+per-node-type average degree and how many merged-graph connected components each type touches,
 and identify top entities (URLs, domains, stems, senders, receivers, etc.).
 Also generates a Markdown report for easy sharing.
 """
@@ -173,6 +174,134 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
         }
     except Exception:
         return None
+
+
+def compute_per_node_type_structure_metrics(graph) -> Dict[str, Dict[str, float]]:
+    """
+    Per node type in a HeteroData graph (merged undirected view, same as
+    ``analyze_graph`` / ``get_max_degree_node_in_largest_component``):
+
+    - ``avg_degree``: mean undirected degree (each edge counts once at each endpoint).
+    - ``num_connected_components``: number of distinct connected components in that
+      merged graph that contain at least one node of this type.
+
+    Missing node/edge types are handled like elsewhere in this module.
+    """
+    node_types = list(getattr(graph, "node_types", []))
+    if not node_types:
+        return {}
+
+    inferred_counts: Dict[str, int] = {nt: 0 for nt in node_types}
+    for (src_t, _rel, dst_t) in getattr(graph, "edge_types", []):
+        store = graph[src_t, _rel, dst_t]
+        edge_index = getattr(store, "edge_index", None)
+        if edge_index is None or edge_index.numel() == 0:
+            continue
+        src_max = int(edge_index[0].max().item()) if edge_index[0].numel() > 0 else -1
+        dst_max = int(edge_index[1].max().item()) if edge_index[1].numel() > 0 else -1
+        if src_max >= 0:
+            inferred_counts[src_t] = max(inferred_counts[src_t], src_max + 1)
+        if dst_max >= 0:
+            inferred_counts[dst_t] = max(inferred_counts[dst_t], dst_max + 1)
+    for nt in node_types:
+        try:
+            if "x" in graph[nt]:
+                inferred_counts[nt] = max(inferred_counts[nt], int(graph[nt].x.size(0)))
+        except Exception:
+            pass
+
+    offsets: Dict[str, int] = {}
+    off = 0
+    for nt in node_types:
+        offsets[nt] = off
+        off += int(inferred_counts.get(nt, 0))
+    total = off
+    if total == 0:
+        return {nt: {"avg_degree": 0.0, "num_connected_components": 0.0} for nt in node_types}
+
+    deg: Dict[str, List[int]] = {nt: [0] * inferred_counts[nt] for nt in node_types}
+    adj: List[List[int]] = [[] for _ in range(total)]
+
+    for (src_t, _rel, dst_t) in getattr(graph, "edge_types", []):
+        store = graph[src_t, _rel, dst_t]
+        edge_index = getattr(store, "edge_index", None)
+        if edge_index is None or edge_index.numel() == 0:
+            continue
+        bs = offsets[src_t]
+        bd = offsets[dst_t]
+        src_idx = edge_index[0].tolist()
+        dst_idx = edge_index[1].tolist()
+        for s_i, d_i in zip(src_idx, dst_idx):
+            si, di = int(s_i), int(d_i)
+            s_g = bs + si
+            d_g = bd + di
+            if 0 <= si < len(deg[src_t]):
+                deg[src_t][si] += 1
+            if 0 <= di < len(deg[dst_t]):
+                deg[dst_t][di] += 1
+            if 0 <= s_g < total and 0 <= d_g < total:
+                adj[s_g].append(d_g)
+                adj[d_g].append(s_g)
+
+    comp_id = [-1] * total
+    current_id = 0
+    for nid in range(total):
+        if comp_id[nid] != -1:
+            continue
+        dq: deque[int] = deque([nid])
+        comp_id[nid] = current_id
+        while dq:
+            v = dq.popleft()
+            for w in adj[v]:
+                if comp_id[w] == -1:
+                    comp_id[w] = current_id
+                    dq.append(w)
+        current_id += 1
+
+    out: Dict[str, Dict[str, float]] = {}
+    for nt in node_types:
+        n = inferred_counts.get(nt, 0)
+        base = offsets[nt]
+        if n == 0:
+            out[nt] = {"avg_degree": 0.0, "num_connected_components": 0.0}
+            continue
+        total_deg = sum(deg[nt])
+        avg = float(total_deg) / float(n)
+        distinct = {comp_id[base + i] for i in range(n)}
+        out[nt] = {
+            "avg_degree": avg,
+            "num_connected_components": float(len(distinct)),
+        }
+    return out
+
+
+def _md_per_node_type_structure(graph_path: str) -> str:
+    lines = [
+        "## Per-Node-Type Degree and Components",
+        "",
+        "Average degree counts each undirected edge once at each endpoint across all edge types.",
+        "Component counts: in the merged undirected graph (all node types), the number of connected "
+        "components that contain at least one node of that type.",
+        "",
+    ]
+    try:
+        graph = _safe_load_graph(graph_path)
+        metrics = compute_per_node_type_structure_metrics(graph)
+        if not metrics:
+            lines.append("No node types found.")
+            lines.append("")
+            return "\n".join(lines)
+        for nt in sorted(metrics.keys()):
+            m = metrics[nt]
+            lines.append(
+                f"- **{nt}**: avg degree = {m['avg_degree']:.4f}; "
+                f"connected components (merged graph, type touches) = {int(m['num_connected_components']):,d}"
+            )
+    except Exception as e:
+        lines.append(f"Could not compute per-node-type metrics: {e}")
+    lines.append("")
+    return "\n".join(lines)
+
 
 def _md_graph_overview(metadata: Dict[str, Any]) -> str:
     feature_shapes = metadata.get("feature_shapes", {})
@@ -355,6 +484,8 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     sections: List[str] = []
     sections.append(f"# Graph Analysis Report\n\nGenerated: {datetime.utcnow().isoformat()}Z\n")
     sections.append(_md_graph_overview(metadata))
+    if graph_path:
+        sections.append(_md_per_node_type_structure(graph_path))
 
     urls = count_url_references_from_graph(graph_path, metadata, 5) if graph_path else []
     if not urls:
@@ -531,8 +662,8 @@ if __name__ == "__main__":
     import sys
     import os
     
-    default_meta = os.path.join("../output", "incidents-20260211-misp_hetero.meta.json")
-    default_graph = os.path.join("../output", "incidents-20260211-misp_hetero.pt")
+    default_meta = os.path.join("../output", "incidents-lake-misp_hetero.meta.json")
+    default_graph = os.path.join("../output", "incidents-lake-misp_hetero.pt")
     
     if len(sys.argv) > 1:
         meta_path = sys.argv[1]
