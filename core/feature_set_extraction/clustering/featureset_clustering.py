@@ -20,10 +20,15 @@ import numpy as np
 
 from clustering.clusteringMetrics import (
     extract_ground_truth_labels,
+    fit_predict_labels,
     run_db_scan_analysis,
     run_hdbscan_analysis,
     run_meanshift_analysis,
 )
+try:
+    from core.visualization.campaign_utils import build_campaign_artifact_payload
+except ModuleNotFoundError:
+    from visualization.campaign_utils import build_campaign_artifact_payload
 from config.pipeline_config import load_pipeline_config, output_runs_parent_from_pipeline
 from config.run_output_paths import resolve_session_run_output_dir
 
@@ -184,6 +189,127 @@ def _write_run_header(score_f, algorithm: str, params: str) -> None:
     score_f.write("=" * 80 + "\n\n")
 
 
+def _featureset_selection_key(
+    metrics: dict,
+    min_cov_gt: float,
+    min_cov_all: float,
+) -> tuple[bool, float]:
+    """Prefer rows meeting coverage thresholds, then higher v_measure."""
+    strict = (
+        float(metrics.get("coverage_ground_truth", 0.0)) >= min_cov_gt
+        and float(metrics.get("coverage_all", 0.0)) >= min_cov_all
+    )
+    vm = float(metrics.get("v_measure", 0.0))
+    return (strict, vm)
+
+
+def _update_featureset_best(
+    best: dict,
+    *,
+    algorithm: str,
+    fs_name: str,
+    n_components: int,
+    metrics: dict,
+    min_cov_gt: float,
+    min_cov_all: float,
+    **extra: object,
+) -> None:
+    if metrics.get("clustering_error"):
+        return
+    key = _featureset_selection_key(metrics, min_cov_gt, min_cov_all)
+    cur_key = best.get("selection_key")
+    if cur_key is None or key > cur_key:
+        best.clear()
+        best.update(
+            algorithm=algorithm,
+            fs_name=fs_name,
+            n_components=n_components,
+            selection_key=key,
+            v_measure=float(metrics.get("v_measure", 0.0)),
+            **extra,
+        )
+
+
+def _write_featureset_campaigns_json(
+    *,
+    best: dict,
+    run_output_path: Path,
+    dataset_base: str,
+    max_tfidf_features: int | None,
+    remove_outliers: bool,
+    outlier_contamination: float,
+    embeddings_output_dir: str | os.PathLike | None,
+    min_samples: int,
+    n_samples: int,
+    hdbscan_min_samples: int | None,
+) -> str | None:
+    """Rebuild embeddings for the winning config and write ``campaigns_featureset.json``."""
+    if not best.get("algorithm"):
+        print("Skipping campaigns_featureset.json: no clustering result recorded.")
+        return None
+
+    records, _ = _load_records(dataset_base, str(best["fs_name"]))
+    if records is None:
+        print("Skipping campaigns_featureset.json: feature set records missing.")
+        return None
+
+    embedding_map = _build_embedding_map(
+        records,
+        max_tfidf_features,
+        int(best["n_components"]),
+        remove_outliers,
+        outlier_contamination,
+        embeddings_output_dir=embeddings_output_dir,
+    )
+    algo = str(best["algorithm"])
+    if algo == "dbscan":
+        sorted_ids, labels = fit_predict_labels(
+            embedding_map,
+            "dbscan",
+            epsilon=float(best["epsilon"]),
+            min_samples=int(min_samples),
+        )
+        params = {"epsilon": float(best["epsilon"]), "min_samples": int(min_samples)}
+    elif algo == "meanshift":
+        sorted_ids, labels = fit_predict_labels(
+            embedding_map,
+            "meanshift",
+            quantile=float(best["quantile"]),
+            n_samples=n_samples,
+        )
+        params = {"quantile": float(best["quantile"]), "n_samples": n_samples}
+    elif algo == "hdbscan":
+        sorted_ids, labels = fit_predict_labels(
+            embedding_map,
+            "hdbscan",
+            min_cluster_size=int(best["min_cluster_size"]),
+            hdbscan_min_samples=hdbscan_min_samples,
+        )
+        params = {
+            "min_cluster_size": int(best["min_cluster_size"]),
+            "min_samples": hdbscan_min_samples,
+        }
+    else:
+        return None
+
+    payload = build_campaign_artifact_payload(
+        solution="featureset",
+        algorithm=algo,
+        sorted_ids=sorted_ids,
+        labels=labels,
+        params=params,
+        metrics={"v_measure": float(best.get("v_measure", 0.0))},
+        feature_set=str(best["fs_name"]),
+        n_components=int(best["n_components"]),
+    )
+    out_dir = run_output_path / "featureset_clustering"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "campaigns_featureset.json"
+    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Wrote featureset campaign assignments: {out_path}")
+    return str(out_path)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -208,6 +334,8 @@ def run_featureset_clustering(
     outlier_contamination: float = 0.05,
     embeddings_output_dir: str | os.PathLike | None = None,
     run_output_dir: str | os.PathLike | None = None,
+    min_coverage_ground_truth: float = 0.5,
+    min_coverage_all: float = 0.5,
 ) -> None:
     """
     Run DBSCAN, Mean Shift, and (optionally) HDBSCAN grid searches over all feature
@@ -251,6 +379,8 @@ def run_featureset_clustering(
         run_output_path = Path(run_output_dir)
     print(f"Run output directory: {run_output_path.resolve()}")
     results_dir = _results_dir(run_output_path)
+
+    best_run: dict = {}
 
     embedding_cache, embedding_skip_messages = _build_featureset_embedding_cache(
         dataset_base=dataset_base,
@@ -312,6 +442,16 @@ def run_featureset_clustering(
                         ground_truth_labels=ground_truth_labels,
                         epsilon=eps,
                         min_samples=min_samples,
+                    )
+                    _update_featureset_best(
+                        best_run,
+                        algorithm="dbscan",
+                        fs_name=fs_name,
+                        n_components=n_components,
+                        metrics=metrics,
+                        min_cov_gt=min_coverage_ground_truth,
+                        min_cov_all=min_coverage_all,
+                        epsilon=eps,
                     )
                     metric_text = (
                         f"{fs_name} | eps={eps} | n_components={n_components} | "
@@ -383,6 +523,16 @@ def run_featureset_clustering(
                         ground_truth_labels=ground_truth_labels,
                         quantile=quantile,
                         n_samples=n_samples,
+                    )
+                    _update_featureset_best(
+                        best_run,
+                        algorithm="meanshift",
+                        fs_name=fs_name,
+                        n_components=n_components,
+                        metrics=metrics,
+                        min_cov_gt=min_coverage_ground_truth,
+                        min_cov_all=min_coverage_all,
+                        quantile=quantile,
                     )
                     metric_text = (
                         f"{fs_name} | quantile={quantile} | n_components={n_components} | "
@@ -465,6 +615,16 @@ def run_featureset_clustering(
                             min_cluster_size=min_cluster_size,
                             min_samples=hdbscan_min_samples,
                         )
+                        _update_featureset_best(
+                            best_run,
+                            algorithm="hdbscan",
+                            fs_name=fs_name,
+                            n_components=n_components,
+                            metrics=metrics,
+                            min_cov_gt=min_coverage_ground_truth,
+                            min_cov_all=min_coverage_all,
+                            min_cluster_size=min_cluster_size,
+                        )
                         ms_note = metrics.get("min_samples")
                         metric_text = (
                             f"{fs_name} | min_cluster_size={min_cluster_size} | "
@@ -486,6 +646,19 @@ def run_featureset_clustering(
         print("HDBSCAN grid search complete!")
         print(f"Results saved to: {hdbscan_scores_path}")
         print(f"{'='*80}\n")
+
+    _write_featureset_campaigns_json(
+        best=best_run,
+        run_output_path=run_output_path,
+        dataset_base=dataset_base,
+        max_tfidf_features=max_tfidf_features,
+        remove_outliers=remove_outliers,
+        outlier_contamination=outlier_contamination,
+        embeddings_output_dir=embeddings_output_dir,
+        min_samples=min_samples,
+        n_samples=n_samples,
+        hdbscan_min_samples=hdbscan_min_samples,
+    )
 
     print(f"\n{'='*80}")
     print("All grid searches complete!")

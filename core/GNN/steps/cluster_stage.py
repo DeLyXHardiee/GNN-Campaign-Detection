@@ -5,9 +5,22 @@ import re
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 
+from config.pipeline_config import (
+    GnnPathLayout,
+    gnn_path_layout_from_pipeline,
+    load_pipeline_config,
+)
+try:
+    from core.clustering.clusteringMetrics import fit_predict_labels
+    from core.visualization.campaign_utils import build_campaign_artifact_payload
+except ModuleNotFoundError:
+    from clustering.clusteringMetrics import fit_predict_labels
+    from visualization.campaign_utils import build_campaign_artifact_payload
 from src.clustering.clustering_helpers import (
+    extract_email_embeddings,
     extract_ground_truth_labels,
     run_locked_param_across_checkpoints,
     sweep_clustering_for_one_model,
@@ -114,12 +127,14 @@ def run_clustering_stage(
             "output_dir": str(algo_out),
         }
 
-        # Choose best epsilon/quantile from the best-model sweep.
+        # Choose best epsilon / quantile / min_cluster_size from the best-model sweep.
         rows = sweep_res.get("rows") or []
         if algo_name == "dbscan":
             param_key = "epsilon"
         elif algo_name == "meanshift":
             param_key = "quantile"
+        elif algo_name == "hdbscan":
+            param_key = "min_cluster_size"
         else:
             param_key = None
 
@@ -159,7 +174,11 @@ def run_clustering_stage(
         if not m:
             continue
         epoch_ckpts.append(p)
-    epoch_ckpts = sorted(epoch_ckpts, key=lambda p: int(re.search(r"(\d+)", p.stem).group(1)))
+    def _epoch_num(p: Path) -> int:
+        em = re.search(r"(\d+)", p.stem)
+        return int(em.group(1)) if em else 0
+
+    epoch_ckpts = sorted(epoch_ckpts, key=_epoch_num)
 
     if epoch_ckpts and best_locked_params:
         for algo_name, best in best_locked_params.items():
@@ -167,9 +186,14 @@ def run_clustering_stage(
             if not isinstance(algo_cfg, dict) or not algo_cfg.get("enabled", False):
                 continue
 
-            locked_param_value = (
-                best["epsilon"] if algo_name == "dbscan" else best["quantile"]
-            )
+            if algo_name == "dbscan":
+                locked_param_value = best["epsilon"]
+            elif algo_name == "meanshift":
+                locked_param_value = best["quantile"]
+            elif algo_name == "hdbscan":
+                locked_param_value = best["min_cluster_size"]
+            else:
+                continue
 
             cfg_for_sweep = {k: v for k, v in algo_cfg.items() if k != "enabled"}
             cfg_for_sweep["cluster_algorithm"] = algo_name
@@ -186,6 +210,76 @@ def run_clustering_stage(
                 email_external_ids=email_external_ids,
             )
 
+    campaigns_gnn_path: str | None = None
+    if best_locked_params:
+        best_algo_name, best_info = max(
+            best_locked_params.items(),
+            key=lambda kv: float(kv[1].get("v_measure", 0.0)),
+        )
+        algo_cfg_best = (
+            clustering_cfg.get(best_algo_name) if isinstance(clustering_cfg, dict) else None
+        )
+        if not isinstance(algo_cfg_best, dict):
+            algo_cfg_best = {}
+
+        id_to_emb = extract_email_embeddings(
+            model, data, device, external_ids=email_external_ids
+        )
+
+        if best_algo_name == "dbscan":
+            sorted_ids, labels = fit_predict_labels(
+                id_to_emb,
+                "dbscan",
+                epsilon=float(best_info["epsilon"]),
+                min_samples=int(algo_cfg_best.get("min_samples", 5)),
+            )
+            params_out: dict[str, Any] = {
+                "epsilon": float(best_info["epsilon"]),
+                "min_samples": int(algo_cfg_best.get("min_samples", 5)),
+            }
+        elif best_algo_name == "meanshift":
+            sorted_ids, labels = fit_predict_labels(
+                id_to_emb,
+                "meanshift",
+                quantile=float(best_info["quantile"]),
+                n_samples=algo_cfg_best.get("n_samples"),
+            )
+            params_out = {
+                "quantile": float(best_info["quantile"]),
+                "n_samples": algo_cfg_best.get("n_samples"),
+            }
+        elif best_algo_name == "hdbscan":
+            sorted_ids, labels = fit_predict_labels(
+                id_to_emb,
+                "hdbscan",
+                min_cluster_size=int(best_info["min_cluster_size"]),
+                hdbscan_min_samples=algo_cfg_best.get("min_samples"),
+            )
+            params_out = {
+                "min_cluster_size": int(best_info["min_cluster_size"]),
+                "min_samples": algo_cfg_best.get("min_samples"),
+            }
+        else:
+            sorted_ids, labels = [], np.array([], dtype=np.int64)
+            params_out = {}
+
+        payload = build_campaign_artifact_payload(
+            solution="gnn",
+            algorithm=best_algo_name,
+            sorted_ids=sorted_ids,
+            labels=labels,
+            params=params_out,
+            metrics={
+                "v_measure": float(best_info.get("v_measure", 0.0)),
+                "coverage_ground_truth": float(best_info.get("coverage_ground_truth", 0.0)),
+                "coverage_all": float(best_info.get("coverage_all", 0.0)),
+            },
+            model_name=model_stem,
+        )
+        out_p = clustering_out / "campaigns_gnn.json"
+        out_p.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        campaigns_gnn_path = str(out_p)
+
     result = {
         "output_dir": str(clustering_out),
         "model_column_name": model_stem,
@@ -194,6 +288,7 @@ def run_clustering_stage(
         "locked_param_min_coverage_ground_truth": float(min_coverage_ground_truth),
         "locked_param_min_coverage_all": float(min_coverage_all),
         "locked_param_epoch_checkpoints": [str(p) for p in epoch_ckpts],
+        "campaigns_gnn_path": campaigns_gnn_path,
     }
     (clustering_out / layout.stage_result_json).write_text(
         json.dumps(result, indent=2),

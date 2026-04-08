@@ -78,7 +78,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "degree_filter_strength_0.2",
+  "run_id": "test_visualization",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -153,5 +153,11 @@
         ]
       }
     }
+  },
+  "visualization": {
+    "enabled": true,
+    "port": 8787,
+    "compose_file": "docker-compose.visualization.yml",
+    "include_attribute_similarity": true
   }
 }
