@@ -102,7 +102,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "email_preclustering_hdbscan_weighted",
+  "run_id": "email_preclustering_hdbscan_weighted_visualized",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -177,5 +177,11 @@
         ]
       }
     }
+  },
+  "visualization": {
+    "enabled": true,
+    "port": 8787,
+    "compose_file": "docker-compose.visualization.yml",
+    "include_attribute_similarity": true
   }
 }

@@ -1,0 +1,142 @@
+:root {
+  font-family: system-ui, sans-serif;
+  --border: #ccc;
+  --bg: #f8f9fa;
+  --accent: #0d6efd;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.header {
+  padding: 1rem 1.5rem;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+
+.muted {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.legend {
+  max-width: 52rem;
+  margin: 0.5rem 0 0;
+}
+
+.sim-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #333;
+  opacity: 0.85;
+}
+
+.attr-row {
+  border-radius: 6px;
+  padding: 0.45rem 0.5rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 1rem;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 0.75rem 1.25rem;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  border-bottom: 3px solid transparent;
+}
+
+.tab:hover {
+  background: #eef2f7;
+}
+
+.tab.active {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px 280px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 120px);
+}
+
+.panel {
+  background: #fff;
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+  overflow: auto;
+}
+
+.panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+li button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 4px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+li button:hover,
+li button:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+li button.active {
+  background: #e7f1ff;
+  border-color: var(--accent);
+}
+
+.email-container {
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.email-container .row {
+  margin-bottom: 0.75rem;
+}
+
+.email-container .label {
+  font-weight: 600;
+  color: #444;
+}
+
+.email-container pre.body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f4f4f4;
+  padding: 1rem;
+  border-radius: 8px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

@@ -270,6 +270,62 @@ def run_meanshift_analysis(
     return metrics
 
 
+def fit_predict_labels(
+    id_to_embedding_map: dict[str, np.ndarray],
+    algorithm: str,
+    *,
+    epsilon: float | None = None,
+    min_samples: int = 5,
+    quantile: float | None = None,
+    n_samples: int | None = None,
+    min_cluster_size: int | None = None,
+    hdbscan_min_samples: int | None = None,
+) -> tuple[list[str], np.ndarray]:
+    """
+    Run clustering without ground-truth metrics; return (sorted_external_ids, label_array).
+
+    ``algorithm`` is one of: ``dbscan``, ``meanshift``, ``hdbscan``.
+    On failure (e.g. MeanShift bin seeding), returns all labels -1.
+    """
+    algo = str(algorithm).lower().strip()
+    sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
+    n_embeddings = int(len(sorted_ids))
+
+    if algo == "dbscan":
+        if epsilon is None:
+            raise ValueError("fit_predict_labels(dbscan) requires epsilon=")
+        clusterer = DBSCAN(eps=float(epsilon), min_samples=int(min_samples), metric="euclidean")
+        labels = clusterer.fit_predict(embeddings)
+        return sorted_ids, np.asarray(labels)
+
+    if algo == "meanshift":
+        if quantile is None:
+            raise ValueError("fit_predict_labels(meanshift) requires quantile=")
+        bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
+        clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
+        try:
+            labels = clusterer.fit_predict(embeddings)
+        except ValueError as exc:
+            if "No point was within" not in str(exc):
+                raise
+            return sorted_ids, np.full(n_embeddings, -1, dtype=np.int64)
+        return sorted_ids, np.asarray(labels)
+
+    if algo == "hdbscan":
+        if min_cluster_size is None:
+            raise ValueError("fit_predict_labels(hdbscan) requires min_cluster_size=")
+        import hdbscan  # type: ignore
+
+        clusterer = hdbscan.HDBSCAN(
+            min_cluster_size=int(min_cluster_size),
+            min_samples=None if hdbscan_min_samples is None else int(hdbscan_min_samples),
+        )
+        labels = clusterer.fit_predict(embeddings)
+        return sorted_ids, np.asarray(labels)
+
+    raise ValueError(f"Unknown algorithm={algorithm!r}; expected dbscan, meanshift, hdbscan.")
+
+
 def run_hdbscan_analysis(
     id_to_embedding_map: dict[str, np.ndarray],
     ground_truth_labels: dict[str, Any],
@@ -301,6 +357,7 @@ __all__ = [
     "alligned_true_predictived_labels",
     "compute_all_metrics",
     "_emb_matrix_from_id_to_embedding",
+    "fit_predict_labels",
     "run_db_scan_analysis",
     "run_meanshift_analysis",
     "run_hdbscan_analysis",
