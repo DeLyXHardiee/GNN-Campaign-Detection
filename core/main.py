@@ -13,6 +13,7 @@ from config.pipeline_config import (
     output_runs_parent_from_pipeline,
     resolve_project_path,
 )
+from metric_comparison import run_metric_comparison_for_run
 from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
 from preprocessing.misp_converter import incidents_to_misp_file
 
@@ -625,9 +626,46 @@ def run_featureset_clustering():
         min_coverage_all=min_cov_all,
     )
 
-def run_metric_comparison():
-    # input Clusters --> Evaluate clustering results using metrics -- > store metrics
-    pass
+def run_metric_comparison(
+    *,
+    run_dir: str | Path | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Compare feature-set clustering vs GNN campaign outputs for a run.
+
+    Writes ``<run_dir>/metric_comparison/`` (plots + JSON + CSV).
+
+    Exactly one of ``run_dir`` or ``run_id`` should be set, or neither to use the
+    current session run directory (see ``PIPELINE_RUN_OUTPUT_DIR`` / allocation).
+    """
+    from config.run_output_paths import resolve_session_run_output_dir
+
+    cfg = load_pipeline_config()
+    runs_root = output_runs_parent_from_pipeline(cfg)
+
+    if run_dir is not None and run_id is not None:
+        raise ValueError("Pass at most one of run_dir or run_id.")
+
+    if run_id is not None:
+        try:
+            from core.visualization.run_paths import resolve_run_dir_by_run_id
+        except ModuleNotFoundError:
+            from visualization.run_paths import resolve_run_dir_by_run_id
+        run_path = resolve_run_dir_by_run_id(cfg, run_id)
+    elif run_dir is None:
+        run_path = resolve_session_run_output_dir(cfg, runs_root=runs_root)
+    else:
+        run_path = Path(run_dir).expanduser().resolve()
+
+    gt_rel = cfg.get("datasets", {}).get("ground_truth_json")
+    gt_path = resolve_project_path(gt_rel) if gt_rel else None
+    if not gt_path:
+        raise ValueError(
+            "pipeline_config datasets.ground_truth_json is required for metric comparison."
+        )
+
+    return run_metric_comparison_for_run(run_path, ground_truth_path=gt_path)
 
 def run_pipeline():
     misp_json_path = run_preprocessing_lake()
@@ -643,15 +681,15 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
-    #run_gnn()
-    #run_gnn_evaluation()
-    #run_gnn_clustering()
-    #run_metric_comparison()
-    visualize_clusters(run_id="test_visualization")
+    create_feature_sets()
+    run_featureset_clustering()
+    misp_path = "preprocessing/output/incidents-lake-misp.json"
+    run_graph_creation(misp_path, to_memgraph=False)
+    run_gnn()
+    run_gnn_evaluation()
+    run_gnn_clustering()
+    run_metric_comparison()
+    visualize_clusters()
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
