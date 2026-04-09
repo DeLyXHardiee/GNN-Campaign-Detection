@@ -78,7 +78,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test_visualization",
+  "run_id": "test_metric_comparison",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
