@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 from config.pipeline_config import (
     EmailFeatureProjectionSettings,
+    PIPELINE_CONFIG,
     graph_build_settings_from_pipeline,
-    load_pipeline_config,
     output_runs_parent_from_pipeline,
     resolve_project_path,
 )
@@ -72,7 +72,7 @@ def run_gnn(
     checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
     device_pref: str | None = None,
 ):
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
     run_dir_str, _checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
         cfg=cfg,
@@ -106,7 +106,7 @@ def run_gnn_evaluation(
     runs_parent: str | Path | None = None,
     checkpoint_path: str | Path | None = None,
 ):
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
     run_dir_str, checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
         cfg=cfg,
@@ -156,7 +156,7 @@ def run_gnn_clustering(
     checkpoint_path: str | Path | None = None,
     make_plots: bool = True,
 ):
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
     run_dir_str, checkpoint_path_str, graph_path_str, ground_truth_path_str = resolve_gnn_paths(
         cfg=cfg,
@@ -203,7 +203,7 @@ def run_preprocessing_trec():
     """
     Loads the TREC-07-only-phishing-6m.csv path from config and creates a MISP JSON file from it.
     """
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     prep_cfg = cfg.get("preprocessing", {})
     # Force the incidents_csv_path to the TREC-07-only-phishing-6m.csv from config
     incidents_csv_path = _require_path(
@@ -300,7 +300,7 @@ def run_preprocessing():
     """
     Parse incident metadata and email body files, then convert to MISP JSON.
     """
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     prep_cfg = cfg.get("preprocessing", {})
     limit = prep_cfg.get("limit")
 
@@ -342,7 +342,7 @@ def run_preprocessing_lake():
     Parse incidents by streaming joined rows from lake tables, then convert to MISP JSON.
     Secrets must come from environment variables.
     """
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     prep_cfg = cfg.get("preprocessing", {})
     prep_lake_cfg = cfg.get("preprocessing_lake", {})
 
@@ -430,7 +430,7 @@ def run_graph_creation(
     from graph.graph_builder_pytorch import build_graph
     from graph.graph_builder_memgraph import build_memgraph
 
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     settings = graph_build_settings_from_pipeline(cfg)
     path = misp_json_path or settings.misp_json_path
     limit = (
@@ -474,7 +474,7 @@ def run_graph_creation(
 
 def create_feature_sets():
     from feature_set_extraction.feature_set_extraction import run_featureset_extraction
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     misp_path = resolve_project_path(cfg.get("datasets", {}).get("misp_json_path"))
     run_featureset_extraction(misp_path=misp_path)
 
@@ -502,7 +502,7 @@ def visualize_clusters(
     """
     from config.run_output_paths import resolve_session_run_output_dir
 
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     runs_root = output_runs_parent_from_pipeline(cfg)
 
     if run_dir is not None and run_id is not None:
@@ -590,41 +590,7 @@ def run_featureset_clustering():
         run_featureset_clustering as _run,
     )
 
-    cfg = load_pipeline_config()
-    graph_s = graph_build_settings_from_pipeline(cfg)
-    clustering_cfg = cfg.get("featureset-clustering", cfg.get("clustering", {}))
-    dbscan_cfg = clustering_cfg.get("dbscan", {})
-    meanshift_cfg = clustering_cfg.get("meanshift", {})
-    hdbscan_cfg = clustering_cfg.get("hdbscan", {})
-    outlier_cfg = clustering_cfg.get("outlier_removal", {})
-    gnn_sel = (cfg.get("gnn_clustering") or {}).get("selection") or {}
-    min_cov_gt = float(gnn_sel.get("min_coverage_ground_truth", 0.5))
-    min_cov_all = float(
-        gnn_sel.get("min_coverage_all", gnn_sel.get("min_coverage_ground_truth", 0.5))
-    )
-
-    _run(
-        dataset_base=cfg.get("datasets", {}).get(
-            "featureset_base_name", "synthetic_email_dataset_50"
-        ),
-        ground_truth_json=resolve_project_path(
-            cfg.get("datasets", {}).get("ground_truth_json")
-        ),
-        eps_values=dbscan_cfg.get("eps_values", []),
-        min_samples=dbscan_cfg.get("min_samples", 5),
-        quantile_values=meanshift_cfg.get("quantile_values", []),
-        n_samples=meanshift_cfg.get("n_samples", 500),
-        hdbscan_enabled=hdbscan_cfg.get("enabled", True),
-        min_cluster_size_values=hdbscan_cfg.get("min_cluster_size_values", [2]),
-        hdbscan_min_samples=hdbscan_cfg.get("min_samples"),
-        n_components_values=clustering_cfg.get("n_components_values", [1000]),
-        max_tfidf_features=clustering_cfg.get("max_tfidf_features"),
-        remove_outliers=outlier_cfg.get("enabled", True),
-        outlier_contamination=outlier_cfg.get("contamination", 0.05),
-        embeddings_output_dir=graph_s.embeddings_output_dir,
-        min_coverage_ground_truth=min_cov_gt,
-        min_coverage_all=min_cov_all,
-    )
+    _run()
 
 def run_metric_comparison(
     *,
@@ -641,7 +607,7 @@ def run_metric_comparison(
     """
     from config.run_output_paths import resolve_session_run_output_dir
 
-    cfg = load_pipeline_config()
+    cfg = PIPELINE_CONFIG
     runs_root = output_runs_parent_from_pipeline(cfg)
 
     if run_dir is not None and run_id is not None:
