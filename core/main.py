@@ -610,9 +610,9 @@ def run_featureset_clustering():
         ground_truth_json=resolve_project_path(
             cfg.get("datasets", {}).get("ground_truth_json")
         ),
-        eps_values=dbscan_cfg.get("eps_values", [1, 1.5, 2]),
+        eps_values=dbscan_cfg.get("eps_values", []),
         min_samples=dbscan_cfg.get("min_samples", 5),
-        quantile_values=meanshift_cfg.get("quantile_values", [0.25]),
+        quantile_values=meanshift_cfg.get("quantile_values", []),
         n_samples=meanshift_cfg.get("n_samples", 500),
         hdbscan_enabled=hdbscan_cfg.get("enabled", True),
         min_cluster_size_values=hdbscan_cfg.get("min_cluster_size_values", [2]),
@@ -681,8 +681,9 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    create_feature_sets()
+    #create_feature_sets()
     run_featureset_clustering()
+    '''
     misp_path = "preprocessing/output/incidents-lake-misp.json"
     run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()
@@ -693,3 +694,4 @@ if __name__ == "__main__":
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
+    '''

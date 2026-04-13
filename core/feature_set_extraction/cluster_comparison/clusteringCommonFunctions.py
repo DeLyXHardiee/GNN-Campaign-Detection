@@ -394,6 +394,7 @@ def preprocess_for_clustering(
     # combine (CSR); TruncatedSVD uses sparse matmuls — much faster than dense SVD on wide TF-IDF.
     X = sparse_hstack(feature_parts_sparse, format="csr")
 
+    # Only does dimensionality reduction if it is larger than n components, doesnt project upwards
     if n_components is not None and n_components < X.shape[1]:
         print(f"Applying SVD dimensionality reduction: {X.shape[1]} -> {n_components} components")
         svd = TruncatedSVD(

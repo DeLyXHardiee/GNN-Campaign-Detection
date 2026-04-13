@@ -32,6 +32,16 @@ FS3_OMIT_KEYS = frozenset([
     "avg_word_length",
     "greeting",
     "body",
+    "bow",
+    "has_html",
+    "num_html_tags",
+    "num_images",
+    "num_urls_in_body",
+    "has_script",
+    "has_css",
+    "num_css_rules",
+    "has_forms",
+    "image_text_ratio",
     *LSA_TOPIC_KEYS,
 ])
 

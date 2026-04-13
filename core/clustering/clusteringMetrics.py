@@ -181,7 +181,8 @@ def compute_all_metrics(
 
     # Two different "coverage" definitions:
     # 1) Ground-truth coverage: among all ground-truth-labeled items, how many were predicted as non-noise.
-    coverage_ground_truth = external["n_samples"] / max(1, len(ground_truth_labels))
+    #coverage_ground_truth = external["n_samples"] / max(1, len(ground_truth_labels))
+    coverage_ground_truth = len(true_labels) / max(1, len(ground_truth_labels))
     # 2) All-items coverage: among all embeddings, how many were predicted as non-noise (regardless of ground-truth presence).
     coverage_all = n_non_noise / max(1, n_embeddings)
 
@@ -232,7 +233,7 @@ def run_meanshift_analysis(
 ) -> dict[str, Any]:
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     n_embeddings = int(len(sorted_ids))
-    bw = estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
+    bw = quantile#estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
     clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
     try:
         labels = clusterer.fit_predict(embeddings)
