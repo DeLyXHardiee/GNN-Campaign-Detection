@@ -22,7 +22,7 @@
   },
   "datasets": {
     "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
-    "ground_truth_json": "data/groundtruth/ground_truth.json",
+    "ground_truth_json": "data/groundtruth/ground_truth_dedup.json",
     "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
@@ -37,8 +37,8 @@
       "min_degree": 2
     },
     "embeddings_output_dir": null,
-    "include_semantic_embeddings": true,
-    "include_html_css_features": true,
+    "include_semantic_embeddings": false,
+    "include_html_css_features": false,
     "email_feature_projection": {
       "seed": 42,
       "bert_out_dim": 69,
@@ -80,7 +80,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "default_cluster_UMAP",
+  "run_id": "no_semantics_and_html_css_compare_raw_and_bert_embeddings_ground_truth_dedup",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -133,6 +133,20 @@
     }
   },
   "gnn_clustering": {
+    "raw_graph_hdbscan": {
+      "enabled": true,
+      "min_cluster_size_values": [2],
+      "min_samples": null,
+      "subdir": "clustering_raw_graph",
+      "file_prefix": "raw_graph"
+    },
+    "bert_embeddings_hdbscan": {
+      "enabled": true,
+      "min_cluster_size_values": [2],
+      "min_samples": null,
+      "subdir": "clustering_bert_embeddings",
+      "file_prefix": "bert_embeddings"
+    },
     "selection": {
       "min_coverage_ground_truth": 0.5,
       "min_coverage_all": 0.5

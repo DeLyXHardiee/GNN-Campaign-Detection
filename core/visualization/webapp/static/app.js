@@ -101,11 +101,11 @@ function renderUmap() {
     ctx.fill();
   });
 
-  canvas.onmousemove = (ev) => {
-    const mx = ev.offsetX;
-    const my = ev.offsetY;
+  const HIT_RADIUS_SQ = 100;
+
+  function pickPoint(mx, my) {
     let best = -1;
-    let bestD = 64;
+    let bestD = HIT_RADIUS_SQ;
     pts.forEach((p, i) => {
       const px = tx(p.x);
       const py = ty(p.y);
@@ -115,18 +115,32 @@ function renderUmap() {
         best = i;
       }
     });
-    if (best < 0 || bestD > 100) {
+    if (best < 0 || bestD > HIT_RADIUS_SQ) return null;
+    return pts[best];
+  }
+
+  canvas.onmousemove = (ev) => {
+    const mx = ev.offsetX;
+    const my = ev.offsetY;
+    const hit = pickPoint(mx, my);
+    canvas.style.cursor = hit ? "pointer" : "default";
+    if (!hit) {
       tooltip.hidden = true;
       return;
     }
-    const p = pts[best];
     tooltip.hidden = false;
-    tooltip.textContent = `${p.external_id}\nGT campaign: ${p.has_ground_truth ? String(p.ground_truth_campaign) : "(none)"}`;
+    tooltip.textContent = `${hit.external_id}\nGT campaign: ${hit.has_ground_truth ? String(hit.ground_truth_campaign) : "(none)"}\n(Click to open in list)`;
     tooltip.style.left = `${Math.min(mx + 12, cssW - 200)}px`;
     tooltip.style.top = `${Math.min(my + 12, cssH - 48)}px`;
   };
   canvas.onmouseleave = () => {
     tooltip.hidden = true;
+    canvas.style.cursor = "default";
+  };
+
+  canvas.onclick = (ev) => {
+    const hit = pickPoint(ev.offsetX, ev.offsetY);
+    if (hit) openEmailFromUmap(hit.external_id);
   };
 }
 
@@ -214,6 +228,8 @@ function renderCampaigns() {
     const li = document.createElement("li");
     const id = c.id;
     const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.campaignId = String(id);
     btn.textContent = `Campaign ${id} (${c.size})`;
     btn.addEventListener("click", () => {
       state.campaignId = id;
@@ -236,6 +252,8 @@ function renderEmails(campaign) {
   (campaign.member_external_ids || []).forEach((eid) => {
     const li = document.createElement("li");
     const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.externalId = eid;
     const subj = emails[eid]?.subject || eid;
     btn.textContent = subj.length > 60 ? subj.slice(0, 57) + "…" : subj;
     btn.title = eid;
@@ -250,6 +268,64 @@ function renderEmails(campaign) {
     li.appendChild(btn);
     ul.appendChild(li);
   });
+}
+
+/**
+ * Find the GNN campaign dict that contains this external_id, or null.
+ */
+function findGnnCampaignForEmail(externalId) {
+  const gnn = state.data && state.data.gnn;
+  if (!gnn || !gnn.campaigns) return null;
+  const eid = String(externalId);
+  for (const c of gnn.campaigns) {
+    const members = c.member_external_ids || [];
+    if (members.some((m) => String(m) === eid)) return c;
+  }
+  return null;
+}
+
+/**
+ * From UMAP: switch to GNN tab, open the cluster that contains the email, select it, show detail.
+ * If the email is not in any GNN campaign, still show email detail when present in the catalog.
+ */
+function openEmailFromUmap(externalId) {
+  const eid = String(externalId);
+  if (!state.data) return;
+
+  if (state.data.gnn) {
+    state.solution = "gnn";
+    document.querySelectorAll(".tabs .tab").forEach((t) => {
+      t.classList.toggle("active", t.dataset.sol === "gnn");
+    });
+  }
+
+  const campaign = findGnnCampaignForEmail(eid);
+  if (campaign) {
+    state.campaignId = campaign.id;
+    state.externalId = eid;
+    renderCampaigns();
+    document.querySelectorAll("#campaignList button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.campaignId === String(campaign.id));
+    });
+    renderEmails(campaign);
+    document.querySelectorAll("#emailList button").forEach((x) =>
+      x.classList.remove("active"),
+    );
+    document.querySelectorAll("#emailList button").forEach((b) => {
+      if (b.dataset.externalId === eid) b.classList.add("active");
+    });
+    renderEmailDetail(eid);
+    return;
+  }
+
+  state.campaignId = null;
+  state.externalId = eid;
+  if (state.data.gnn) {
+    renderCampaigns();
+  }
+  document.getElementById("emailList").innerHTML =
+    '<li class="muted">This email is not in any GNN campaign cluster.</li>';
+  renderEmailDetail(eid);
 }
 
 function esc(s) {

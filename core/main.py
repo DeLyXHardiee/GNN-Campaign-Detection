@@ -806,13 +806,13 @@ if __name__ == "__main__":
     #create_feature_sets()
     #run_featureset_clustering()
     
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
-    #run_gnn()
-    #run_gnn_evaluation()
-    #run_gnn_clustering()
-    #run_metric_comparison()
-    visualize_clusters(start_docker_ui=True, run_id="cluster_UMAP")
+    misp_path = "preprocessing/output/incidents-lake-misp.json"
+    run_graph_creation(misp_path, to_memgraph=False)
+    run_gnn()
+    run_gnn_evaluation()
+    run_gnn_clustering()
+    run_metric_comparison()
+    visualize_clusters(start_docker_ui=True)
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()

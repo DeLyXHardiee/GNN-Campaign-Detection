@@ -1,6 +1,7 @@
 import csv
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -254,3 +255,51 @@ def run_locked_param_across_checkpoints(
         output_dir=output_dir,
         email_external_ids=email_external_ids,
     )
+
+
+def extract_raw_email_feature_map(data, email_external_ids) -> dict[str, np.ndarray]:
+    """
+    One vector per email from ``data['email'].x`` (graph input features after projection/normalization).
+
+    These are the tensors the GNN backbone consumes; they are **not** GNN forward embeddings.
+    """
+    try:
+        store = data["email"]
+    except (KeyError, AttributeError):
+        return {}
+    if not hasattr(store, "x") or store.x is None:
+        return {}
+    x = store.x.detach().float().cpu().numpy()
+    out: dict[str, np.ndarray] = {}
+    for i, eid in enumerate(email_external_ids):
+        if i >= x.shape[0]:
+            break
+        out[str(eid)] = np.asarray(x[i], dtype=np.float64)
+    return out
+
+
+def run_hdbscan_sweep_from_embedding_map(
+    id_to_embedding_map: dict[str, np.ndarray],
+    ground_truth_labels: dict[str, Any],
+    *,
+    min_cluster_size_values: list,
+    min_samples: int | None,
+    output_csv: str | Path,
+    model_column_name: str,
+) -> dict[str, Any]:
+    """
+    HDBSCAN grid search over ``min_cluster_size_values``, same metrics as GNN clustering sweeps.
+    """
+    clustering_config = {
+        "cluster_algorithm": "hdbscan",
+        "min_cluster_size_values": list(min_cluster_size_values),
+        "min_samples": min_samples,
+    }
+    rows = _collect_clustering_sweep_metrics(
+        id_to_embedding_map, ground_truth_labels, clustering_config
+    )
+    for r in rows:
+        r["model"] = model_column_name
+    output_csv = Path(output_csv)
+    save_metrics_csv(rows, output_csv)
+    return {"csv_path": str(output_csv), "rows": rows}

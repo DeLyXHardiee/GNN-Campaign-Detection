@@ -12,6 +12,7 @@ from src.train import run_training
 from src.model_io import select_device
 
 from steps.pipeline_paths import run_dir_for
+from steps.pretrain_embedding_cluster_stage import run_pretrain_embedding_clustering
 
 
 def run_train_stage(
@@ -43,6 +44,16 @@ def run_train_stage(
     )
 
     run_dir = run_dir_for(runs_parent, run_id)
+
+    _repo_root = Path(__file__).resolve().parents[3]
+    _pipeline_cfg = load_pipeline_config(project_root=_repo_root)
+    run_pretrain_embedding_clustering(
+        data=data,
+        graph_path=graph_path,
+        run_dir=run_dir,
+        pipeline_cfg=_pipeline_cfg,
+        project_root=_repo_root,
+    )
 
     run_training(
         DEVICE=device,

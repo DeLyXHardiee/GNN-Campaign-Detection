@@ -12,6 +12,9 @@ Near-duplicate detection (default):
 
 Exact duplicates (after normalization) always merge (Hamming 0).
 
+After deduplication, a final sweep drops every cluster key that still has at most one email
+(singleton campaigns and empty lists).
+
 Examples:
   python scripts/deduplicate_ground_truth.py \\
     --input data/groundtruth/ground_truth.json \\
@@ -215,6 +218,29 @@ def rebuild_clusters(
     return {k: v for k, v in out.items() if v}
 
 
+def remove_singleton_clusters(
+    clusters: dict[str, Any],
+) -> tuple[dict[str, list[dict[str, Any]]], int, int]:
+    """
+    Remove cluster keys with at most one email (singletons and empty lists).
+
+    Returns ``(new_clusters, n_clusters_removed, n_emails_removed)``.
+    """
+    out: dict[str, list[dict[str, Any]]] = {}
+    n_clusters_removed = 0
+    n_emails_removed = 0
+    for k, emails in clusters.items():
+        if not isinstance(emails, list):
+            n_clusters_removed += 1
+            continue
+        if len(emails) <= 1:
+            n_clusters_removed += 1
+            n_emails_removed += len(emails)
+            continue
+        out[k] = emails
+    return out, n_clusters_removed, n_emails_removed
+
+
 def run(
     *,
     input_path: Path,
@@ -278,6 +304,13 @@ def run(
             if kept_emails:
                 new_clusters[ck] = kept_emails
 
+    new_clusters, singleton_clusters_removed, singleton_emails_removed = remove_singleton_clusters(
+        new_clusters
+    )
+
+    emails_after_dedup = total_before - total_removed
+    emails_after = emails_after_dedup - singleton_emails_removed
+
     out_obj = {"clusters": new_clusters}
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
@@ -286,9 +319,12 @@ def run(
 
     return {
         "emails_before": total_before,
-        "emails_after": total_before - total_removed,
+        "emails_after": emails_after,
         "removed": total_removed,
         "removal_fraction": (total_removed / total_before) if total_before else 0.0,
+        "singleton_clusters_removed": singleton_clusters_removed,
+        "singleton_emails_removed": singleton_emails_removed,
+        "emails_after_dedup_only": emails_after_dedup,
     }
 
 
@@ -344,7 +380,10 @@ def main() -> None:
     print(
         f"Wrote {args.output}\n"
         f"  emails: {stats['emails_before']} -> {stats['emails_after']} "
-        f"(removed {stats['removed']}, {stats['removal_fraction']:.1%})\n"
+        f"(dedupe removed {stats['removed']}, {stats['removal_fraction']:.1%}; "
+        f"after dedupe only: {stats['emails_after_dedup_only']})\n"
+        f"  singleton cluster sweep: removed {stats['singleton_clusters_removed']} cluster(s), "
+        f"{stats['singleton_emails_removed']} email(s)\n"
         f"  scope={args.scope}, max_hamming={args.max_hamming}, "
         f"min_fuzzy_ratio={args.min_fuzzy_ratio}, fuzzy_backend={_FUZZY_BACKEND}",
         file=sys.stderr,
