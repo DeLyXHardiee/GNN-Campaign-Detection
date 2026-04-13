@@ -7,9 +7,11 @@ from __future__ import annotations
 import json
 import os
 import re
+from functools import lru_cache
+from types import MappingProxyType
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 _RUN_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
@@ -23,6 +25,20 @@ def load_pipeline_config(*, project_root: Path | None = None) -> dict[str, Any]:
     config_path = root / "pipeline_config.json"
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+@lru_cache(maxsize=1)
+def get_pipeline_config(*, project_root: Path | None = None) -> Mapping[str, Any]:
+    """
+    Return process-wide pipeline config loaded once and exposed as read-only mapping.
+
+    The mapping itself cannot be reassigned/mutated via item assignment.
+    """
+    return MappingProxyType(load_pipeline_config(project_root=project_root))
+
+
+# Single-process global config mapping loaded once at import time.
+PIPELINE_CONFIG: Mapping[str, Any] = get_pipeline_config()
 
 
 def resolve_project_path(path_value: str | None, *, project_root: Path | None = None) -> str | None:
@@ -328,7 +344,86 @@ def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     Path to the hetero .pt file produced by build_graph for the current pipeline config
     (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
     """
-    cfg = load_pipeline_config(project_root=project_root)
+    cfg = get_pipeline_config(project_root=project_root)
     s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
     base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
     return os.path.join(s.output_dir, f"{base}_hetero.pt")
+
+
+# ---------------------------------------------------------------------------
+# Featureset clustering settings
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class FeaturesetClusteringSettings:
+    """Typed, coerced featureset-clustering settings derived from the pipeline config."""
+
+    dataset_base: str
+    ground_truth_json: str | None
+    # DBSCAN
+    eps_values: list[float]
+    min_samples: int
+    # Mean Shift
+    quantile_values: list[float]
+    n_samples: int
+    # HDBSCAN
+    hdbscan_enabled: bool
+    min_cluster_size_values: list[int]
+    hdbscan_min_samples: int | None
+    # Shared embedding
+    n_components_values: list[int]
+    max_tfidf_features: int | None
+    remove_outliers: bool
+    outlier_contamination: float
+    # Cluster-selection thresholds
+    min_coverage_ground_truth: float
+    min_coverage_all: float
+
+
+def featureset_clustering_settings_from_pipeline(
+    cfg: Mapping[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> FeaturesetClusteringSettings:
+    """Return a fully-coerced, frozen :class:`FeaturesetClusteringSettings` from *cfg*."""
+    datasets_cfg = cfg.get("datasets") or {}
+    fs_cfg = cfg.get("featureset-clustering") or cfg.get("clustering") or {}
+    dbscan_cfg = fs_cfg.get("dbscan") or {}
+    meanshift_cfg = fs_cfg.get("meanshift") or {}
+    hdbscan_cfg = fs_cfg.get("hdbscan") or {}
+    outlier_cfg = fs_cfg.get("outlier_removal") or {}
+    gnn_sel = (cfg.get("gnn_clustering") or {}).get("selection") or {}
+
+    min_cov_gt = float(gnn_sel.get("min_coverage_ground_truth", 0.5))
+    return FeaturesetClusteringSettings(
+        dataset_base=str(datasets_cfg.get("featureset_base_name") or "synthetic_email_dataset_50"),
+        ground_truth_json=resolve_project_path(
+            datasets_cfg.get("ground_truth_json"), project_root=project_root
+        ),
+        eps_values=[float(v) for v in (dbscan_cfg.get("eps_values") or [])],
+        min_samples=int(dbscan_cfg.get("min_samples", 5)),
+        quantile_values=[float(v) for v in (meanshift_cfg.get("quantile_values") or [])],
+        n_samples=int(meanshift_cfg.get("n_samples", 500)),
+        hdbscan_enabled=bool(hdbscan_cfg.get("enabled", True)),
+        min_cluster_size_values=[int(v) for v in (hdbscan_cfg.get("min_cluster_size_values") or [2])],
+        hdbscan_min_samples=(
+            int(hdbscan_cfg["min_samples"])
+            if hdbscan_cfg.get("min_samples") is not None
+            else None
+        ),
+        n_components_values=[int(v) for v in (fs_cfg.get("n_components_values") or [1000])],
+        max_tfidf_features=(
+            int(fs_cfg["max_tfidf_features"])
+            if fs_cfg.get("max_tfidf_features") is not None
+            else None
+        ),
+        remove_outliers=bool(outlier_cfg.get("enabled", True)),
+        outlier_contamination=float(outlier_cfg.get("contamination", 0.05)),
+        min_coverage_ground_truth=min_cov_gt,
+        min_coverage_all=float(gnn_sel.get("min_coverage_all", min_cov_gt)),
+    )
+
+
+FEATURESET_CLUSTERING_CONFIG: FeaturesetClusteringSettings = (
+    featureset_clustering_settings_from_pipeline(PIPELINE_CONFIG)
+)
