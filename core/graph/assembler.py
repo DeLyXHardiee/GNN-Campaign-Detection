@@ -517,6 +517,7 @@ def materialize_edges(
     indices: Dict[str, Dict[str, int]],
     schema: GraphSchema,
     registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
+    include_html_css_features: bool = True,
 ) -> Tuple[Dict[str, List[int]], List[Dict[str, Any]], Dict[str, List[Any]], Dict[str, Dict[str, Set[int]]]]:
     edges_idx: Dict[str, List[int]] = {}
     for edge_name in schema.edges:
@@ -572,12 +573,15 @@ def materialize_edges(
             if parse_url_components(u).get("domain", "")
         }
         email_attrs_raw["n_urls"].append(int(len(domains)))
-        email_attrs_raw["x_html_css"].append(
-            create_html_css_features(
-                em.get("html", {}) or {},
-                em.get("css", {}) or {},
+        if include_html_css_features:
+            email_attrs_raw["x_html_css"].append(
+                create_html_css_features(
+                    em.get("html", {}) or {},
+                    em.get("css", {}) or {},
+                )
             )
-        )
+        else:
+            email_attrs_raw["x_html_css"].append([])
         for k in EMAIL_BOOL_ATTR_KEYS:
             raw = str(em.get(k, "") or "").strip().lower()
             email_attrs_raw[k].append(1 if raw == "true" else 0)
@@ -644,6 +648,7 @@ def build_node_features(
     docfreq_maps: Dict[str, Dict[str, Set[int]]],
     registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
     embeddings_output_dir: Optional[str] = None,
+    include_semantic_embeddings: bool = True,
 ) -> Tuple[
     Dict[str, List[List[float]]],
     Dict[str, List[str]],
@@ -671,6 +676,9 @@ def build_node_features(
         node_meta[node_key] = meta
         node_attrs[node_key] = attrs
 
+    if not include_semantic_embeddings:
+        return node_x, node_meta, node_attrs, [], [], 0, 0
+
     from utils.embeddings import DEFAULT_OUTPUT_DIR, get_embeddings
 
     out_dir = embeddings_output_dir if embeddings_output_dir else str(DEFAULT_OUTPUT_DIR)
@@ -694,7 +702,7 @@ def _build_email_feature_matrix(
 ) -> List[List[float]]:
     """Construct the email feature matrix using raw scalars + text embeddings + boolean attrs + auth one-hot.
 
-    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs(7), auth_onehot(18)]
+    Order: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css (0 or 40), bool_attrs(7), auth_onehot(18)]
     """
     n_emails = max(
         len(ts),
@@ -948,6 +956,8 @@ def assemble_misp_graph_ir(
     *,
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
+    include_semantic_embeddings: bool = True,
+    include_html_css_features: bool = True,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -957,6 +967,12 @@ def assemble_misp_graph_ir(
     3) Build email->component edges and raw email attributes.
     4) Compute per-node features/attributes and text vectors.
     5) Assemble nodes, edges, and email_attrs blocks.
+
+    Set ``include_semantic_embeddings=False`` to omit SBERT subject/body vectors from
+    email node ``x``.
+
+    Set ``include_html_css_features=False`` to omit the hand-crafted HTML/CSS feature block
+    (40 floats per email when enabled). Scalars, booleans, and auth one-hot remain.
     """
     schema = schema or DEFAULT_SCHEMA
     emails = parse_misp_events(misp_events)
@@ -964,7 +980,11 @@ def assemble_misp_graph_ir(
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
     edges_idx, email_meta, email_attrs_raw, docfreq_maps = materialize_edges(
-        emails, indices, schema, DEFAULT_PROVIDER_REGISTRY
+        emails,
+        indices,
+        schema,
+        DEFAULT_PROVIDER_REGISTRY,
+        include_html_css_features=include_html_css_features,
     )
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
         indices["sender"], indices["receiver"], indices["email_domain"]
@@ -985,6 +1005,7 @@ def assemble_misp_graph_ir(
         docfreq_maps,
         DEFAULT_PROVIDER_REGISTRY,
         embeddings_output_dir=embeddings_output_dir,
+        include_semantic_embeddings=include_semantic_embeddings,
     )
 
     # Use raw attributes for feature matrix construction

@@ -37,6 +37,8 @@
       "min_degree": 2
     },
     "embeddings_output_dir": null,
+    "include_semantic_embeddings": true,
+    "include_html_css_features": true,
     "email_feature_projection": {
       "seed": 42,
       "bert_out_dim": 69,
@@ -78,7 +80,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test_metric_comparison",
+  "run_id": "default_cluster_UMAP",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",

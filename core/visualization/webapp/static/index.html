@@ -15,6 +15,24 @@
     </p>
   </header>
 
+  <section class="umap-section" id="umapSection" hidden>
+    <div class="umap-head">
+      <h2 class="umap-title">GNN email embeddings (UMAP 2D)</h2>
+      <p class="muted umap-caption" id="umapCaption"></p>
+    </div>
+    <div class="umap-row">
+      <div class="umap-canvas-wrap">
+        <canvas id="umapCanvas" width="900" height="420"></canvas>
+        <div class="umap-tooltip" id="umapTooltip" hidden></div>
+      </div>
+      <div class="umap-legend" id="umapLegendWrap">
+        <h3 class="umap-legend-title">Ground-truth campaigns</h3>
+        <ul class="umap-legend-list" id="umapLegend"></ul>
+        <p class="muted umap-grey-note" id="umapGreyNote"></p>
+      </div>
+    </div>
+  </section>
+
   <div class="tabs" id="tabs"></div>
 
   <div class="layout">

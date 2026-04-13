@@ -176,6 +176,9 @@ class GraphBuildSettings:
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
     degree_node_filter: DegreeNodeFilterSettings | None = None
+    include_semantic_embeddings: bool = True
+    #: When False, omit the 40-dim hand-crafted HTML/CSS block from email ``x``.
+    include_html_css_features: bool = True
 
 
 def graph_build_settings_from_pipeline(
@@ -211,6 +214,12 @@ def graph_build_settings_from_pipeline(
     embeddings_output_dir = (
         resolve_project_path(str(emb_raw), project_root=project_root) if emb_raw else None
     )
+
+    _sem_emb = graph_cfg.get("include_semantic_embeddings")
+    include_semantic_embeddings = True if _sem_emb is None else bool(_sem_emb)
+
+    _html_css = graph_cfg.get("include_html_css_features")
+    include_html_css_features = True if _html_css is None else bool(_html_css)
 
     mg = graph_cfg.get("memgraph") or {}
     memgraph = MemgraphSettings(
@@ -320,6 +329,8 @@ def graph_build_settings_from_pipeline(
         max_misp_events=max_misp_events,
         email_feature_projection=email_feature_projection,
         degree_node_filter=degree_node_filter,
+        include_semantic_embeddings=include_semantic_embeddings,
+        include_html_css_features=include_html_css_features,
     )
 
 

@@ -5,6 +5,131 @@ let state = {
   externalId: null,
 };
 
+function renderUmap() {
+  const section = document.getElementById("umapSection");
+  const cap = document.getElementById("umapCaption");
+  const canvas = document.getElementById("umapCanvas");
+  const leg = document.getElementById("umapLegend");
+  const greyNote = document.getElementById("umapGreyNote");
+  const tooltip = document.getElementById("umapTooltip");
+  if (!section || !canvas || !state.data) return;
+
+  const umap = state.data.umap;
+  if (!umap) {
+    section.hidden = true;
+    return;
+  }
+
+  section.hidden = false;
+  if (umap.error) {
+    cap.textContent = umap.error;
+    leg.innerHTML = "";
+    if (greyNote) greyNote.textContent = "";
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#f5f5f5";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#666";
+      ctx.font = "14px system-ui";
+      ctx.fillText("UMAP not available", 16, 32);
+    }
+    return;
+  }
+
+  const pts = umap.points || [];
+  const params = umap.params || {};
+  cap.textContent = `n=${umap.n_emails ?? pts.length}, dim=${umap.embedding_dim ?? "?"}, n_neighbors=${params.n_neighbors ?? "?"}, min_dist=${params.min_dist ?? "?"}`;
+
+  leg.innerHTML = "";
+  (umap.legend || []).forEach((row) => {
+    const li = document.createElement("li");
+    const sw = document.createElement("span");
+    sw.className = "umap-swatch";
+    sw.style.background = row.color;
+    li.appendChild(sw);
+    li.appendChild(
+      document.createTextNode(`Campaign ${row.campaign}`),
+    );
+    leg.appendChild(li);
+  });
+  if (greyNote) {
+    greyNote.textContent = `Grey points: not in ground_truth.json (${umap.no_ground_truth_color || "#b0b0b0"}).`;
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = 900;
+  const cssH = 420;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#fafafa";
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (pts.length === 0) return;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  pts.forEach((p) => {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  });
+  const pad = 24;
+  const dx = maxX - minX || 1e-9;
+  const dy = maxY - minY || 1e-9;
+  const plotW = cssW - 2 * pad;
+  const plotH = cssH - 2 * pad;
+
+  function tx(x) {
+    return pad + ((x - minX) / dx) * plotW;
+  }
+  function ty(y) {
+    return pad + ((maxY - y) / dy) * plotH;
+  }
+
+  pts.forEach((p) => {
+    ctx.beginPath();
+    ctx.arc(tx(p.x), ty(p.y), 3, 0, Math.PI * 2);
+    ctx.fillStyle = p.color || "#999";
+    ctx.fill();
+  });
+
+  canvas.onmousemove = (ev) => {
+    const mx = ev.offsetX;
+    const my = ev.offsetY;
+    let best = -1;
+    let bestD = 64;
+    pts.forEach((p, i) => {
+      const px = tx(p.x);
+      const py = ty(p.y);
+      const d = (mx - px) * (mx - px) + (my - py) * (my - py);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    if (best < 0 || bestD > 100) {
+      tooltip.hidden = true;
+      return;
+    }
+    const p = pts[best];
+    tooltip.hidden = false;
+    tooltip.textContent = `${p.external_id}\nGT campaign: ${p.has_ground_truth ? String(p.ground_truth_campaign) : "(none)"}`;
+    tooltip.style.left = `${Math.min(mx + 12, cssW - 200)}px`;
+    tooltip.style.top = `${Math.min(my + 12, cssH - 48)}px`;
+  };
+  canvas.onmouseleave = () => {
+    tooltip.hidden = true;
+  };
+}
+
 async function loadData() {
   const r = await fetch("/api/data");
   if (!r.ok) throw new Error(await r.text());
@@ -22,6 +147,7 @@ async function loadData() {
         "No per-attribute similarity in this export (disabled in config or not computed).";
     }
   }
+  renderUmap();
   buildTabs();
 }
 

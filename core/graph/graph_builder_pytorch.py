@@ -116,9 +116,9 @@ def _merge_features_with_attrs(base: List[List[float]], attr_vals: Dict[str, Any
     return out
 
 
-def _infer_email_embedding_dims(total_dim: int) -> Tuple[int, int]:
+def _infer_email_embedding_dims(total_dim: int, html_css_len: int) -> Tuple[int, int]:
     """Infer subj_dim and body_dim from raw email feature dimension (layout from feature_projection)."""
-    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT - AUTH_ONEHOT_DIM
+    text_dim = total_dim - SCALAR_COUNT - html_css_len - BOOL_ATTR_COUNT - AUTH_ONEHOT_DIM
     if text_dim <= 0:
         return 0, 0
     half = text_dim // 2
@@ -131,6 +131,7 @@ def _set_node_features_from_ir(
     schema: GraphSchema,
     *,
     email_projection: EmailFeatureProjectionSettings,
+    html_css_len: int,
 ) -> None:
     _ensure_heterodata()
     torch_lib = _ensure_torch()
@@ -143,11 +144,12 @@ def _set_node_features_from_ir(
     if email_x:
         raw = torch_lib.tensor(email_x, dtype=torch_lib.float)
         total_dim = raw.size(1)
-        subj_dim, body_dim = _infer_email_embedding_dims(total_dim)
+        subj_dim, body_dim = _infer_email_embedding_dims(total_dim, html_css_len)
         torch_lib.manual_seed(email_projection.seed)
         proj = EmailFeatureProjectionModule(
             subj_dim=subj_dim,
             body_dim=body_dim,
+            html_css_len=html_css_len,
             bert_out_dim=email_projection.bert_out_dim,
             other_out_dim=email_projection.other_out_dim,
         )
@@ -229,6 +231,8 @@ def build_hetero_graph_from_misp(
     degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
     embeddings_output_dir: Optional[str] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    include_semantic_embeddings: bool = True,
+    include_html_css_features: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -260,6 +264,8 @@ def build_hetero_graph_from_misp(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
+        include_semantic_embeddings=include_semantic_embeddings,
+        include_html_css_features=include_html_css_features,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
@@ -281,7 +287,14 @@ def build_hetero_graph_from_misp(
     data = HData()
 
     proj_settings = email_feature_projection or EmailFeatureProjectionSettings()
-    _set_node_features_from_ir(data, ir, schema, email_projection=proj_settings)
+    html_css_len = HTML_CSS_LEN if include_html_css_features else 0
+    _set_node_features_from_ir(
+        data,
+        ir,
+        schema,
+        email_projection=proj_settings,
+        html_css_len=html_css_len,
+    )
     _set_edges_from_ir(data, ir, schema)
 
     data = normalize_graph(data)
@@ -323,6 +336,8 @@ def build_graph(
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    include_semantic_embeddings: bool = True,
+    include_html_css_features: bool = True,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -343,6 +358,8 @@ def build_graph(
         degree_node_filter=degree_node_filter,
         embeddings_output_dir=embeddings_output_dir,
         email_feature_projection=email_feature_projection,
+        include_semantic_embeddings=include_semantic_embeddings,
+        include_html_css_features=include_html_css_features,
     )
 
     if out_name is None:

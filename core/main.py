@@ -449,6 +449,8 @@ def run_graph_creation(
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
+        include_semantic_embeddings=settings.include_semantic_embeddings,
+        include_html_css_features=settings.include_html_css_features,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -466,6 +468,8 @@ def run_graph_creation(
             create_indexes=mg.create_indexes,
             exclude_nodes=settings.exclude_node_types,
             max_misp_events=limit_eff,
+            include_semantic_embeddings=settings.include_semantic_embeddings,
+            include_html_css_features=settings.include_html_css_features,
         )
         print("Memgraph load summary:")
         print(json.dumps(summary, indent=2))
@@ -484,6 +488,14 @@ def visualize_clusters(
     run_id: str | None = None,
     misp_json_path: str | Path | None = None,
     include_attribute_similarity: bool | None = None,
+    start_docker_ui: bool | None = None,
+    ground_truth_path: str | Path | None = None,
+    graph_path: str | Path | None = None,
+    checkpoint_path: str | Path | None = None,
+    runs_parent: str | Path | None = None,
+    include_umap: bool = True,
+    umap_n_neighbors: int = 15,
+    umap_min_dist: float = 0.1,
 ) -> dict[str, Any]:
     """
     Build ``<run_dir>/visualization/data.json`` and optionally start the Docker Compose UI.
@@ -496,14 +508,22 @@ def visualize_clusters(
 
     Reads optional ``visualization`` block from ``pipeline_config.json``:
     - ``enabled`` (default True): run ``docker compose`` for :file:`docker-compose.visualization.yml`
+      (overridden by ``start_docker_ui`` when that parameter is not ``None``).
     - ``port`` (default 8787): host port mapping
     - ``compose_file`` (default ``docker-compose.visualization.yml``): path relative to repo root
     - ``include_attribute_similarity`` (default True): SBERT similarity vs campaign peer average
+
+    When ``include_umap`` is True (default), loads the GNN checkpoint and graph from the same
+    resolution rules as training/clustering, computes email embeddings, runs UMAP to 2D, and
+    merges results into ``data.json``. Emails that appear in ``ground_truth.json`` are colored
+    by campaign; others are grey. Paths default from ``pipeline_config.json`` and the run
+    directory (``models/<model_save_name>``).
     """
     from config.run_output_paths import resolve_session_run_output_dir
 
     cfg = load_pipeline_config()
     runs_root = output_runs_parent_from_pipeline(cfg)
+    project_root = Path(__file__).resolve().parent.parent
 
     if run_dir is not None and run_id is not None:
         raise ValueError("Pass at most one of run_dir or run_id.")
@@ -545,17 +565,118 @@ def visualize_clusters(
     )
     print(f"Visualization data written to: {out_json}")
 
-    if not viz_cfg.get("enabled", True):
-        print("visualization.enabled is false; skipping docker compose.")
-        return {"visualization_json": str(out_json), "compose": None}
+    umap_info: dict[str, Any] = {"skipped": True}
+    if include_umap:
+        try:
+            from core.visualization.umap_viz import (
+                build_umap_payload,
+                merge_umap_into_visualization_json,
+                write_umap_projection_image,
+            )
+        except ModuleNotFoundError:
+            from visualization.umap_viz import (
+                build_umap_payload,
+                merge_umap_into_visualization_json,
+                write_umap_projection_image,
+            )
+
+        g = load_gnn_cfg(cfg, project_root=project_root)
+        _, checkpoint_path_str, graph_path_str, _ = resolve_gnn_paths(
+            cfg=cfg,
+            run_dir=run_path,
+            runs_parent=runs_parent,
+            checkpoint_path=checkpoint_path,
+            graph_path=graph_path,
+            ground_truth_path=None,
+            require_ground_truth=False,
+            project_root=project_root,
+        )
+        if ground_truth_path is not None and str(ground_truth_path).strip():
+            gt_resolved = resolve_project_path(str(ground_truth_path)) or str(
+                Path(ground_truth_path).expanduser().resolve()
+            )
+        else:
+            gt_raw = cfg.get("datasets", {}).get("ground_truth_json")
+            gt_resolved = (
+                resolve_project_path(str(gt_raw)) if gt_raw else None
+            )
+        try:
+            umap_payload = build_umap_payload(
+                graph_path=graph_path_str,
+                checkpoint_path=checkpoint_path_str,
+                ground_truth_path=gt_resolved,
+                device_pref=g["device_pref"],
+                to_undirected=g["to_undirected"],
+                n_neighbors=int(umap_n_neighbors),
+                min_dist=float(umap_min_dist),
+            )
+            png_path = Path(run_path) / "visualization" / "umap_projection.png"
+            written_img = None
+            try:
+                written_img = write_umap_projection_image(
+                    umap_payload=umap_payload,
+                    output_path=png_path,
+                )
+            except Exception as img_exc:
+                print(f"UMAP PNG export failed: {img_exc}")
+            if written_img is not None:
+                umap_payload["projection_image_png"] = str(written_img.resolve())
+
+            merge_umap_into_visualization_json(
+                viz_json_path=Path(out_json),
+                umap_payload=umap_payload,
+            )
+            umap_info = {
+                "skipped": False,
+                "graph_path": graph_path_str,
+                "checkpoint_path": checkpoint_path_str,
+                "ground_truth_path": gt_resolved,
+                "error": umap_payload.get("error"),
+                "projection_image_png": umap_payload.get("projection_image_png"),
+            }
+            if umap_payload.get("error"):
+                print(f"UMAP: {umap_payload['error']}")
+            else:
+                print(
+                    f"UMAP projection merged into visualization data "
+                    f"({umap_payload.get('n_emails', 0)} points)."
+                )
+                if written_img is not None:
+                    print(f"UMAP plot saved to: {written_img.resolve()}")
+        except Exception as exc:
+            umap_info = {"skipped": False, "error": str(exc)}
+            print(f"UMAP failed: {exc}")
+            try:
+                merge_umap_into_visualization_json(
+                    viz_json_path=Path(out_json),
+                    umap_payload={"error": str(exc), "points": [], "legend": []},
+                )
+            except Exception:
+                pass
+
+    docker_on = viz_cfg.get("enabled", True)
+    if start_docker_ui is not None:
+        docker_on = bool(start_docker_ui)
+
+    if not docker_on:
+        print("Docker UI skipped (start_docker_ui=False or visualization.enabled=False).")
+        return {
+            "visualization_json": str(out_json),
+            "compose": None,
+            "umap": umap_info,
+        }
 
     port = int(viz_cfg.get("port", 8787))
     compose_name = str(viz_cfg.get("compose_file", "docker-compose.visualization.yml")).strip()
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = project_root
     compose_path = repo_root / compose_name
     if not compose_path.is_file():
         print(f"Warning: compose file not found at {compose_path}; skip docker compose.")
-        return {"visualization_json": str(out_json), "compose": None}
+        return {
+            "visualization_json": str(out_json),
+            "compose": None,
+            "umap": umap_info,
+        }
 
     import subprocess
 
@@ -578,6 +699,7 @@ def visualize_clusters(
         "visualization_json": str(out_json),
         "url": f"http://localhost:{port}/",
         "compose": str(compose_path),
+        "umap": umap_info,
     }
 
 
@@ -682,16 +804,16 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #create_feature_sets()
-    run_featureset_clustering()
-    '''
-    misp_path = "preprocessing/output/incidents-lake-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
-    run_gnn()
-    run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metric_comparison()
-    visualize_clusters()
+    #run_featureset_clustering()
+    
+    #misp_path = "preprocessing/output/incidents-lake-misp.json"
+    #run_graph_creation(misp_path, to_memgraph=False)
+    #run_gnn()
+    #run_gnn_evaluation()
+    #run_gnn_clustering()
+    #run_metric_comparison()
+    visualize_clusters(start_docker_ui=True, run_id="cluster_UMAP")
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
-    '''
+    

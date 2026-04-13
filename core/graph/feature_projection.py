@@ -28,8 +28,14 @@ SCALAR_COUNT = 4  # ts, len_body, n_urls, len_subject
 HTML_CSS_LEN = 40  # len(create_html_css_features({}, {}))
 BOOL_ATTR_COUNT = 7  # cyrillic_domain, contains_symbols, body_has_tracking_*, etc.
 
-# Non-BERT feature dim: scalars + html_css + bools + auth_onehot (AUTH_ONEHOT_DIM from common)
-OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM  # 69
+
+def structured_other_in_dim(html_css_len: int) -> int:
+    """Width of the non-BERT structured block: scalars + html/css + bools + auth one-hot."""
+    return SCALAR_COUNT + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
+
+
+# Non-BERT feature dim when HTML/CSS features are included (default graph build)
+OTHER_FEATURE_DIM = structured_other_in_dim(HTML_CSS_LEN)
 
 # After projection with defaults (both *_out_dim null): BERT -> OTHER_FEATURE_DIM + structured passthrough
 PROJECTED_EMAIL_FEATURE_DIM = 2 * OTHER_FEATURE_DIM
@@ -84,11 +90,13 @@ def resolve_email_projection_dims(
 def email_feature_layout(
     subj_dim: int,
     body_dim: int,
+    *,
+    html_css_len: int = HTML_CSS_LEN,
 ) -> Tuple[int, int, int]:
     """Return (bert_dim, other_dim, total_raw_dim) for the given embedding dims."""
     bert_dim = subj_dim + body_dim
-    other_dim = OTHER_FEATURE_DIM
-    total = SCALAR_COUNT + bert_dim + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
+    other_dim = structured_other_in_dim(html_css_len)
+    total = SCALAR_COUNT + bert_dim + html_css_len + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM
     return bert_dim, other_dim, total
 
 
@@ -269,6 +277,7 @@ __all__ = [
     "HTML_CSS_LEN",
     "BOOL_ATTR_COUNT",
     "AUTH_ONEHOT_DIM",
+    "structured_other_in_dim",
     "OTHER_FEATURE_DIM",
     "PROJECTED_EMAIL_FEATURE_DIM",
     "ResolvedEmailProjectionDims",

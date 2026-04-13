@@ -39,20 +39,25 @@ _GRAPH_EXTS = {".pt", ".pth"}
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 
 
-def _infer_text_dims(total_dim: int) -> tuple[int, int]:
+def _infer_text_dims(total_dim: int, html_css_len: int = HTML_CSS_LEN) -> tuple[int, int]:
     """Infer subj_dim and body_dim from total email feature dimension.
 
     Layout: [scalars (4), subject_emb, body_emb, html_css, bool_attrs (7), auth_onehot (18)].
     Subject and body use the same SBERT model so subj_dim == body_dim when both present.
+    Use ``html_css_len=0`` when the graph was built with ``include_html_css_features: false``.
     """
-    text_dim = total_dim - SCALAR_COUNT - HTML_CSS_LEN - BOOL_ATTR_COUNT - AUTH_ONEHOT_DIM
+    text_dim = total_dim - SCALAR_COUNT - html_css_len - BOOL_ATTR_COUNT - AUTH_ONEHOT_DIM
     if text_dim <= 0:
         return 0, 0
     half = text_dim // 2
     return half, half
 
 
-def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[float]], list[list[float]], int, int]:
+def extract_embeddings_from_graph(
+    graph_path: str | Path,
+    *,
+    html_css_len: int | None = None,
+) -> tuple[list[list[float]], list[list[float]], int, int]:
     """Load the graph file directly and extract subject/body embedding slices from email node features.
 
     Layout in email.x: [ts, len_body, n_urls, len_subject, SBERT(subject), SBERT(body), html_css, bool_attrs(7), auth_onehot(18)].
@@ -73,7 +78,8 @@ def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[flo
     x = store.x
     n_emails = x.shape[0]
     total_dim = x.shape[1]
-    subj_dim, body_dim = _infer_text_dims(total_dim)
+    hlen = HTML_CSS_LEN if html_css_len is None else html_css_len
+    subj_dim, body_dim = _infer_text_dims(total_dim, html_css_len=hlen)
     if subj_dim <= 0 and body_dim <= 0:
         return [], [], 0, 0
 
