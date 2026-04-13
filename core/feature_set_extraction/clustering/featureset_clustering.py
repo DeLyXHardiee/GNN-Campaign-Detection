@@ -43,6 +43,7 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
 # ---------------------------------------------------------------------------
 
 FEATURE_SETS = ["FS1", "FS2", "FS3", "FS4", "FS5", "FS6", "FS7"]
+#FEATURE_SETS = ["FS1", "FS2", "FS3"]#, "FS4", "FS5", "FS6", "FS7"]
 
 _PACKAGE_DIR = Path(__file__).resolve().parent.parent  # core/feature_set_extraction/
 
@@ -354,10 +355,6 @@ def run_featureset_clustering(
     Per-invocation score files (overwrite each run):
       dbscan_scores.txt, meanshift_scores.txt, hdbscan_scores.txt
     """
-    eps_values = eps_values or [1, 1.5, 2]
-    quantile_values = quantile_values or [0.25]
-    n_components_values = n_components_values or [1000]
-    min_cluster_size_values = min_cluster_size_values or [2]
 
     if not ground_truth_json or not Path(ground_truth_json).exists():
         raise FileNotFoundError(
