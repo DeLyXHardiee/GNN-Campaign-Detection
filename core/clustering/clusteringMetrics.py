@@ -1,4 +1,6 @@
 import json
+import csv
+import re
 from typing import Any, Callable
 
 import numpy as np
@@ -13,40 +15,103 @@ from sklearn.metrics import (
 )
 
 
-def extract_ground_truth_labels(path: str) -> dict[str, Any]:
+def _resolve_ground_truth_format(ground_truth_format: str | None) -> str:
+    """Resolve and validate ground-truth format with config-aware defaulting."""
+    fmt = (ground_truth_format or "").strip().lower()
+    if not fmt:
+        try:
+            from config.pipeline_config import PIPELINE_CONFIG
+
+            cfg = PIPELINE_CONFIG.get("datasets") or {}
+            fmt = str(cfg.get("ground_truth_format", "auto")).strip().lower()
+        except Exception:
+            fmt = "auto"
+
+    if fmt == "csv":
+        fmt = "campaign_csv"
+
+    allowed = {"auto", "json", "campaign_csv"}
+    if fmt not in allowed:
+        raise ValueError(
+            f"Unsupported ground_truth_format={fmt!r}. Expected one of: {sorted(allowed)}"
+        )
+    return fmt
+
+
+def extract_ground_truth_labels(
+    path: str,
+    *,
+    ground_truth_format: str | None = None,
+) -> dict[str, Any]:
     """
-    Extract ground truth labels from a JSON file with format:
+    Extract ground truth labels from JSON or campaign CSV.
+
+    JSON format:
     {"clusters": {"label_store_1/49": [{"external_id": str, ...}, ...], ...}}
+
+    CSV format (campaign file):
+    campaign_label,email_ids
+    Campaign 1,"4269,5567,..."
 
     Cluster keys are normalized by stripping the "label_store_*/" prefix.
     Returns dict mapping external_id -> cluster_id (int when possible).
+
+    ``ground_truth_format`` can be: ``auto`` | ``json`` | ``campaign_csv``.
+    When omitted, it is read from ``pipeline_config.datasets.ground_truth_format``
+    and defaults to ``auto``.
     """
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
     label_map: dict[str, Any] = {}
     duplicate_external_ids: set[str] = set()
-    clusters = data.get("clusters", {})
-    for raw_key, emails in clusters.items():
-        # Remove "label_store_*/" prefix; use the part after the last "/" as cluster id
-        cluster_id_str = raw_key.split("/")[-1] if "/" in raw_key else raw_key
-        try:
-            campaign_id: Any = int(cluster_id_str)
-        except ValueError:
-            campaign_id = cluster_id_str
-        for email in emails:
-            email_id = email.get("external_id")
-            if email_id is None:
-                continue
-            email_id_str = str(email_id)
-            if email_id_str in label_map:
-                duplicate_external_ids.add(email_id_str)
-                continue
-            label_map[email_id_str] = campaign_id
+    fmt = _resolve_ground_truth_format(ground_truth_format)
+
+    if fmt == "auto":
+        fmt = "campaign_csv" if str(path).lower().endswith(".csv") else "json"
+
+    if fmt == "campaign_csv":
+        with open(path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                raw_label = str(row.get("campaign_label") or "").strip()
+                label_match = re.search(r"(\d+)$", raw_label)
+                if label_match:
+                    campaign_id: Any = int(label_match.group(1))
+                else:
+                    campaign_id = raw_label or "unknown"
+
+                raw_ids = str(row.get("email_ids") or "").strip()
+                if not raw_ids:
+                    continue
+                for email_id_str in [tok.strip() for tok in raw_ids.split(",") if tok.strip()]:
+                    if email_id_str in label_map:
+                        duplicate_external_ids.add(email_id_str)
+                        continue
+                    label_map[email_id_str] = campaign_id
+    else:  # fmt == "json"
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        clusters = data.get("clusters", {})
+        for raw_key, emails in clusters.items():
+            # Remove "label_store_*/" prefix; use the part after the last "/" as cluster id
+            cluster_id_str = raw_key.split("/")[-1] if "/" in raw_key else raw_key
+            try:
+                campaign_id = int(cluster_id_str)
+            except ValueError:
+                campaign_id = cluster_id_str
+            for email in emails:
+                email_id = email.get("external_id")
+                if email_id is None:
+                    continue
+                email_id_str = str(email_id)
+                if email_id_str in label_map:
+                    duplicate_external_ids.add(email_id_str)
+                    continue
+                label_map[email_id_str] = campaign_id
+
     if duplicate_external_ids:
         sample = sorted(duplicate_external_ids)[:10]
         suffix = "..." if len(duplicate_external_ids) > 10 else ""
         raise ValueError(
-            "Duplicate `external_id` values found in ground truth JSON. "
+            "Duplicate `external_id` values found in ground truth data. "
             f"Examples: {sample}{suffix}"
         )
     return label_map

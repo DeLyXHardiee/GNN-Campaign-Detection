@@ -1,10 +1,10 @@
 import torch
 try:
     import torch_sparse  # noqa: F401
-except ImportError:
+except (ImportError, OSError):
     try:
         import pyg_lib  # noqa: F401
-    except ImportError:
+    except (ImportError, OSError):
         raise ImportError(
             "'NeighborSampler' requires either 'pyg-lib' or 'torch-sparse'. "
             "Install with: pip install torch-sparse (see PyG installation docs for your PyTorch/CUDA version)."
