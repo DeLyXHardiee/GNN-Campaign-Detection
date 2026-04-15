@@ -14,10 +14,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import config.blas_env  # noqa: F401 — before NumPy
-
-import numpy as np
-
 from clustering.clusteringMetrics import (
     extract_ground_truth_labels,
     fit_predict_labels,
@@ -29,13 +25,15 @@ try:
     from core.visualization.campaign_utils import build_campaign_artifact_payload
 except ModuleNotFoundError:
     from visualization.campaign_utils import build_campaign_artifact_payload
-from config.pipeline_config import load_pipeline_config, output_runs_parent_from_pipeline
+from config.pipeline_config import (
+    FEATURESET_CLUSTERING_CONFIG,
+    PIPELINE_CONFIG,
+    output_runs_parent_from_pipeline,
+)
 from config.run_output_paths import resolve_session_run_output_dir
-
-from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
-    preprocess_for_clustering,
-    record_cluster_id,
-    remove_outliers_from_matrix,
+from feature_set_extraction.clustering.featureset_embeddings import (
+    get_embedding_map,
+    warm_embedding_cache,
 )
 
 # ---------------------------------------------------------------------------
@@ -45,142 +43,11 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
 FEATURE_SETS = ["FS1", "FS2", "FS3", "FS4", "FS5", "FS6", "FS7"]
 #FEATURE_SETS = ["FS1", "FS2", "FS3"]#, "FS4", "FS5", "FS6", "FS7"]
 
-_PACKAGE_DIR = Path(__file__).resolve().parent.parent  # core/feature_set_extraction/
-
-
-def _featuresets_dir() -> Path:
-    return _PACKAGE_DIR / "output" / "featuresets"
-
 
 def _results_dir(run_output_dir: Path) -> Path:
     d = run_output_dir / "featureset_clustering" / "results"
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _load_records(dataset_base: str, fs_name: str):
-    """Return (records, path) or (None, path) when the file is missing."""
-    path = _featuresets_dir() / f"{dataset_base}-{fs_name}.json"
-    if not path.exists():
-        return None, path
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f), path
-
-
-def _build_embedding_map(
-    records,
-    max_tfidf_features,
-    n_components,
-    remove_outliers: bool,
-    outlier_contamination: float,
-    embeddings_output_dir: str | os.PathLike | None = None,
-) -> dict[str, np.ndarray]:
-    """Preprocess records into an external_id -> embedding dict."""
-    idxs = [record_cluster_id(r) for r in records]
-    X, _ = preprocess_for_clustering(
-        records,
-        max_tfidf_features,
-        n_components=n_components,
-        embeddings_output_dir=embeddings_output_dir,
-    )
-    if remove_outliers:
-        X, keep_mask, removed = remove_outliers_from_matrix(
-            X, contamination=outlier_contamination
-        )
-        idxs = [idx for idx, keep in zip(idxs, keep_mask) if keep]
-        print(
-            f"  Removed {removed} outliers "
-            f"(contamination={outlier_contamination})"
-        )
-    return {eid: np.asarray(vec, dtype=np.float64) for eid, vec in zip(idxs, X)}
-
-
-def _build_featureset_embedding_cache(
-    *,
-    dataset_base: str,
-    n_components_values: list[int],
-    max_tfidf_features: int | None,
-    remove_outliers: bool,
-    outlier_contamination: float,
-    embeddings_output_dir: str | os.PathLike | None,
-) -> tuple[
-    dict[tuple[str, int], dict[str, np.ndarray]],
-    dict[tuple[str, int], str],
-]:
-    """
-    Build each (feature set name, n_components) embedding map once.
-
-    Returns ``(cache, skip_messages)``. Keys present in ``skip_messages`` failed
-    preprocessing or had no data; successful maps live only in ``cache``.
-    """
-    cache: dict[tuple[str, int], dict[str, np.ndarray]] = {}
-    skip_messages: dict[tuple[str, int], str] = {}
-
-    total = len(n_components_values) * len(FEATURE_SETS)
-    done = 0
-    print(
-        f"\nBuilding embedding cache: {len(n_components_values)} n_components × "
-        f"{len(FEATURE_SETS)} feature sets = {total} combinations "
-        f"(shared across all clustering sweeps)\n"
-    )
-
-    for n_components in n_components_values:
-        for fs_name in FEATURE_SETS:
-            done += 1
-            key = (fs_name, n_components)
-            records, fs_path = _load_records(dataset_base, fs_name)
-            if records is None:
-                skip_messages[key] = (
-                    f"{fs_name}: SKIPPED (file not found: {fs_path})"
-                )
-                print(f"  [{done}/{total}] {skip_messages[key]}")
-                continue
-
-            print(
-                f"  [{done}/{total}] {fs_name}, n_components={n_components} "
-                f"(preprocess + optional outlier removal)…"
-            )
-            embedding_map = _build_embedding_map(
-                records,
-                max_tfidf_features,
-                n_components,
-                remove_outliers,
-                outlier_contamination,
-                embeddings_output_dir=embeddings_output_dir,
-            )
-            if not embedding_map:
-                skip_messages[key] = f"{fs_name}: SKIPPED (empty embedding map)"
-                print(f"  [{done}/{total}] {skip_messages[key]}")
-                continue
-
-            cache[key] = embedding_map
-            print(
-                f"  [{done}/{total}] {fs_name}, n_components={n_components} "
-                f"→ cached {len(embedding_map)} embeddings"
-            )
-
-    n_ok = len(cache)
-    n_skip = len(skip_messages)
-    print(
-        f"\nEmbedding cache ready: {n_ok} usable, {n_skip} skipped "
-        f"(total keys {n_ok + n_skip}).\n"
-    )
-    return cache, skip_messages
-
-
-def _embedding_for_sweep(
-    cache: dict[tuple[str, int], dict[str, np.ndarray]],
-    skip_messages: dict[tuple[str, int], str],
-    fs_name: str,
-    n_components: int,
-) -> tuple[dict[str, np.ndarray] | None, str | None]:
-    """Return (embedding_map, None) or (None, message) for score file / print."""
-    key = (fs_name, n_components)
-    if key in cache:
-        return cache[key], None
-    if key in skip_messages:
-        return None, skip_messages[key]
-    return None, f"{fs_name}: SKIPPED (no cache entry for n_components={n_components})"
 
 
 def _write_run_header(score_f, algorithm: str, params: str) -> None:
@@ -211,13 +78,15 @@ def _update_featureset_best(
     fs_name: str,
     n_components: int,
     metrics: dict,
-    min_cov_gt: float,
-    min_cov_all: float,
     **extra: object,
 ) -> None:
     if metrics.get("clustering_error"):
         return
-    key = _featureset_selection_key(metrics, min_cov_gt, min_cov_all)
+    key = _featureset_selection_key(
+        metrics,
+        FEATURESET_CLUSTERING_CONFIG.min_coverage_ground_truth,
+        FEATURESET_CLUSTERING_CONFIG.min_coverage_all,
+    )
     cur_key = best.get("selection_key")
     if cur_key is None or key > cur_key:
         best.clear()
@@ -235,33 +104,20 @@ def _write_featureset_campaigns_json(
     *,
     best: dict,
     run_output_path: Path,
-    dataset_base: str,
-    max_tfidf_features: int | None,
-    remove_outliers: bool,
-    outlier_contamination: float,
-    embeddings_output_dir: str | os.PathLike | None,
-    min_samples: int,
-    n_samples: int,
-    hdbscan_min_samples: int | None,
 ) -> str | None:
     """Rebuild embeddings for the winning config and write ``campaigns_featureset.json``."""
     if not best.get("algorithm"):
         print("Skipping campaigns_featureset.json: no clustering result recorded.")
         return None
 
-    records, _ = _load_records(dataset_base, str(best["fs_name"]))
-    if records is None:
-        print("Skipping campaigns_featureset.json: feature set records missing.")
-        return None
+    min_samples = FEATURESET_CLUSTERING_CONFIG.min_samples
+    n_samples = FEATURESET_CLUSTERING_CONFIG.n_samples
+    hdbscan_min_samples = FEATURESET_CLUSTERING_CONFIG.hdbscan_min_samples
 
-    embedding_map = _build_embedding_map(
-        records,
-        max_tfidf_features,
-        int(best["n_components"]),
-        remove_outliers,
-        outlier_contamination,
-        embeddings_output_dir=embeddings_output_dir,
-    )
+    embedding_map, skip_msg = get_embedding_map(str(best["fs_name"]), int(best["n_components"]))
+    if embedding_map is None:
+        print(f"Skipping campaigns_featureset.json: {skip_msg}")
+        return None
     algo = str(best["algorithm"])
     if algo == "dbscan":
         sorted_ids, labels = fit_predict_labels(
@@ -316,27 +172,7 @@ def _write_featureset_campaigns_json(
 # ---------------------------------------------------------------------------
 
 def run_featureset_clustering(
-    dataset_base: str = "synthetic_email_dataset_50",
-    ground_truth_json: str | None = None,
-    # DBSCAN
-    eps_values: list[float] | None = None,
-    min_samples: int = 5,
-    # Mean Shift
-    quantile_values: list[float] | None = None,
-    n_samples: int = 500,
-    # HDBSCAN
-    hdbscan_enabled: bool = True,
-    min_cluster_size_values: list[int] | None = None,
-    hdbscan_min_samples: int | None = None,
-    # shared
-    n_components_values: list[int] | None = None,
-    max_tfidf_features: int | None = None,
-    remove_outliers: bool = True,
-    outlier_contamination: float = 0.05,
-    embeddings_output_dir: str | os.PathLike | None = None,
     run_output_dir: str | os.PathLike | None = None,
-    min_coverage_ground_truth: float = 0.5,
-    min_coverage_all: float = 0.5,
 ) -> None:
     """
     Run DBSCAN, Mean Shift, and (optionally) HDBSCAN grid searches over all feature
@@ -356,7 +192,22 @@ def run_featureset_clustering(
       dbscan_scores.txt, meanshift_scores.txt, hdbscan_scores.txt
     """
 
-    if not ground_truth_json or not Path(ground_truth_json).exists():
+    ground_truth_json = FEATURESET_CLUSTERING_CONFIG.ground_truth_json
+    if not ground_truth_json:
+        raise ValueError("pipeline_config datasets.ground_truth_json is required for featureset clustering.")
+    eps_values = FEATURESET_CLUSTERING_CONFIG.eps_values
+    min_samples = FEATURESET_CLUSTERING_CONFIG.min_samples
+    quantile_values = FEATURESET_CLUSTERING_CONFIG.quantile_values
+    n_samples = FEATURESET_CLUSTERING_CONFIG.n_samples
+    hdbscan_enabled = FEATURESET_CLUSTERING_CONFIG.hdbscan_enabled
+    min_cluster_size_values = FEATURESET_CLUSTERING_CONFIG.min_cluster_size_values
+    hdbscan_min_samples = FEATURESET_CLUSTERING_CONFIG.hdbscan_min_samples
+    n_components_values = FEATURESET_CLUSTERING_CONFIG.n_components_values
+    max_tfidf_features = FEATURESET_CLUSTERING_CONFIG.max_tfidf_features
+    remove_outliers = FEATURESET_CLUSTERING_CONFIG.remove_outliers
+    outlier_contamination = FEATURESET_CLUSTERING_CONFIG.outlier_contamination
+
+    if not Path(ground_truth_json).exists():
         raise FileNotFoundError(
             f"Ground truth JSON not found: {ground_truth_json}"
         )
@@ -367,7 +218,7 @@ def run_featureset_clustering(
     )
 
     if run_output_dir is None:
-        cfg_fc = load_pipeline_config()
+        cfg_fc = PIPELINE_CONFIG
         run_output_path = resolve_session_run_output_dir(
             cfg_fc,
             runs_root=output_runs_parent_from_pipeline(cfg_fc),
@@ -379,14 +230,7 @@ def run_featureset_clustering(
 
     best_run: dict = {}
 
-    embedding_cache, embedding_skip_messages = _build_featureset_embedding_cache(
-        dataset_base=dataset_base,
-        n_components_values=n_components_values,
-        max_tfidf_features=max_tfidf_features,
-        remove_outliers=remove_outliers,
-        outlier_contamination=outlier_contamination,
-        embeddings_output_dir=embeddings_output_dir,
-    )
+    warm_embedding_cache(FEATURE_SETS, n_components_values)
 
     # ------------------------------------------------------------------ DBSCAN
     print(f"\n{'='*80}")
@@ -419,19 +263,10 @@ def run_featureset_clustering(
                 print(f"{'='*80}")
 
                 for fs_name in FEATURE_SETS:
-                    embedding_map, skip_msg = _embedding_for_sweep(
-                        embedding_cache,
-                        embedding_skip_messages,
-                        fs_name,
-                        n_components,
-                    )
+                    embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                     if embedding_map is None:
-                        msg = skip_msg or (
-                            f"{fs_name}: SKIPPED (no cache entry for "
-                            f"n_components={n_components})"
-                        )
-                        print(msg)
-                        score_f.write(msg + "\n")
+                        print(skip_msg)
+                        score_f.write(skip_msg + "\n")
                         continue
 
                     metrics = run_db_scan_analysis(
@@ -446,8 +281,6 @@ def run_featureset_clustering(
                         fs_name=fs_name,
                         n_components=n_components,
                         metrics=metrics,
-                        min_cov_gt=min_coverage_ground_truth,
-                        min_cov_all=min_coverage_all,
                         epsilon=eps,
                     )
                     metric_text = (
@@ -500,19 +333,10 @@ def run_featureset_clustering(
                 print(f"{'='*80}")
 
                 for fs_name in FEATURE_SETS:
-                    embedding_map, skip_msg = _embedding_for_sweep(
-                        embedding_cache,
-                        embedding_skip_messages,
-                        fs_name,
-                        n_components,
-                    )
+                    embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                     if embedding_map is None:
-                        msg = skip_msg or (
-                            f"{fs_name}: SKIPPED (no cache entry for "
-                            f"n_components={n_components})"
-                        )
-                        print(msg)
-                        score_f.write(msg + "\n")
+                        print(skip_msg)
+                        score_f.write(skip_msg + "\n")
                         continue
 
                     metrics = run_meanshift_analysis(
@@ -527,8 +351,6 @@ def run_featureset_clustering(
                         fs_name=fs_name,
                         n_components=n_components,
                         metrics=metrics,
-                        min_cov_gt=min_coverage_ground_truth,
-                        min_cov_all=min_coverage_all,
                         quantile=quantile,
                     )
                     metric_text = (
@@ -591,19 +413,10 @@ def run_featureset_clustering(
                     print(f"{'='*80}")
 
                     for fs_name in FEATURE_SETS:
-                        embedding_map, skip_msg = _embedding_for_sweep(
-                            embedding_cache,
-                            embedding_skip_messages,
-                            fs_name,
-                            n_components,
-                        )
+                        embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                         if embedding_map is None:
-                            msg = skip_msg or (
-                                f"{fs_name}: SKIPPED (no cache entry for "
-                                f"n_components={n_components})"
-                            )
-                            print(msg)
-                            score_f.write(msg + "\n")
+                            print(skip_msg)
+                            score_f.write(skip_msg + "\n")
                             continue
 
                         metrics = run_hdbscan_analysis(
@@ -618,8 +431,6 @@ def run_featureset_clustering(
                             fs_name=fs_name,
                             n_components=n_components,
                             metrics=metrics,
-                            min_cov_gt=min_coverage_ground_truth,
-                            min_cov_all=min_coverage_all,
                             min_cluster_size=min_cluster_size,
                         )
                         ms_note = metrics.get("min_samples")
@@ -647,14 +458,6 @@ def run_featureset_clustering(
     _write_featureset_campaigns_json(
         best=best_run,
         run_output_path=run_output_path,
-        dataset_base=dataset_base,
-        max_tfidf_features=max_tfidf_features,
-        remove_outliers=remove_outliers,
-        outlier_contamination=outlier_contamination,
-        embeddings_output_dir=embeddings_output_dir,
-        min_samples=min_samples,
-        n_samples=n_samples,
-        hdbscan_min_samples=hdbscan_min_samples,
     )
 
     print(f"\n{'='*80}")
