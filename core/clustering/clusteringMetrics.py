@@ -234,7 +234,7 @@ def run_meanshift_analysis(
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     n_embeddings = int(len(sorted_ids))
     bw = quantile#estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
-    clusterer = MeanShift(bandwidth=bw, bin_seeding=True)
+    clusterer = MeanShift(bandwidth=bw, bin_seeding=False)
     try:
         labels = clusterer.fit_predict(embeddings)
     except ValueError as exc:
