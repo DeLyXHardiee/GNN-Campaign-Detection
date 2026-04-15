@@ -254,10 +254,12 @@ def run_clustering_stage(
                 "hdbscan",
                 min_cluster_size=int(best_info["min_cluster_size"]),
                 hdbscan_min_samples=algo_cfg_best.get("min_samples"),
+                hdbscan_metric=str(algo_cfg_best.get("metric") or "cosine"),
             )
             params_out = {
                 "min_cluster_size": int(best_info["min_cluster_size"]),
                 "min_samples": algo_cfg_best.get("min_samples"),
+                "metric": str(algo_cfg_best.get("metric") or "cosine"),
             }
         else:
             sorted_ids, labels = [], np.array([], dtype=np.int64)
