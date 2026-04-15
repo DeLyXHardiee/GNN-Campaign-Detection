@@ -29,7 +29,7 @@
     "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "exclude_node_types": [],
+    "exclude_node_types": ["received_host", "origin_ip", "return_path_email", "return_path_domain"],
     "degree_node_filter": {
       "enabled": false,
       "strength": 0.2,
@@ -80,7 +80,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "no_semantics_and_html_css_compare_raw_and_bert_embeddings_ground_truth_dedup",
+  "run_id": "no_semantics_and_html_css_no_routing_nodes",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -141,7 +141,7 @@
       "file_prefix": "raw_graph"
     },
     "bert_embeddings_hdbscan": {
-      "enabled": true,
+      "enabled": false,
       "min_cluster_size_values": [2],
       "min_samples": null,
       "subdir": "clustering_bert_embeddings",

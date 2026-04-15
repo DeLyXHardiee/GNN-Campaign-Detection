@@ -812,7 +812,7 @@ if __name__ == "__main__":
     run_gnn_evaluation()
     run_gnn_clustering()
     run_metric_comparison()
-    visualize_clusters(start_docker_ui=True)
+    #visualize_clusters(start_docker_ui=True)
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()

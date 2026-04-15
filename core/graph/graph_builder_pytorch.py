@@ -39,6 +39,7 @@ from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
+from .hetero_cleanup import prune_heterodata_for_message_passing
 from .feature_projection import (
     SCALAR_COUNT,
     HTML_CSS_LEN,
@@ -298,7 +299,8 @@ def build_hetero_graph_from_misp(
     _set_edges_from_ir(data, ir, schema)
 
     data = normalize_graph(data)
-    
+    data = prune_heterodata_for_message_passing(data)
+
     metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
 

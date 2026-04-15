@@ -6,6 +6,11 @@ from torch_geometric.data import HeteroData
 from torch_geometric.transforms import ToUndirected
 from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 
+_core_dir = Path(__file__).resolve().parent.parent.parent
+if str(_core_dir) not in sys.path:
+    sys.path.insert(0, str(_core_dir))
+from graph.hetero_cleanup import prune_heterodata_for_message_passing
+
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 _GRAPH_EXTS = {".pt", ".pth"}
 
@@ -49,5 +54,5 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
         del data["email"].external_id
     if to_undirected:
-        return ToUndirected()(data)
-    return data
+        data = ToUndirected()(data)
+    return prune_heterodata_for_message_passing(data)

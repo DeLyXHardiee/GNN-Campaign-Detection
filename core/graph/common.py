@@ -6,10 +6,14 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
-from datetime import timezone
+from datetime import datetime, timezone
 import math
+
+# Whole string is a scalar epoch (seconds or ms); avoids misparsing year-like fragments as floats.
+_EPOCH_NUMERIC = re.compile(r"^-?\d+(?:\.\d+)?$")
 
 #TODO Fix this import stuff
 try:
@@ -42,28 +46,86 @@ def to_str(val: Any) -> str:
         return ""
 
 
-def to_unix_ts(date_str: str) -> int:
-    if not date_str or not date_str.strip():
+def to_unix_ts(value: Any) -> int:
+    """Convert email/event date values to UNIX seconds (since 1970-01-01 UTC).
+
+    Accepts legacy numeric epoch seconds, ISO/RFC datetime strings (incl.
+    ``YYYY-MM-DD HH:MM:SS+00:00`` from the lake), :class:`datetime`, and the
+    RFC-2822-style strings handled previously.
+    """
+    if value is None:
         return 0
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            return int(dt.timestamp())
+        except (OSError, OverflowError, ValueError):
+            return 0
+    if isinstance(value, (int, float)):
+        try:
+            if isinstance(value, float) and (value != value or math.isnan(value)):
+                return 0
+        except Exception:
+            return 0
+        v = float(value)
+        if v > 1e12:
+            v = v / 1000.0
+        try:
+            return int(v)
+        except (OverflowError, ValueError):
+            return 0
+
+    date_str = to_str(value).strip()
+    if not date_str:
+        return 0
+
+    if _EPOCH_NUMERIC.fullmatch(date_str):
+        try:
+            v = float(date_str)
+            if v > 1e12:
+                v = v / 1000.0
+            return int(v)
+        except (OverflowError, ValueError):
+            return 0
+
+    iso = date_str
+    if iso.endswith("Z"):
+        iso = iso[:-1] + "+00:00"
+    iso_candidates = [iso]
+    if len(iso) >= 19 and iso[4] == "-" and iso[7] == "-" and iso[10] == " ":
+        iso_candidates.append(iso[:10] + "T" + iso[11:])
+
+    for cand in iso_candidates:
+        try:
+            dt = datetime.fromisoformat(cand)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except ValueError:
+            continue
+
     try:
-        from datetime import datetime
         for fmt in [
             "%a, %d %b %Y %H:%M:%S %z",
             "%a, %d %b %Y %H:%M:%S %Z",
             "%d %b %Y %H:%M:%S %z",
+            "%Y-%m-%d %H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S %z",
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d",
         ]:
             try:
-                dt = datetime.strptime(date_str.strip(), fmt)
+                dt = datetime.strptime(date_str, fmt)
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 return int(dt.timestamp())
             except ValueError:
                 continue
-        return 0
     except Exception:
         return 0
+    return 0
 
 
 def normalize_email_address(email_str: str) -> str:
