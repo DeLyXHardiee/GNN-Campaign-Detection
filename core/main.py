@@ -652,11 +652,11 @@ if __name__ == "__main__":
     '''
     misp_path = "preprocessing/output/incidents-lake-misp.json"
     run_graph_creation(misp_path, to_memgraph=False)
-    run_gnn()
-    run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metric_comparison()
-    visualize_clusters()
+    #run_gnn()
+    #run_gnn_evaluation()
+    #run_gnn_clustering()
+    #run_metric_comparison()
+    #visualize_clusters()
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
