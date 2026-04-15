@@ -4,6 +4,21 @@ import re
 from typing import Any, Callable
 
 import numpy as np
+
+
+def _hdbscan_extra_kwargs(metric: str) -> dict[str, Any]:
+    """
+    With ``algorithm="best"``, hdbscan routes ``cosine`` / ``arccos`` to the BallTree
+    path, but scikit-learn's BallTree does not register ``cosine`` as a valid metric
+    (e.g. sklearn 1.8), which raises ``ValueError: Unrecognized metric 'cosine'``.
+    The ``generic`` implementation uses ``pairwise_distances`` instead, which supports
+    cosine. See hdbscan ``FAST_METRICS`` vs the ``else:  # Metric is a valid BallTree metric``
+    branch in ``hdbscan_.py``.
+    """
+    m = str(metric).lower().strip()
+    if m in ("cosine", "arccos"):
+        return {"algorithm": "generic"}
+    return {}
 from sklearn.cluster import DBSCAN, MeanShift, estimate_bandwidth
 from sklearn.metrics import (
     calinski_harabasz_score,
@@ -346,6 +361,7 @@ def fit_predict_labels(
     n_samples: int | None = None,
     min_cluster_size: int | None = None,
     hdbscan_min_samples: int | None = None,
+    hdbscan_metric: str = "cosine",
 ) -> tuple[list[str], np.ndarray]:
     """
     Run clustering without ground-truth metrics; return (sorted_external_ids, label_array).
@@ -385,6 +401,8 @@ def fit_predict_labels(
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=int(min_cluster_size),
             min_samples=None if hdbscan_min_samples is None else int(hdbscan_min_samples),
+            metric=str(hdbscan_metric),
+            **_hdbscan_extra_kwargs(hdbscan_metric),
         )
         labels = clusterer.fit_predict(embeddings)
         return sorted_ids, np.asarray(labels)
@@ -397,6 +415,8 @@ def run_hdbscan_analysis(
     ground_truth_labels: dict[str, Any],
     min_cluster_size: int,
     min_samples: int | None = None,
+    *,
+    metric: str = "cosine",
 ) -> dict[str, Any]:
     # Lazy import: `hdbscan` is a native extension and can crash some environments
     # during import; we only need it for the HDBSCAN analysis path.
@@ -406,12 +426,15 @@ def run_hdbscan_analysis(
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=int(min_cluster_size),
         min_samples=None if min_samples is None else int(min_samples),
+        metric=str(metric),
+        **_hdbscan_extra_kwargs(metric),
     )
     labels = clusterer.fit_predict(embeddings)
     metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
     metrics["clustering_type"] = "hdbscan"
     metrics["min_cluster_size"] = int(min_cluster_size)
     metrics["min_samples"] = None if min_samples is None else int(min_samples)
+    metrics["metric"] = str(metric)
     metrics["n_embeddings"] = int(len(sorted_ids))
     return metrics
 

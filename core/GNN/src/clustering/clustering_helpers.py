@@ -84,12 +84,14 @@ def _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, 
     if algo == "hdbscan":
         mcs_values = clustering_config["min_cluster_size_values"]
         min_samples = clustering_config.get("min_samples")
+        metric = clustering_config.get("metric", "cosine")
         return [
             run_hdbscan_analysis(
                 id_to_embedding_map,
                 ground_truth_labels,
                 min_cluster_size=mcs,
                 min_samples=min_samples,
+                metric=str(metric),
             )
             for mcs in mcs_values
         ]
@@ -118,6 +120,7 @@ def save_metrics_csv(rows, path):
         "clustering_error",
         # HDBSCAN
         "min_cluster_size",
+        "metric",
         # Internal metrics
         "silhouette",
         "db_index",

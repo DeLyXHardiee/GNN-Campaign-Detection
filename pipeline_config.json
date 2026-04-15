@@ -73,12 +73,13 @@
       "min_cluster_size_values": [ 
         2
       ],
-      "min_samples": null
+      "min_samples": null,
+      "metric": "cosine"
     }
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test_metric_comparison",
+  "run_id": "default_experiment_hdbscan_cosine",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -150,7 +151,8 @@
         "enabled": true,
         "min_cluster_size_values": [
           2
-        ]
+        ],
+        "metric": "cosine"
       }
     }
   },
