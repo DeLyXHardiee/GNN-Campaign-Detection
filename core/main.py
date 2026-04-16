@@ -647,7 +647,7 @@ def run_pipeline():
 if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    create_feature_sets()
+    #create_feature_sets()
     run_featureset_clustering()
     '''
     misp_path = "preprocessing/output/incidents-lake-misp.json"
