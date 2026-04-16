@@ -250,7 +250,7 @@ def load_text_embeddings(path):
 # Build dataset
 # -------------------------
 
-def build_pairs(emails, clusters, max_pairs=None):
+def build_pairs(emails, clusters, max_pairs=float("inf")):
     pairs = []
     labels = []
 
