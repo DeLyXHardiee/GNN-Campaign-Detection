@@ -40,9 +40,6 @@ from feature_set_extraction.clustering.featureset_embeddings import (
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-FEATURE_SETS = ["FS1", "FS2", "FS3", "FS4", "FS5", "FS6", "FS7"]
-#FEATURE_SETS = ["FS1", "FS2", "FS3"]#, "FS4", "FS5", "FS6", "FS7"]
-
 
 def _results_dir(run_output_dir: Path) -> Path:
     d = run_output_dir / "featureset_clustering" / "results"
@@ -202,6 +199,7 @@ def run_featureset_clustering(
     hdbscan_enabled = FEATURESET_CLUSTERING_CONFIG.hdbscan_enabled
     min_cluster_size_values = FEATURESET_CLUSTERING_CONFIG.min_cluster_size_values
     hdbscan_min_samples = FEATURESET_CLUSTERING_CONFIG.hdbscan_min_samples
+    feature_sets = FEATURESET_CLUSTERING_CONFIG.feature_sets
     n_components_values = FEATURESET_CLUSTERING_CONFIG.n_components_values
     max_tfidf_features = FEATURESET_CLUSTERING_CONFIG.max_tfidf_features
     remove_outliers = FEATURESET_CLUSTERING_CONFIG.remove_outliers
@@ -230,7 +228,7 @@ def run_featureset_clustering(
 
     best_run: dict = {}
 
-    warm_embedding_cache(FEATURE_SETS, n_components_values)
+    warm_embedding_cache(feature_sets, n_components_values)
 
     # ------------------------------------------------------------------ DBSCAN
     print(f"\n{'='*80}")
@@ -252,17 +250,17 @@ def run_featureset_clustering(
             f"outlier_contamination={outlier_contamination}",
         )
 
-        for eps in eps_values:
-            for n_components in n_components_values:
-                print(f"\n{'='*80}")
-                print(
-                    f"eps={eps}, n_components={n_components}, "
-                    f"min_samples={min_samples}, "
-                    f"remove_outliers={remove_outliers}"
-                )
-                print(f"{'='*80}")
+        for fs_name in feature_sets:
+            for eps in eps_values:
+                for n_components in n_components_values:
+                    print(f"\n{'='*80}")
+                    print(
+                        f"{fs_name} | eps={eps}, n_components={n_components}, "
+                        f"min_samples={min_samples}, "
+                        f"remove_outliers={remove_outliers}"
+                    )
+                    print(f"{'='*80}")
 
-                for fs_name in FEATURE_SETS:
                     embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                     if embedding_map is None:
                         print(skip_msg)
@@ -322,17 +320,17 @@ def run_featureset_clustering(
             f"outlier_contamination={outlier_contamination}",
         )
 
-        for quantile in quantile_values:
-            for n_components in n_components_values:
-                print(f"\n{'='*80}")
-                print(
-                    f"quantile={quantile}, n_components={n_components}, "
-                    f"n_samples={n_samples}, "
-                    f"remove_outliers={remove_outliers}"
-                )
-                print(f"{'='*80}")
+        for fs_name in feature_sets:
+            for quantile in quantile_values:
+                for n_components in n_components_values:
+                    print(f"\n{'='*80}")
+                    print(
+                        f"{fs_name} | quantile={quantile}, n_components={n_components}, "
+                        f"n_samples={n_samples}, "
+                        f"remove_outliers={remove_outliers}"
+                    )
+                    print(f"{'='*80}")
 
-                for fs_name in FEATURE_SETS:
                     embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                     if embedding_map is None:
                         print(skip_msg)
@@ -401,18 +399,18 @@ def run_featureset_clustering(
                 f"outlier_contamination={outlier_contamination}",
             )
 
-            for min_cluster_size in min_cluster_size_values:
-                for n_components in n_components_values:
-                    print(f"\n{'='*80}")
-                    print(
-                        f"min_cluster_size={min_cluster_size}, "
-                        f"n_components={n_components}, "
-                        f"hdbscan_min_samples={hdbscan_min_samples}, "
-                        f"remove_outliers={remove_outliers}"
-                    )
-                    print(f"{'='*80}")
+            for fs_name in feature_sets:
+                for min_cluster_size in min_cluster_size_values:
+                    for n_components in n_components_values:
+                        print(f"\n{'='*80}")
+                        print(
+                            f"{fs_name} | min_cluster_size={min_cluster_size}, "
+                            f"n_components={n_components}, "
+                            f"hdbscan_min_samples={hdbscan_min_samples}, "
+                            f"remove_outliers={remove_outliers}"
+                        )
+                        print(f"{'='*80}")
 
-                    for fs_name in FEATURE_SETS:
                         embedding_map, skip_msg = get_embedding_map(fs_name, n_components)
                         if embedding_map is None:
                             print(skip_msg)
