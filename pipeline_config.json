@@ -82,12 +82,13 @@
       "min_cluster_size_values": [ 
         2
       ],
-      "min_samples": null
+      "min_samples": null,
+      "metric": "cosine"
     }
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test_metric_comparison",
+  "run_id": "default_experiment_hdbscan_cosine",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -144,6 +145,23 @@
       "min_coverage_ground_truth": 0.5,
       "min_coverage_all": 0.5
     },
+    "baselines": {
+      "raw_graph": {
+        "enabled": true
+      },
+      "bert_embeddings": {
+        "enabled": true,
+        "embeddings_json_path": "core/utils/embeddings/output/embeddings.json",
+        "optimization": {
+          "l2_normalize": true,
+          "max_components": 256,
+          "random_state": 42,
+          "max_embeddings_for_meanshift": 3000,
+          "max_embeddings_for_hdbscan": 5000,
+          "force_expensive_algorithms": false
+        }
+      }
+    },
     "config": {
       "dbscan": {
         "enabled": true,
@@ -159,7 +177,8 @@
         "enabled": true,
         "min_cluster_size_values": [
           2
-        ]
+        ],
+        "metric": "cosine"
       }
     }
   },

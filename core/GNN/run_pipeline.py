@@ -63,6 +63,7 @@ def main() -> None:
 
     clustering_root = cfg["gnn_clustering"]
     clustering_cfg = clustering_root["config"]
+    clustering_baselines_cfg = clustering_root.get("baselines", {})
     clustering_selection_cfg = clustering_root.get("selection", {})
 
     run_dir = run_dir_arg or ""
@@ -143,6 +144,7 @@ def main() -> None:
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         clustering_cfg=clustering_cfg,
+        baselines_cfg=clustering_baselines_cfg,
         min_coverage_ground_truth=float(
             clustering_selection_cfg.get("min_coverage_ground_truth", 0.5)
         ),

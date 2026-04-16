@@ -371,6 +371,7 @@ class FeaturesetClusteringSettings:
     hdbscan_enabled: bool
     min_cluster_size_values: list[int]
     hdbscan_min_samples: int | None
+    hdbscan_metric: str
     # Shared embedding
     n_components_values: list[int]
     max_tfidf_features: int | None
@@ -422,6 +423,7 @@ def featureset_clustering_settings_from_pipeline(
             if hdbscan_cfg.get("min_samples") is not None
             else None
         ),
+        hdbscan_metric=str(hdbscan_cfg.get("metric") or "cosine"),
         n_components_values=[int(v) for v in (fs_cfg.get("n_components_values") or [1000])],
         max_tfidf_features=(
             int(fs_cfg["max_tfidf_features"])

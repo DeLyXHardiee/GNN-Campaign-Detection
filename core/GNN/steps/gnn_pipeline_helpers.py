@@ -37,8 +37,10 @@ def load_gnn_cfg(cfg: dict[str, Any], *, project_root: Path | None = None) -> di
     training_cfg = cfg["training"]
     evaluation_auroc_cfg = cfg["evaluation"].get("auroc_ap", {})
     recall_cfg = cfg["evaluation"]["recall_at_k"]
-    gnn_clustering_cfg = cfg["gnn_clustering"]["config"]
-    gnn_clustering_selection_cfg = cfg["gnn_clustering"].get("selection", {})
+    gnn_cluster_root = cfg["gnn_clustering"]
+    gnn_clustering_cfg = gnn_cluster_root["config"]
+    gnn_clustering_selection_cfg = gnn_cluster_root.get("selection", {})
+    gnn_clustering_baselines_cfg = gnn_cluster_root.get("baselines", {})
     path_layout = gnn_path_layout_from_pipeline(cfg, project_root=project_root)
 
     return {
@@ -50,6 +52,7 @@ def load_gnn_cfg(cfg: dict[str, Any], *, project_root: Path | None = None) -> di
         "recall_cfg": recall_cfg,
         "gnn_clustering_cfg": gnn_clustering_cfg,
         "gnn_clustering_selection_cfg": gnn_clustering_selection_cfg,
+        "gnn_clustering_baselines_cfg": gnn_clustering_baselines_cfg,
         "path_layout": path_layout,
     }
 
