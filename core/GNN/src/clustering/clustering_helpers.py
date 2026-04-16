@@ -166,9 +166,30 @@ def sweep_clustering_for_one_model(
     email_external_ids: list of external_id per email node from metadata (email_attrs.external_id).
     """
     id_to_emb = extract_email_embeddings(model, data, device, external_ids=email_external_ids)
-    cfg = dict(clustering_config)
+    return sweep_clustering_for_embedding_map(
+        id_to_embedding_map=id_to_emb,
+        ground_truth_labels=ground_truth_labels,
+        clustering_config=clustering_config,
+        output_dir=output_dir,
+        model_column_name=model_column_name,
+    )
 
-    rows = _collect_clustering_sweep_metrics(id_to_emb, ground_truth_labels, cfg)
+
+def sweep_clustering_for_embedding_map(
+    *,
+    id_to_embedding_map,
+    ground_truth_labels,
+    clustering_config,
+    output_dir,
+    model_column_name="model",
+):
+    """
+    Run clustering sweep for a precomputed id->embedding mapping.
+
+    Writes ``<output_dir>/<model_column_name>_<algo>_sweep.csv``.
+    """
+    cfg = dict(clustering_config)
+    rows = _collect_clustering_sweep_metrics(id_to_embedding_map, ground_truth_labels, cfg)
     for r in rows:
         r["model"] = model_column_name
 

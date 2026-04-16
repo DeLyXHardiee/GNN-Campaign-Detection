@@ -136,6 +136,23 @@
       "min_coverage_ground_truth": 0.5,
       "min_coverage_all": 0.5
     },
+    "baselines": {
+      "raw_graph": {
+        "enabled": true
+      },
+      "bert_embeddings": {
+        "enabled": true,
+        "embeddings_json_path": "core/utils/embeddings/output/embeddings.json",
+        "optimization": {
+          "l2_normalize": true,
+          "max_components": 256,
+          "random_state": 42,
+          "max_embeddings_for_meanshift": 3000,
+          "max_embeddings_for_hdbscan": 5000,
+          "force_expensive_algorithms": false
+        }
+      }
+    },
     "config": {
       "dbscan": {
         "enabled": true,
