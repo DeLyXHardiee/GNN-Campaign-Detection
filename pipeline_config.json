@@ -52,6 +52,15 @@
     }
   },
   "featureset-clustering": {
+    "feature_sets": [
+      "FS1",
+      "FS2",
+      "FS3",
+      "FS4",
+      "FS5",
+      "FS6",
+      "FS7"
+    ],
     "max_tfidf_features": 100000,
     "n_components_values": [
       100000
