@@ -174,6 +174,7 @@ def run_gnn_clustering(
         checkpoint_path=checkpoint_path_str,
         output_dir=run_dir_str,
         clustering_cfg=g["gnn_clustering_cfg"],
+        baselines_cfg=g["gnn_clustering_baselines_cfg"],
         min_coverage_ground_truth=float(
             g["gnn_clustering_selection_cfg"].get("min_coverage_ground_truth", 0.5)
         ),
