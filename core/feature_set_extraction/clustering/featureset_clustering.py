@@ -110,6 +110,7 @@ def _write_featureset_campaigns_json(
     min_samples = FEATURESET_CLUSTERING_CONFIG.min_samples
     n_samples = FEATURESET_CLUSTERING_CONFIG.n_samples
     hdbscan_min_samples = FEATURESET_CLUSTERING_CONFIG.hdbscan_min_samples
+    hdbscan_metric = FEATURESET_CLUSTERING_CONFIG.hdbscan_metric
 
     embedding_map, skip_msg = get_embedding_map(str(best["fs_name"]), int(best["n_components"]))
     if embedding_map is None:
@@ -138,10 +139,12 @@ def _write_featureset_campaigns_json(
             "hdbscan",
             min_cluster_size=int(best["min_cluster_size"]),
             hdbscan_min_samples=hdbscan_min_samples,
+            hdbscan_metric=hdbscan_metric,
         )
         params = {
             "min_cluster_size": int(best["min_cluster_size"]),
             "min_samples": hdbscan_min_samples,
+            "metric": hdbscan_metric,
         }
     else:
         return None
@@ -200,6 +203,7 @@ def run_featureset_clustering(
     min_cluster_size_values = FEATURESET_CLUSTERING_CONFIG.min_cluster_size_values
     hdbscan_min_samples = FEATURESET_CLUSTERING_CONFIG.hdbscan_min_samples
     feature_sets = FEATURESET_CLUSTERING_CONFIG.feature_sets
+    hdbscan_metric = FEATURESET_CLUSTERING_CONFIG.hdbscan_metric
     n_components_values = FEATURESET_CLUSTERING_CONFIG.n_components_values
     max_tfidf_features = FEATURESET_CLUSTERING_CONFIG.max_tfidf_features
     remove_outliers = FEATURESET_CLUSTERING_CONFIG.remove_outliers
@@ -393,6 +397,7 @@ def run_featureset_clustering(
                 "HDBSCAN",
                 f"min_cluster_size_values={min_cluster_size_values}, "
                 f"hdbscan_min_samples={hdbscan_min_samples}, "
+                f"metric={hdbscan_metric}, "
                 f"max_tfidf_features={max_tfidf_features}, "
                 f"n_components_values={n_components_values}, "
                 f"remove_outliers={remove_outliers}, "
@@ -422,6 +427,7 @@ def run_featureset_clustering(
                             ground_truth_labels=ground_truth_labels,
                             min_cluster_size=min_cluster_size,
                             min_samples=hdbscan_min_samples,
+                            metric=hdbscan_metric,
                         )
                         _update_featureset_best(
                             best_run,
