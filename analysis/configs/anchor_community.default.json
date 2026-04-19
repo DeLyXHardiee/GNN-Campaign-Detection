@@ -1,0 +1,26 @@
+{
+  "run": {
+    "graph_run_id": "deafult_anchor_seeds",
+    "anchor_output_root": "analysis/output/anchor_graph"
+  },
+  "sweep": {
+    "methods": ["louvain", "leiden"],
+    "weight_thresholds": [0, 0.1, 0.2, 0.3, 0.4],
+    "resolutions": [1, 1.5, 2.0, 2.5, 3.0],
+    "weight_col": "edge_weight",
+    "seed": 0,
+    "sort_by": "v-measure"
+  },
+  "ground_truth": {
+    "paths": [
+      "data/groundtruth/ground_truth_merged.json",
+      "data/groundtruth/ground_truth_merged_dedup.json",
+      "data/groundtruth/ground_truth.json",
+      "data/groundtruth/ground_truth_dedup.json"
+    ]
+  },
+  "output": {
+    "output_root": "analysis/output/anchor_community",
+    "stage_name": "community_sweep"
+  }
+}

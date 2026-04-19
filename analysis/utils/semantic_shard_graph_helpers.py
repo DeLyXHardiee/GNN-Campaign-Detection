@@ -224,7 +224,7 @@ def risky_channel_edge_adjustment_table(edges_df: pd.DataFrame, bases: tuple[str
 def edge_risky_channel_infra_fractions(
     edges_df: pd.DataFrame,
     *,
-    risky_bases: tuple[str, ...] = ("origin_ip", "received_host"),
+    risky_bases: tuple[str, ...] = ("origin_ip", "helo_host"),
     infra_col: str = "infra_score",
 ) -> dict[str, float]:
     """Fraction of summed infra_score across edges attributable to listed channels (by infra_contrib_*)."""
@@ -423,6 +423,10 @@ def build_shard_nodes(
         "domain_set",
         "stem_set",
         "attachment_set",
+        "html_structure_fingerprint_set",
+        "return_path_email_set",
+        "return_path_domain_set",
+        "helo_host_set",
     ),
 ) -> tuple[pd.DataFrame, np.ndarray]:
     gt_map = {str(k): v for k, v in (gt_label_map or {}).items()}
@@ -532,6 +536,11 @@ def build_candidate_edges(
         "domain_set",
         "stem_set",
         "sender_set",
+        "attachment_set",
+        "html_structure_fingerprint_set",
+        "return_path_email_set",
+        "return_path_domain_set",
+        "helo_host_set",
     ),
     show_progress: bool = False,
 ) -> pd.DataFrame:
@@ -628,6 +637,11 @@ def build_weighted_edges(
         "domain_set",
         "stem_set",
         "sender_set",
+        "attachment_set",
+        "html_structure_fingerprint_set",
+        "return_path_email_set",
+        "return_path_domain_set",
+        "helo_host_set",
     ),
     channel_weights: dict[str, float] | None = None,
     channel_scoring: dict[str, ShardEdgeChannelScoring] | None = None,
@@ -640,6 +654,11 @@ def build_weighted_edges(
                 "domain_set": 0.60,
                 "stem_set": 0.55,
                 "sender_set": 0.50,
+                "attachment_set": 0.50,
+                "html_structure_fingerprint_set": 0.45,
+                "return_path_email_set": 0.45,
+                "return_path_domain_set": 0.45,
+                "helo_host_set": 0.45,
             }
         channel_scoring = scoring_specs_from_weights_legacy(channel_weights)
 

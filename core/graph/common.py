@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from typing import Set
 from datetime import timezone
@@ -305,6 +306,35 @@ def _coerce_mapping_list(value: Any) -> List[Dict[str, Any]]:
     return []
 
 
+_SHA256_RE = re.compile(r"^[a-f0-9]{64}$", flags=re.IGNORECASE)
+
+
+def is_sha256_hex(value: Any) -> bool:
+    s = to_str(value).strip().lower()
+    return bool(_SHA256_RE.fullmatch(s))
+
+
+def extract_attachment_sha256s(raw_attachments: List[Any], attachment_metadata: List[Dict[str, Any]]) -> List[str]:
+    """Normalize attachment indicators into distinct lowercase SHA256 hashes only."""
+    out: List[str] = []
+    seen: Set[str] = set()
+    for value in raw_attachments:
+        s = to_str(value).strip().lower()
+        if not s or s in seen or not is_sha256_hex(s):
+            continue
+        seen.add(s)
+        out.append(s)
+    for meta in attachment_metadata:
+        if not isinstance(meta, dict):
+            continue
+        s = to_str(meta.get("sha256", "")).strip().lower()
+        if not s or s in seen or not is_sha256_hex(s):
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -392,6 +422,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                         accum["urls"].append(url)
 
         external_id = to_str(event.get("external_id", ""))
+        attachment_metadata = fields.get("attachment_metadata", [])
         normalized.append(
             {
                 "email_info": info,
@@ -403,8 +434,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                 "body": fields["body"],
                 "html": fields["html"],
                 "css": fields["css"],
-                "attachments": accum["attachments"],
-                "attachment_metadata": fields.get("attachment_metadata", []),
+                "attachments": extract_attachment_sha256s(accum["attachments"], attachment_metadata),
+                "attachment_metadata": attachment_metadata,
                 "urls": accum["urls"],
                 "date": fields["date"],
                 "received_hops": fields.get("received_hops", []),
@@ -432,6 +463,8 @@ __all__ = [
     "normalize_email_address",
     "extract_email_domain",
     "extract_all_emails",
+    "is_sha256_hex",
+    "extract_attachment_sha256s",
     "parse_misp_events",
     "parse_authentication_results",
     "auth_value_to_onehot",

@@ -1,0 +1,188 @@
+{
+  "run": {
+    "graph_run_id": "deafult_anchor_seeds"
+  },
+  "inputs": {
+    "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
+    "meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json",
+    "to_undirected": true,
+    "embeddings_json": "core/utils/embeddings/output/embeddings.json",
+    "embedding_source": "cache_or_compute",
+    "prefer_translated_for_compute": true,
+    "tfidf_max_features": 4096,
+    "popular_domains_path": "core/feature_set_extraction/caches/popular_domains.txt",
+    "web_hosting_domains_path": "core/feature_set_extraction/caches/web_hosting_domains.txt"
+  },
+  "node_fields": {
+    "include_text_fields": true,
+    "graph_node_columns": [
+      "ts",
+      "url_set",
+      "sender_set",
+      "attachment_set",
+      "sender_email_domain_set",
+      "domain_set",
+      "stem_set"
+    ]
+  },
+  "filters": {
+    "filter_popular_domains": true,
+    "filter_web_hosting_domains": false
+  },
+  "channels": {
+    "default_weight": 0.5,
+    "channel_settings": {
+      "semantic": {
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "top_k": 7500,
+        "min_cos": 0.9,
+        "weight": 0.45
+      },
+      "url": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 1.0,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 2500,
+        "contribution_cap": 1.0
+      },
+      "sender": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 0.65,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 2000,
+        "contribution_cap": 1.0
+      },
+      "attachment": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 0.7,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 1500,
+        "contribution_cap": 1.0
+      },
+      "sender_email_domain": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 0.85,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 3500,
+        "contribution_cap": 1.0
+      },
+      "domain": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 0.55,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 3000,
+        "contribution_cap": 1.0
+      },
+      "stem": {
+        "enabled": true,
+        "candidate_enabled": true,
+        "score_enabled": true,
+        "weight": 0.45,
+        "idf_exponent": 1.0,
+        "idf_scale": 1.0,
+        "max_email_df": 3000,
+        "contribution_cap": 1.0
+      },
+      "html_structure_fingerprint": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      },
+      "return_path_email": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      },
+      "return_path_domain": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      },
+      "helo_host": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      },
+      "origin_ip": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      },
+      "received_host": {
+        "enabled": false,
+        "candidate_enabled": false,
+        "score_enabled": false
+      }
+    }
+  },
+  "candidate_generation": {
+    "max_pairs_per_artifact": 10000
+  },
+  "weighting": {
+    "infra_weight": 0.45,
+    "temporal_weight": 0.1,
+    "temporal_decay_days": 30.0,
+    "temporal_overlap_seconds": 3600.0
+  },
+  "persistence": {
+    "output_dir": "analysis/output/anchor_graph",
+    "write_candidates": true,
+    "write_serialized_graph": true
+  },
+  "views": [
+    {
+      "name": "all_channels",
+      "include_channels": [],
+      "exclude_channels": [],
+      "require_all_include": false,
+      "min_active_channels": 1,
+      "min_edge_weight": null
+    },
+    {
+      "name": "url_only",
+      "include_channels": [
+        "url"
+      ],
+      "exclude_channels": [],
+      "require_all_include": true,
+      "min_active_channels": 1,
+      "min_edge_weight": null
+    },
+    {
+      "name": "attachment_only",
+      "include_channels": [
+        "attachment"
+      ],
+      "exclude_channels": [],
+      "require_all_include": true,
+      "min_active_channels": 1,
+      "min_edge_weight": null
+    },
+    {
+      "name": "sender_only",
+      "include_channels": [
+        "sender"
+      ],
+      "exclude_channels": [],
+      "require_all_include": true,
+      "min_active_channels": 1,
+      "min_edge_weight": null
+    }
+  ]
+}

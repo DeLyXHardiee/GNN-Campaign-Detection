@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -643,13 +644,29 @@ LINK_LABEL_FROM_TAXONOMY: dict[str, str] = {
     EDGE_TAXONOMY_AMBIG: "ambiguous",
 }
 
-SHARED_COUNT_TO_HAS_FLAG: tuple[tuple[str, str], ...] = (
-    ("shared_url_count", "has_url_overlap"),
-    ("shared_domain_count", "has_domain_overlap"),
-    ("shared_sender_count", "has_sender_overlap"),
-    ("shared_sender_email_domain_count", "has_sender_domain_overlap"),
-    ("shared_stem_count", "has_stem_overlap"),
-)
+def _channel_title(base: str) -> str:
+    if base == "sender_email_domain":
+        return "Sender-domain"
+    return base.replace("_", " ").title()
+
+
+def infer_shared_overlap_specs(edge_df: pd.DataFrame) -> list[tuple[str, str, str]]:
+    """
+    Infer overlap channels from `shared_*_count` columns.
+    Returns list of (base, count_col, has_flag_col).
+    """
+    specs: list[tuple[str, str, str]] = []
+    for c in edge_df.columns:
+        m = re.fullmatch(r"shared_(.+)_count", str(c))
+        if not m:
+            continue
+        base = str(m.group(1))
+        has_col = f"has_{base}_overlap"
+        if base == "sender_email_domain":
+            has_col = "has_sender_domain_overlap"
+        specs.append((base, c, has_col))
+    specs.sort(key=lambda x: x[0])
+    return specs
 
 _SEM_BODY_SUBJECT_TRY_PAIRS: tuple[tuple[str, str], ...] = (
     ("body_centroid_cosine", "subject_centroid_cosine"),
@@ -666,26 +683,6 @@ def find_body_subject_semantic_columns(df: pd.DataFrame) -> tuple[str | None, st
         if b in cols and s in cols:
             return b, s
     return None, None
-
-
-def compute_hsli_mask(
-    df: pd.DataFrame,
-    *,
-    sem_col: str = "centroid_cosine",
-    infra_col: str = "infra_score",
-) -> pd.Series:
-    """
-    HS-LI: semantic ≥ global median and infra ≤ global median (among finite scores).
-    Matches the ``high_sem_low_infra`` quadrant in ``regime_slice_summary``.
-    """
-    sem = pd.to_numeric(df[sem_col], errors="coerce") if sem_col in df.columns else pd.Series(np.nan, index=df.index)
-    inf = pd.to_numeric(df[infra_col], errors="coerce") if infra_col in df.columns else pd.Series(np.nan, index=df.index)
-    ok = sem.notna() & inf.notna()
-    if not bool(ok.any()):
-        return pd.Series(False, index=df.index)
-    sem_med = float(sem[ok].median())
-    inf_med = float(inf[ok].median())
-    return ok & (sem >= sem_med) & (inf <= inf_med)
 
 
 def evidence_binary_column_specs(edge_df: pd.DataFrame) -> list[tuple[str, str]]:
@@ -707,6 +704,14 @@ def evidence_binary_column_specs(edge_df: pd.DataFrame) -> list[tuple[str, str]]
             continue
         if pd.api.types.is_bool_dtype(edge_df[c]):
             out.append((lab, c))
+    known = {c for _, c in out}
+    for c in edge_df.columns:
+        if not str(c).startswith("has_") or not str(c).endswith("_overlap"):
+            continue
+        if c in known or not pd.api.types.is_bool_dtype(edge_df[c]):
+            continue
+        base = str(c)[4:-8]
+        out.append((_channel_title(base) + " overlap", str(c)))
     return out
 
 
@@ -715,7 +720,7 @@ def build_edge_analysis_dataframe(
     edges_taxonomy_labeled: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    One row per Step-2 edge with GT-derived ``link_label``, ``is_hsli``, and boolean evidence flags.
+    One row per Step-2 edge with GT-derived ``link_label`` and boolean evidence flags.
 
     Body/subject semantic flags are populated only when matching columns exist on ``edges_df``
     (Step-2 exports are usually **aggregate** ``centroid_cosine`` only).
@@ -737,9 +742,8 @@ def build_edge_analysis_dataframe(
     out["link_label"] = tax.map(LINK_LABEL_FROM_TAXONOMY).fillna("ambiguous")
     out.loc[out["edge_taxonomy"].isna(), "link_label"] = "ambiguous"
 
-    out["is_hsli"] = compute_hsli_mask(out)
-
-    for count_col, flag in SHARED_COUNT_TO_HAS_FLAG:
+    overlap_specs = infer_shared_overlap_specs(out)
+    for _, count_col, flag in overlap_specs:
         if count_col in out.columns:
             v = pd.to_numeric(out[count_col], errors="coerce").fillna(0)
             out[flag] = v > 0
@@ -782,7 +786,7 @@ def build_edge_analysis_dataframe(
     else:
         out["semantic_channel_category"] = "unavailable"
 
-    count_cols = [flag for _, flag in SHARED_COUNT_TO_HAS_FLAG if flag in out.columns]
+    count_cols = [flag for _, _, flag in overlap_specs if flag in out.columns]
     count_cols += ["has_temporal_support"]
     if "has_local_support" in out.columns:
         count_cols.append("has_local_support")
@@ -803,48 +807,20 @@ def build_edge_analysis_dataframe(
 # Cross-edge inspection (shared artifact previews from shard node sets)
 # ---------------------------------------------------------------------------
 
-CROSS_EDGE_CHANNEL_INSPECTION_SPECS: tuple[dict[str, Any], ...] = (
-    {
-        "key": "url",
-        "title": "URL overlap",
-        "has_col": "has_url_overlap",
-        "nodes_col": "url_set",
-        "count_col": "shared_url_count",
-        "idf_col": "shared_url_idf_sum",
-    },
-    {
-        "key": "domain",
-        "title": "Domain overlap",
-        "has_col": "has_domain_overlap",
-        "nodes_col": "domain_set",
-        "count_col": "shared_domain_count",
-        "idf_col": "shared_domain_idf_sum",
-    },
-    {
-        "key": "stem",
-        "title": "Stem overlap",
-        "has_col": "has_stem_overlap",
-        "nodes_col": "stem_set",
-        "count_col": "shared_stem_count",
-        "idf_col": "shared_stem_idf_sum",
-    },
-    {
-        "key": "sender",
-        "title": "Sender overlap",
-        "has_col": "has_sender_overlap",
-        "nodes_col": "sender_set",
-        "count_col": "shared_sender_count",
-        "idf_col": "shared_sender_idf_sum",
-    },
-    {
-        "key": "sender_email_domain",
-        "title": "Sender-domain overlap",
-        "has_col": "has_sender_domain_overlap",
-        "nodes_col": "sender_email_domain_set",
-        "count_col": "shared_sender_email_domain_count",
-        "idf_col": "shared_sender_email_domain_idf_sum",
-    },
-)
+def infer_cross_edge_channel_specs(edge_df: pd.DataFrame) -> tuple[dict[str, Any], ...]:
+    specs: list[dict[str, Any]] = []
+    for base, count_col, has_col in infer_shared_overlap_specs(edge_df):
+        specs.append(
+            {
+                "key": base,
+                "title": f"{_channel_title(base)} overlap",
+                "has_col": has_col,
+                "nodes_col": f"{base}_set",
+                "count_col": count_col,
+                "idf_col": f"shared_{base}_idf_sum",
+            }
+        )
+    return tuple(specs)
 
 
 def parse_shard_set_cell(raw: Any) -> set[str]:
@@ -940,11 +916,12 @@ def format_member_ids_preview(member_ids: list[str], *, max_ids: int | None = No
 def cross_edge_channel_presence_summary(
     edge_cross: pd.DataFrame,
     *,
-    specs: tuple[dict[str, Any], ...] = CROSS_EDGE_CHANNEL_INSPECTION_SPECS,
+    specs: tuple[dict[str, Any], ...] | None = None,
 ) -> pd.DataFrame:
     """Per-channel counts among cross-labeled edges."""
     n = int(len(edge_cross))
     rows: list[dict[str, Any]] = []
+    specs = infer_cross_edge_channel_specs(edge_cross) if specs is None else specs
     for spec in specs:
         hc = spec["has_col"]
         if hc not in edge_cross.columns:
@@ -1058,8 +1035,8 @@ def sample_cross_edges_for_channel_inspection(
         pd.to_numeric(sub[idf_col], errors="coerce").fillna(0) if idf_col and idf_col in sub.columns else 0.0
     )
     sub = sub.sort_values(
-        by=["is_hsli", "_sort_sem", "_sort_cnt", "_sort_idf"],
-        ascending=[False, False, False, False],
+        by=["_sort_sem", "_sort_cnt", "_sort_idf"],
+        ascending=[False, False, False],
     ).head(int(top_n))
     sub = sub.drop(columns=["_sort_sem", "_sort_cnt", "_sort_idf"], errors="ignore")
 
@@ -1085,7 +1062,6 @@ def sample_cross_edges_for_channel_inspection(
         "dst_dominant_fraction",
         "src_size",
         "dst_size",
-        "is_hsli",
         "semantic_aggregate",
         "infra_aggregate",
     ]
@@ -1102,50 +1078,39 @@ def sample_cross_edges_for_channel_inspection(
 # Concrete overlap artifact diagnostics (shard-link × shared artifact)
 # ---------------------------------------------------------------------------
 
-ARTIFACT_OVERLAP_DIAG_SPECS: tuple[dict[str, Any], ...] = (
-    {
-        "key": "domain",
-        "display": "Domain",
-        "nodes_col": "domain_set",
-        "count_col": "shared_domain_count",
-        "idf_col": "shared_domain_idf_sum",
-    },
-    {
-        "key": "url",
-        "display": "URL",
-        "nodes_col": "url_set",
-        "count_col": "shared_url_count",
-        "idf_col": "shared_url_idf_sum",
-    },
-    {
-        "key": "stem",
-        "display": "Stem",
-        "nodes_col": "stem_set",
-        "count_col": "shared_stem_count",
-        "idf_col": "shared_stem_idf_sum",
-    },
-    {
-        "key": "sender",
-        "display": "Sender",
-        "nodes_col": "sender_set",
-        "count_col": "shared_sender_count",
-        "idf_col": "shared_sender_idf_sum",
-    },
-    {
-        "key": "sender_email_domain",
-        "display": "Sender-domain",
-        "nodes_col": "sender_email_domain_set",
-        "count_col": "shared_sender_email_domain_count",
-        "idf_col": "shared_sender_email_domain_idf_sum",
-    },
-)
+def infer_artifact_overlap_specs(edge_df: pd.DataFrame, nodes_df: pd.DataFrame) -> tuple[dict[str, Any], ...]:
+    specs: list[dict[str, Any]] = []
+    for base, count_col, _ in infer_shared_overlap_specs(edge_df):
+        nodes_col = f"{base}_set"
+        if nodes_col not in nodes_df.columns:
+            continue
+        specs.append(
+            {
+                "key": base,
+                "display": _channel_title(base),
+                "nodes_col": nodes_col,
+                "count_col": count_col,
+                "idf_col": f"shared_{base}_idf_sum",
+            }
+        )
+    return tuple(specs)
 
 
 def build_artifact_shard_frequency_maps(
     nodes_df: pd.DataFrame,
-    specs: tuple[dict[str, Any], ...] = ARTIFACT_OVERLAP_DIAG_SPECS,
+    specs: tuple[dict[str, Any], ...] | None = None,
 ) -> dict[str, dict[str, int]]:
     """For each artifact type: value -> #shard nodes whose set contains that value."""
+    if specs is None:
+        inferred = [
+            {
+                "key": str(c)[:-4],
+                "nodes_col": str(c),
+            }
+            for c in nodes_df.columns
+            if str(c).endswith("_set")
+        ]
+        specs = tuple(inferred)
     out: dict[str, dict[str, int]] = {}
     for spec in specs:
         ncol = spec["nodes_col"]
@@ -1164,8 +1129,9 @@ def expand_labeled_edges_to_artifact_incidence(
     edge_df: pd.DataFrame,
     nodes_df: pd.DataFrame,
     *,
-    specs: tuple[dict[str, Any], ...] = ARTIFACT_OVERLAP_DIAG_SPECS,
+    specs: tuple[dict[str, Any], ...] | None = None,
 ) -> pd.DataFrame:
+    specs = infer_artifact_overlap_specs(edge_df, nodes_df) if specs is None else specs
     """
     One row per (shard link, concrete shared artifact). Intersection is taken from
     ``nodes_df`` set columns (parsed via ``parse_shard_set_cell``).
@@ -1181,7 +1147,6 @@ def expand_labeled_edges_to_artifact_incidence(
             "shard_a",
             "shard_b",
             "link_label",
-            "is_hsli",
             "semantic_aggregate",
             "infra_aggregate",
             "edge_taxonomy",
@@ -1225,7 +1190,6 @@ def expand_labeled_edges_to_artifact_incidence(
                         "shard_a",
                         "shard_b",
                         "link_label",
-                        "is_hsli",
                         "semantic_aggregate",
                         "infra_aggregate",
                         "edge_taxonomy",
@@ -1259,7 +1223,6 @@ def summarize_artifact_link_induction(
                 "n_total_rows",
                 "n_distinct_shard_links",
                 "n_shards_in_links",
-                "n_hsli_cross",
                 "frac_cross_among_confident",
                 "frac_same_among_confident",
                 "mean_semantic",
@@ -1272,8 +1235,6 @@ def summarize_artifact_link_induction(
         n_cross = int((sub["link_label"] == "cross").sum())
         n_amb = int((sub["link_label"] == "ambiguous").sum())
         n_conf = n_same + n_cross
-        hsli = sub["is_hsli"].astype(bool) if "is_hsli" in sub.columns else pd.Series(False, index=sub.index)
-        n_hsli_cross = int(((sub["link_label"] == "cross") & hsli).sum())
         n_edge = int(sub[["shard_a", "shard_b"]].drop_duplicates().shape[0])
         sem = (
             pd.to_numeric(sub["semantic_aggregate"], errors="coerce")
@@ -1295,7 +1256,6 @@ def summarize_artifact_link_induction(
                 "n_total_rows": int(len(sub)),
                 "n_distinct_shard_links": n_edge,
                 "n_shards_in_links": len(shards_touched),
-                "n_hsli_cross": n_hsli_cross,
                 "frac_cross_among_confident": float(n_cross / n_conf) if n_conf else float("nan"),
                 "frac_same_among_confident": float(n_same / n_conf) if n_conf else float("nan"),
                 "mean_semantic": mean_sem,
@@ -1326,7 +1286,7 @@ def artifact_filtering_candidates(
     high_shard_freq: int | None = None,
 ) -> pd.DataFrame:
     """
-    Heuristic shortlist: broad shards + cross-heavy + HS-LI cross (diagnostic only).
+    Heuristic shortlist: broad shards + cross-heavy confident links (diagnostic only).
     """
     if summary_tbl.empty:
         return pd.DataFrame()
@@ -1341,9 +1301,8 @@ def artifact_filtering_candidates(
         return s
     sc = s["n_shards_containing"].fillna(0)
     fc = s["frac_cross_among_confident"].fillna(0)
-    hx = s["n_hsli_cross"].fillna(0) if "n_hsli_cross" in s.columns else pd.Series(0.0, index=s.index)
     thr = int(high_shard_freq)
-    s["_heuristic_score"] = (sc / max(1, thr)).clip(0, 3) + fc * 2.0 + hx * 0.05
+    s["_heuristic_score"] = (sc / max(1, thr)).clip(0, 3) + fc * 2.0
     s["high_shard_freq_heuristic"] = sc >= thr
     s = s.sort_values("_heuristic_score", ascending=False)
     return s.drop(columns=["_heuristic_score"]).head(25).reset_index(drop=True)
