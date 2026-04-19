@@ -1,0 +1,78 @@
+{
+  "run": {
+    "graph_run_id": "deafult_anchor_seeds",
+    "anchor_output_root": "analysis/output/anchor_graph"
+  },
+  "input": {
+    "min_edge_weight": null
+  },
+  "seeds": {
+    "generators": [
+      {
+        "name": "hard_v1",
+        "enabled": true,
+        "rules": [
+          {
+            "rule_id": "exact_attachment_hash",
+            "channel": "attachment",
+            "evidence_type": "exact_attachment_hash",
+            "max_artifact_df": 30
+          },
+          {
+            "rule_id": "exact_html_fingerprint",
+            "channel": "html_structure_fingerprint",
+            "evidence_type": "exact_html_fingerprint",
+            "max_artifact_df": 40
+          },
+          {
+            "rule_id": "exact_normalized_url",
+            "channel": "url",
+            "evidence_type": "exact_normalized_url",
+            "max_artifact_df": 20
+          },
+          {
+            "rule_id": "rare_exact_url_template",
+            "channel": "stem",
+            "evidence_type": "rare_exact_url_template",
+            "max_artifact_df": 8
+          }
+        ]
+      },
+      {
+        "name": "corroborated_v1",
+        "enabled": true,
+        "weak_channels": [
+          "sender",
+          "sender_email_domain",
+          "domain",
+          "stem",
+          "return_path_domain",
+          "received_host",
+          "origin_ip"
+        ],
+        "require_min_support_channels": 2,
+        "semantic_support": {
+          "enabled": true,
+          "min_semantic_score": 0.97,
+          "require_non_semantic_support": true,
+          "min_non_semantic_support_channels": 1
+        }
+      }
+    ]
+  },
+  "ground_truth": {
+    "paths": [
+      "data/groundtruth/ground_truth_merged.json",
+      "data/groundtruth/ground_truth_merged_dedup.json",
+      "data/groundtruth/ground_truth.json",
+      "data/groundtruth/ground_truth_dedup.json"
+    ]
+  },
+  "seed_components": {
+    "include_all_nodes": true
+  },
+  "output": {
+    "output_root": "analysis/output/anchor_seeds",
+    "stage_name": "seed_generation"
+  }
+}

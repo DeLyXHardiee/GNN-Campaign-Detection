@@ -605,11 +605,11 @@ if __name__ == "__main__":
     #misp_path = run_preprocessing_trec()
     # create_feature_sets()
     # run_featureset_clustering()
-    #misp_path = "data/misp/incidents-lake-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
+    misp_path = "data/misp/incidents-lake-misp-large.json"
+    run_graph_creation(misp_path, to_memgraph=False)
     #run_gnn()
     #run_gnn_evaluation()
-    run_gnn_clustering()
+    #run_gnn_clustering()
     #run_metric_comparison()
     
     # To run the entire pipeline, uncomment the line below:
