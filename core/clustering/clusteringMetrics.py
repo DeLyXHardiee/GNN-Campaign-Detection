@@ -199,16 +199,13 @@ def _aligned_true_predicted_labels(
     """
     Align predicted cluster labels with ground-truth labels (by external_id).
 
-    Skips:
-    - predicted noise points where predicted label == -1
-    - ids not present in ground_truth_labels
+    Includes all ids that have a ground-truth label, including points predicted as
+    noise (``-1``). Only ids missing from ``ground_truth_labels`` are skipped.
     """
     gt_get: Callable[[str], Any] = ground_truth_labels.get
     true_labels: list[Any] = []
     predicted_labels: list[int] = []
     for eid, lab in zip(sorted_ids, labels):
-        if lab == -1:
-            continue
         true = gt_get(eid)
         if true is None:
             continue
@@ -261,8 +258,9 @@ def compute_all_metrics(
 
     # Two different "coverage" definitions:
     # 1) Ground-truth coverage: among all ground-truth-labeled items, how many were predicted as non-noise.
-    #coverage_ground_truth = external["n_samples"] / max(1, len(ground_truth_labels))
-    coverage_ground_truth = len(true_labels) / max(1, len(ground_truth_labels))
+    # This remains non-noise coverage even though external metrics now include noise-labeled points.
+    n_gt_non_noise = sum(1 for lab in predicted_labels if lab != -1)
+    coverage_ground_truth = n_gt_non_noise / max(1, len(ground_truth_labels))
     # 2) All-items coverage: among all embeddings, how many were predicted as non-noise (regardless of ground-truth presence).
     coverage_all = n_non_noise / max(1, n_embeddings)
 
