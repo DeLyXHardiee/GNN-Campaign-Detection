@@ -46,7 +46,9 @@ def _load_records(fs_name: str):
     if not path.exists():
         return None, path
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f), path
+        #TODO
+        #REMEMBER TO REMOVE THE LIMITER [:8000] WHEN RUNNING THE FULL PIPELINE. THIS IS JUST TO SPEED UP TESTING.
+        return json.load(f)[:8000], path
 
 
 def _build_embedding_map(records, n_components: int) -> dict[str, np.ndarray]:
