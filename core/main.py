@@ -596,18 +596,15 @@ def run_pipeline():
     run_metric_comparison()
 
 if __name__ == "__main__":
-    print(
-        f"[clustering diag] __main__ in {__file__!r} — starting run_gnn_clustering",
-        flush=True,
-    )
+    
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #misp_path = run_preprocessing_trec()
     # create_feature_sets()
     # run_featureset_clustering()
-    misp_path = "data/misp/incidents-lake-misp-large.json"
-    run_graph_creation(misp_path, to_memgraph=False)
-    #run_gnn()
+    #misp_path = "data/misp/incidents-lake-misp-large.json"
+    #run_graph_creation(misp_path, to_memgraph=False)
+    run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()
     #run_metric_comparison()

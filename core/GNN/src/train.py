@@ -42,8 +42,7 @@ def batch_loss(model, predictor, batch, edge_type, pos_weight_fixed=None):
     return loss, acc
 
 
-def train_epoch(DEVICE, model, predictor, optimizer, loaders_train, pos_weight_fixed=1.0, 
-                contrastive_edges=None, contrastive_weight=0.2):
+def train_epoch(DEVICE, model, predictor, optimizer, loaders_train, pos_weight_fixed=1.0):
     model.train(); predictor.train()
     total_loss, total_acc, total_batches = 0.0, 0.0, 0
 
@@ -66,8 +65,7 @@ def train_epoch(DEVICE, model, predictor, optimizer, loaders_train, pos_weight_f
     return total_loss / max(total_batches, 1), total_acc / max(total_batches, 1)
 
 @torch.no_grad()
-def eval_epoch(DEVICE, model, predictor, loaders_eval, pos_weight_fixed=1.0, 
-               contrastive_edges=None, contrastive_weight=0.2):
+def eval_epoch(DEVICE, model, predictor, loaders_eval, pos_weight_fixed=1.0):
     model.eval(); predictor.eval()
     total_loss, total_acc, total_batches = 0.0, 0.0, 0
 
@@ -97,8 +95,6 @@ def run_training(DEVICE, TORCH_SEED, data,
                  lr_reduce_patience=5, lr_reduce_factor=0.5, lr_reduce_min=0.0,
                  supervised_edge_types=None,
                  model_save_name="best_model.pt",
-                 contrastive_edges=None,
-                 contrastive_weight=0.2,
                  run_dir=None,
                  runs_parent=None,
                  models_subdir="models",

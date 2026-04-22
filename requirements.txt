@@ -15,5 +15,6 @@ mail-parser
 lxml
 hdbscan
 tqdm
+matplotlib
 beautifulsoup4
 tldextract

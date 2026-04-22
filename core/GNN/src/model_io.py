@@ -99,170 +99,13 @@ def save_model_checkpoint(
     return save_path
 
 
-def save_vicreg_checkpoint(
-    *,
-    save_dir,
-    filename: str,
-    model,
-    projector,
-    optimizer,
-    epoch: int,
-    patience_counter: int,
-    encoder_config: dict,
-    data_metadata,
-    torch_seed: int,
-    email_train_idx,
-    email_val_idx,
-    email_test_idx,
-    vicreg_hparams: dict,
-    anchor_loader_params: dict,
-    optimizer_state_dict,
-    val_vicreg_total: float,
-    best_val_vicreg_total: float,
-) -> Path:
-    """
-    Save a VICReg-only checkpoint (no link-prediction tensors or predictor weights).
-    ``model_state_dict`` / ``projector_state_dict`` are the weights at this save (best file = best-so-far).
-    """
-    base_dir = Path(save_dir) if save_dir is not None else get_models_dir()
-    base_dir.mkdir(parents=True, exist_ok=True)
-    save_path = base_dir / filename
-    payload = {
-        "training_objective": "vicreg",
-        "epoch": epoch,
-        "val_vicreg_total": float(val_vicreg_total),
-        "best_val_vicreg_total": float(best_val_vicreg_total),
-        "patience_counter": int(patience_counter),
-        "model_state_dict": model.state_dict(),
-        "projector_state_dict": projector.state_dict(),
-        "optimizer_state_dict": optimizer_state_dict,
-        "encoder_config": encoder_config,
-        "data_metadata": data_metadata,
-        "torch_seed": torch_seed,
-        "email_train_idx": email_train_idx,
-        "email_val_idx": email_val_idx,
-        "email_test_idx": email_test_idx,
-        "vicreg_hparams": vicreg_hparams,
-        "anchor_loader_params": anchor_loader_params,
-    }
-    torch.save(payload, save_path)  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
-    return save_path
-
-
-def save_contrastive_checkpoint(
-    *,
-    save_dir,
-    filename: str,
-    model,
-    projector,
-    optimizer,
-    epoch: int,
-    patience_counter: int,
-    encoder_config: dict,
-    data_metadata,
-    torch_seed: int,
-    email_train_idx,
-    email_val_idx,
-    email_test_idx,
-    contrastive_hparams: dict,
-    anchor_loader_params: dict,
-    optimizer_state_dict,
-    val_contrastive_total: float,
-    best_val_contrastive_total: float,
-) -> Path:
-    """Save a contrastive-only checkpoint (encoder + projector, email anchor splits)."""
-    base_dir = Path(save_dir) if save_dir is not None else get_models_dir()
-    base_dir.mkdir(parents=True, exist_ok=True)
-    save_path = base_dir / filename
-    payload = {
-        "training_objective": "contrastive",
-        "epoch": epoch,
-        "val_contrastive_total": float(val_contrastive_total),
-        "best_val_contrastive_total": float(best_val_contrastive_total),
-        "patience_counter": int(patience_counter),
-        "model_state_dict": model.state_dict(),
-        "projector_state_dict": projector.state_dict(),
-        "optimizer_state_dict": optimizer_state_dict,
-        "encoder_config": encoder_config,
-        "data_metadata": data_metadata,
-        "torch_seed": torch_seed,
-        "email_train_idx": email_train_idx,
-        "email_val_idx": email_val_idx,
-        "email_test_idx": email_test_idx,
-        "contrastive_hparams": contrastive_hparams,
-        "anchor_loader_params": anchor_loader_params,
-    }
-    torch.save(payload, save_path)  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
-    return save_path
-
-
-def _build_vicreg_encoder_from_checkpoint(checkpoint, device, metadata_override=None):
-    """Rebuild HeteroSAGE from a VICReg checkpoint. Returns (model, None) for projector slot."""
-    enc_cfg = checkpoint.get("encoder_config") or checkpoint.get("config") or {}
-    hidden = enc_cfg.get("hidden", 128)
-    out_dim = enc_cfg.get("out_dim", 128)
-    layers = enc_cfg.get("layers", 2)
-    dropout = enc_cfg.get("dropout", 0.3)
-    metadata = metadata_override or checkpoint.get("data_metadata")
-    if metadata is None:
-        raise ValueError("VICReg checkpoint missing data_metadata; cannot rebuild encoder.")
-    model = HeteroSAGE(
-        metadata=metadata,
-        hidden=hidden,
-        out=out_dim,
-        layers=layers,
-        dropout=dropout,
-    ).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
-    predictor = DotPredictor().to(device)
-    return model, predictor
-
-
-def load_vicreg_encoder_checkpoint(device=None, metadata=None, filename="best_model.pt"):
-    """
-    Load only the hetero encoder from a VICReg checkpoint (for embedding extraction / clustering).
-
-    Returns ``(model, checkpoint)`` where ``model`` is ``HeteroSAGE``. The checkpoint dict
-    includes ``projector_state_dict`` if you need the training projector.
-    """
-    device = select_device(device)
-    load_path = _validated_checkpoint_path(filename)
-    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
-        load_path, map_location=device, weights_only=True
-    )
-    if checkpoint.get("training_objective") != "vicreg":
-        raise ValueError(
-            f"Expected training_objective='vicreg' in checkpoint, got {checkpoint.get('training_objective')!r}."
-        )
-    model, _pred = _build_vicreg_encoder_from_checkpoint(
-        checkpoint, device, metadata_override=metadata
-    )
-    return model, checkpoint
-
-
-def load_contrastive_encoder_checkpoint(device=None, metadata=None, filename="best_model.pt"):
-    """
-    Load the hetero encoder from a contrastive training checkpoint (embedding extraction / clustering).
-    """
-    device = select_device(device)
-    load_path = _validated_checkpoint_path(filename)
-    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
-        load_path, map_location=device, weights_only=True
-    )
-    if checkpoint.get("training_objective") != "contrastive":
-        raise ValueError(
-            f"Expected training_objective='contrastive' in checkpoint, got {checkpoint.get('training_objective')!r}."
-        )
-    model, _pred = _build_vicreg_encoder_from_checkpoint(
-        checkpoint, device, metadata_override=metadata
-    )
-    return model, checkpoint
-
-
 def _build_model_from_checkpoint(checkpoint, device, metadata_override=None):
     obj = checkpoint.get("training_objective")
     if obj in ("vicreg", "contrastive"):
-        return _build_vicreg_encoder_from_checkpoint(checkpoint, device, metadata_override)
+        raise ValueError(
+            f"Checkpoint has unsupported training_objective={obj!r} (removed from codebase). "
+            "Use a link-prediction checkpoint (training_objective='link_prediction' or omitted)."
+        )
 
     config = checkpoint.get("config", {})
     hidden = config.get("hidden", 256)
@@ -325,11 +168,10 @@ def load_full_run(data, device=None, filename="best_model.pt"):
     checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         load_path, map_location=device, weights_only=True
     )
-    if checkpoint.get("training_objective") in ("vicreg", "contrastive"):
+    obj = checkpoint.get("training_objective")
+    if obj in ("vicreg", "contrastive"):
         raise ValueError(
-            "Checkpoint is self-supervised (VICReg/contrastive); load_full_run (link loaders) does not apply. "
-            "Use load_vicreg_encoder_checkpoint() / load_contrastive_encoder_checkpoint(), "
-            "or NeighborLoader + email splits from the checkpoint."
+            "Checkpoint is from removed VICReg/contrastive training; load_full_run (link loaders) does not apply."
         )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 
@@ -384,10 +226,10 @@ def load_training_state(data, device=None, filename="best_model.pt"):
     checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         load_path, map_location=device, weights_only=True
     )
-    if checkpoint.get("training_objective") in ("vicreg", "contrastive"):
+    obj = checkpoint.get("training_objective")
+    if obj in ("vicreg", "contrastive"):
         raise ValueError(
-            "Checkpoint is self-supervised (VICReg/contrastive); load_training_state (LP loaders + resume) is not supported. "
-            "Use the appropriate encoder loader for inference, or add a dedicated resume path."
+            "Checkpoint is from removed VICReg/contrastive training; load_training_state is not supported."
         )
 
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
