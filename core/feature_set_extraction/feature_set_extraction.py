@@ -15,6 +15,7 @@ from preprocessing.RDAP_processor import ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
+from feature_set_extraction.fsols_extractor import extract_fsols_features
 from graph.common import parse_misp_events
 
 
@@ -110,6 +111,50 @@ FS6_OMIT_KEYS = frozenset([
 
 FS7_FEATURE_TYPES = ["subject", "body", "origin", "urls"]
 FS7_OMIT_KEYS = frozenset(["bow", "sender_email", "body"])
+
+# FSOLS: Top OLS features extracted directly from event HTML/CSS/URL attrs.
+FSOLS_FEATURE_TYPES = ["body", "urls"]
+FSOLS_OMIT_KEYS = frozenset([
+    # Text features (not included per OLS analysis)
+    "body_word_count",
+    "num_lines",
+    "avg_word_length",
+    "greeting",
+    "body",
+    "bow",
+    # LSA topics (not in top 20)
+    *LSA_TOPIC_KEYS,
+    # HTML features not in top 20
+    "has_html_tags",
+    "has_images",
+    "has_script",
+    "has_css_specs",
+    "image_text_ratio",
+    "num_images",
+    "num_urls_in_body",
+    "has_urls_in_body",
+    # CSS features not in top 20
+    "css_primary_color",
+    # Other URL/domain features not in top 20
+    "num_distinct_domains",
+    "num_blacklisted",
+    "num_ip_urls",
+    "num_short_urls",
+    "any_ev_cert",
+    "any_has_extra_http",
+    "any_multi_part_tld",
+    "any_www_host",
+    "any_has_at_symbol",
+    "any_has_non_ascii",
+    "any_typo_popular_domains",
+    "any_similar_phish_targets",
+    "any_popular_domain_in_subdomain",
+    "domain_categories",
+    "registrar_locations",
+    "subdomain_counts",
+    "hyphen_counts",
+    "domains_failed",
+])
 
 TEST_SET_FEATURE_TYPES = ["subject", "origin", "receiver", "urls"]
 TEST_SET_OMIT_KEYS = frozenset(["subject_term_frequency", "bow"])
@@ -990,6 +1035,10 @@ def get_FS7(misp_path, events):
     features_list = extract_features(misp_path, FS7_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS7_OMIT_KEYS)
 
+def get_FSOLS(misp_path, events):
+    """FSOLS uses direct event attributes for OLS-selected fields."""
+    return extract_fsols_features(events, FSOLS_FEATURE_TYPES, FSOLS_OMIT_KEYS)
+
 def get_test_set(misp_path, events):
     features_list = extract_features(misp_path, TEST_SET_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, TEST_SET_OMIT_KEYS)
@@ -1041,6 +1090,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         'FS5': get_FS5,
         'FS6': get_FS6,
         'FS7': get_FS7,
+        'FSOLS': get_FSOLS,
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
