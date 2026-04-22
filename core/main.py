@@ -649,8 +649,8 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #create_feature_sets()
-    #run_featureset_clustering()
-    
+    run_featureset_clustering()
+    '''
     misp_path = "preprocessing/output/incidents-lake-misp.json"
     run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()
@@ -661,4 +661,4 @@ if __name__ == "__main__":
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
-    
+    '''
