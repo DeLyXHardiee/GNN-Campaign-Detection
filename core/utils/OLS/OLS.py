@@ -407,7 +407,7 @@ def main(email_path, gt_path):
     )
 
     print("\nTop 20 most important features:\n")
-    for name, coef in ranked[:20]:
+    for name, coef in ranked:
         print(f"{name:40s} {coef:.4f}")
 
 
