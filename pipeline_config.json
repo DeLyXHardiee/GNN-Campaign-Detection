@@ -22,12 +22,7 @@
   },
   "datasets": {
     "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
-<<<<<<< HEAD
     "ground_truth_json": "data/groundtruth/ground_truth_merged.json",
-=======
-    "ground_truth_json": "data/groundtruth/ground_truth.json",
-    "ground_truth_format": "json",
->>>>>>> 82ee9126ba31a8ce4d3c3a8e68d6526f7c3a3f1a
     "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
