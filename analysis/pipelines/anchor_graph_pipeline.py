@@ -16,6 +16,7 @@ from analysis.utils.anchor_graph_helpers import build_anchor_graph
 from analysis.utils.anchor_seed_helpers import run_anchor_seed_generation
 from analysis.utils.anchor_candidate_generation_helpers import run_anchor_candidate_generation
 from analysis.utils.anchor_scored_clustering_helpers import run_anchor_scored_clustering_stage
+from analysis.utils.anchor_pu_scored_clustering_helpers import run_anchor_pu_scored_clustering_stage
 
 
 STAGE_BUILD_ANCHOR_GRAPH = "build_anchor_graph"
@@ -23,6 +24,7 @@ STAGE_ANCHOR_SEED_GENERATION = "anchor_seed_generation"
 STAGE_ANCHOR_COMMUNITY_SWEEP = "anchor_community_sweep"
 STAGE_ANCHOR_CANDIDATE_GENERATION = "anchor_candidate_generation"
 STAGE_ANCHOR_SCORED_CLUSTERING = "anchor_scored_clustering"
+STAGE_ANCHOR_PU_SCORED_CLUSTERING = "anchor_pu_scored_clustering"
 DEFAULT_BUILD_CONFIG_PATH = (
     PROJECT_ROOT / "analysis" / "configs" / "anchor_graph.default.json"
 )
@@ -38,6 +40,9 @@ DEFAULT_COMMUNITY_CONFIG_PATH = (
 DEFAULT_SCORED_CLUSTERING_CONFIG_PATH = (
     PROJECT_ROOT / "analysis" / "configs" / "anchor_scored_clustering.default.json"
 )
+DEFAULT_PU_SCORED_CLUSTERING_CONFIG_PATH = (
+    PROJECT_ROOT / "analysis" / "configs" / "anchor_pu_scored_clustering.default.json"
+)
 CONFIG_PRESETS: dict[str, Path] = {
     "default": DEFAULT_BUILD_CONFIG_PATH,
     "build_default": DEFAULT_BUILD_CONFIG_PATH,
@@ -45,6 +50,7 @@ CONFIG_PRESETS: dict[str, Path] = {
     "candidate_default": DEFAULT_CANDIDATE_CONFIG_PATH,
     "community_default": DEFAULT_COMMUNITY_CONFIG_PATH,
     "scored_clustering_default": DEFAULT_SCORED_CLUSTERING_CONFIG_PATH,
+    "pu_scored_clustering_default": DEFAULT_PU_SCORED_CLUSTERING_CONFIG_PATH,
 }
 
 
@@ -105,6 +111,28 @@ def run_stage_anchor_candidate_generation(
     if isinstance(stage_res, dict):
         print("Output dir:", stage_res.get("output_dir"))
         print("Summary:", stage_res.get("summary_json"))
+    return result
+
+
+def run_stage_anchor_pu_scored_clustering(
+    *,
+    config_path: Path | None = None,
+) -> dict[str, object]:
+    pu_path = (config_path or DEFAULT_PU_SCORED_CLUSTERING_CONFIG_PATH).expanduser().resolve()
+    cfg = _load_pipeline_config(pu_path)
+    cfg["_pipeline_config_path"] = str(pu_path)
+    result = run_anchor_graph_pipeline(
+        config_by_stage={STAGE_ANCHOR_PU_SCORED_CLUSTERING: cfg},
+        stages=[STAGE_ANCHOR_PU_SCORED_CLUSTERING],
+    )
+    stage_res = result.get(STAGE_ANCHOR_PU_SCORED_CLUSTERING)
+    if isinstance(stage_res, dict):
+        print("Bundle dir:", stage_res.get("output_dir"))
+        print("Artifact parent:", stage_res.get("artifact_parent_dir"))
+        print("Graph summary:", stage_res.get("pu_scored_graph_summary_json"))
+        print("Eval summary:", stage_res.get("pu_scored_graph_eval_summary_json"))
+        print("Community sweep:", stage_res.get("community_sweep_output_dir"))
+        print("PU threshold retention:", stage_res.get("pu_threshold_retention_summary_json"))
     return result
 
 
@@ -200,10 +228,17 @@ def run_anchor_graph_pipeline(
             res = run_anchor_scored_clustering_stage(cfg)
             out[STAGE_ANCHOR_SCORED_CLUSTERING] = res
             out["stages_run"].append(STAGE_ANCHOR_SCORED_CLUSTERING)
+        elif s == STAGE_ANCHOR_PU_SCORED_CLUSTERING:
+            cfg = stage_cfg.get(STAGE_ANCHOR_PU_SCORED_CLUSTERING)
+            if not isinstance(cfg, dict):
+                raise ValueError("Missing anchor-pu-scored-clustering config")
+            res = run_anchor_pu_scored_clustering_stage(cfg)
+            out[STAGE_ANCHOR_PU_SCORED_CLUSTERING] = res
+            out["stages_run"].append(STAGE_ANCHOR_PU_SCORED_CLUSTERING)
         else:
             raise ValueError(
                 f"Unsupported stage: {stage!r}. "
-                f"Supported stages: {STAGE_BUILD_ANCHOR_GRAPH}, {STAGE_ANCHOR_SEED_GENERATION}, {STAGE_ANCHOR_CANDIDATE_GENERATION}, {STAGE_ANCHOR_COMMUNITY_SWEEP}, {STAGE_ANCHOR_SCORED_CLUSTERING}"
+                f"Supported stages: {STAGE_BUILD_ANCHOR_GRAPH}, {STAGE_ANCHOR_SEED_GENERATION}, {STAGE_ANCHOR_CANDIDATE_GENERATION}, {STAGE_ANCHOR_COMMUNITY_SWEEP}, {STAGE_ANCHOR_SCORED_CLUSTERING}, {STAGE_ANCHOR_PU_SCORED_CLUSTERING}"
             )
     return out
 
@@ -244,7 +279,13 @@ def main_cli() -> None:
         "--stages",
         type=str,
         default=STAGE_BUILD_ANCHOR_GRAPH,
-        help="Comma-separated stages: build_anchor_graph,anchor_seed_generation,anchor_candidate_generation,anchor_community_sweep,anchor_scored_clustering",
+        help="Comma-separated stages: build_anchor_graph,anchor_seed_generation,anchor_candidate_generation,anchor_community_sweep,anchor_scored_clustering,anchor_pu_scored_clustering",
+    )
+    p.add_argument(
+        "--pu-scored-clustering-config",
+        type=Path,
+        default=DEFAULT_PU_SCORED_CLUSTERING_CONFIG_PATH,
+        help="Path to PU-scored clustering + community bridge config JSON.",
     )
     p.add_argument(
         "--scored-clustering-config",
@@ -268,6 +309,7 @@ def main_cli() -> None:
     community_cfg_path = args.community_config
     candidate_cfg_path = getattr(args, "candidate_config", None)
     scored_clustering_cfg_path = args.scored_clustering_config
+    pu_scored_clustering_cfg_path = args.pu_scored_clustering_config
     cfg_path = args.config
     if str(args.preset or "").strip():
         key = str(args.preset).strip().lower()
@@ -286,6 +328,8 @@ def main_cli() -> None:
             community_cfg_path = cfg_path
         elif key == "scored_clustering_default":
             scored_clustering_cfg_path = cfg_path
+        elif key == "pu_scored_clustering_default":
+            pu_scored_clustering_cfg_path = cfg_path
 
     stages = [x.strip() for x in str(args.stages).split(",") if x.strip()]
     configs: dict[str, dict] = {}
@@ -304,6 +348,11 @@ def main_cli() -> None:
         sc_cfg = _load_pipeline_config(sc_cfg_path)
         sc_cfg["_pipeline_config_path"] = str(sc_cfg_path)
         configs[STAGE_ANCHOR_SCORED_CLUSTERING] = sc_cfg
+    if STAGE_ANCHOR_PU_SCORED_CLUSTERING in stages:
+        pu_cfg_path = (pu_scored_clustering_cfg_path or DEFAULT_PU_SCORED_CLUSTERING_CONFIG_PATH).expanduser().resolve()
+        pu_cfg = _load_pipeline_config(pu_cfg_path)
+        pu_cfg["_pipeline_config_path"] = str(pu_cfg_path)
+        configs[STAGE_ANCHOR_PU_SCORED_CLUSTERING] = pu_cfg
     # Preserve old behavior when users only pass --config and run build stage.
     if stages == [STAGE_BUILD_ANCHOR_GRAPH] and build_cfg_path == DEFAULT_BUILD_CONFIG_PATH:
         configs[STAGE_BUILD_ANCHOR_GRAPH] = _load_pipeline_config(cfg_path)
@@ -327,6 +376,17 @@ def main_cli() -> None:
         print("Scored edges:", sc.get("scored_clustering_edges_csv"))
         print("Graph summary:", sc.get("scored_clustering_graph_summary_json"))
         print("Community sweep:", sc.get("community_sweep_output_dir"))
+    elif isinstance(result.get(STAGE_ANCHOR_PU_SCORED_CLUSTERING), dict):
+        pu = result[STAGE_ANCHOR_PU_SCORED_CLUSTERING]
+        print("Config:", pu.get("pipeline_config_path"))
+        print("Bundle dir:", pu.get("output_dir"))
+        print("Artifact parent:", pu.get("artifact_parent_dir"))
+        print("PU scored all CSV:", pu.get("pu_scored_candidate_edges_all_csv"))
+        print("Clustering edges:", pu.get("pu_scored_clustering_edges_csv"))
+        print("Graph summary:", pu.get("pu_scored_graph_summary_json"))
+        print("Eval summary:", pu.get("pu_scored_graph_eval_summary_json"))
+        print("Community sweep:", pu.get("community_sweep_output_dir"))
+        print("PU threshold retention:", pu.get("pu_threshold_retention_summary_json"))
     else:
         print("Stages run:", result.get("stages_run"))
 

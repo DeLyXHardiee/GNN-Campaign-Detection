@@ -98,6 +98,7 @@ def _build_weighted_email_graph(
     edges_df: pd.DataFrame,
     weight_col: str,
     min_edge_weight: float,
+    use_edge_weights_in_partitioning: bool = True,
 ) -> nx.Graph:
     g = nx.Graph()
     g.add_nodes_from(node_ids)
@@ -108,7 +109,7 @@ def _build_weighted_email_graph(
         a, b = str(r["email_a"]), str(r["email_b"])
         if a not in g or b not in g or a == b:
             continue
-        w = float(r[weight_col])
+        w = float(r[weight_col]) if use_edge_weights_in_partitioning else 1.0
         if g.has_edge(a, b):
             # deterministic and conservative: keep max weight if duplicates appear.
             g[a][b]["weight"] = max(float(g[a][b]["weight"]), w)
@@ -125,6 +126,7 @@ def _run_leiden_partition(
     min_edge_weight: float,
     resolution: float,
     seed: int,
+    use_edge_weights_in_partitioning: bool = True,
 ) -> tuple[dict[str, int], dict[str, Any]]:
     import igraph as ig
     import leidenalg as la
@@ -144,7 +146,7 @@ def _run_leiden_partition(
         if i == j:
             continue
         u, v = (i, j) if i < j else (j, i)
-        w = float(r[weight_col])
+        w = float(r[weight_col]) if use_edge_weights_in_partitioning else 1.0
         pair_w[(u, v)] = max(pair_w.get((u, v), 0.0), w)
 
     edges_list = list(pair_w.keys())
@@ -182,6 +184,7 @@ def run_weighted_email_community_detection(
     min_edge_weight: float,
     weight_col: str = "edge_weight",
     seed: int = 0,
+    use_edge_weights_in_partitioning: bool = True,
 ) -> tuple[dict[str, int], dict[str, Any]]:
     m = str(method).strip().lower()
     wcol = str(weight_col)
@@ -193,6 +196,7 @@ def run_weighted_email_community_detection(
             min_edge_weight=min_edge_weight,
             resolution=resolution,
             seed=seed,
+            use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
         )
 
     g = _build_weighted_email_graph(
@@ -200,6 +204,7 @@ def run_weighted_email_community_detection(
         edges_df=edges_df,
         weight_col=wcol,
         min_edge_weight=min_edge_weight,
+        use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
     )
     if m != "louvain":
         raise ValueError(f"Unsupported method: {method!r} (expected: louvain, leiden)")
@@ -284,6 +289,7 @@ def _run_sweep_communities_once(
     resolutions: list[float],
     weight_col: str,
     seed: int,
+    use_edge_weights_in_partitioning: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Run community detection once per (method, threshold, resolution).
@@ -305,12 +311,14 @@ def _run_sweep_communities_once(
             min_edge_weight=float(w),
             weight_col=weight_col,
             seed=seed,
+            use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
         )
         pred_map = _pred_map_from_assignment(node_ids, email_to_comm)
         out.append(
             {
                 "method": str(info["method_used"]),
                 "weight_col": weight_col,
+                "use_edge_weights_in_partitioning": bool(use_edge_weights_in_partitioning),
                 "resolution": float(r),
                 "min_edge_weight": float(w),
                 "n_edges_after_threshold": float(info["n_edges_after_threshold"]),
@@ -335,6 +343,9 @@ def _metrics_for_gt(
             {
                 "method": part["method"],
                 "weight_col": part["weight_col"],
+                "use_edge_weights_in_partitioning": bool(
+                    part.get("use_edge_weights_in_partitioning", True)
+                ),
                 "resolution": part["resolution"],
                 "min_edge_weight": part["min_edge_weight"],
                 "n_edges_after_threshold": part["n_edges_after_threshold"],
@@ -461,6 +472,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     weight_col = str(sweep_cfg.get("weight_col") or "edge_weight")
     seed = int(sweep_cfg.get("seed", 0))
     sort_by = _normalize_sort_metric(sweep_cfg.get("sort_by"))
+    use_edge_weights_in_partitioning = bool(sweep_cfg.get("use_edge_weights_in_partitioning", True))
 
     gt_paths_raw = gt_cfg.get("paths") or []
     if not isinstance(gt_paths_raw, list) or not gt_paths_raw:
@@ -482,16 +494,24 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     stage_name = str(out_cfg.get("stage_name") or "community_sweep")
     created_at_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    community_parent = str(run_cfg.get("community_output_parent_dir") or "").strip()
-    if community_parent:
-        parent = Path(community_parent).expanduser()
-        if not parent.is_absolute():
-            parent = (project_root / parent).resolve()
+    bundle_out_raw = str(run_cfg.get("community_bundle_out_dir") or "").strip()
+    if bundle_out_raw:
+        out_dir = Path(bundle_out_raw).expanduser()
+        if not out_dir.is_absolute():
+            out_dir = (project_root / out_dir).resolve()
         else:
-            parent = parent.resolve()
-        out_dir = parent / f"{stage_name}_{stamp}"
+            out_dir = out_dir.resolve()
     else:
-        out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
+        community_parent = str(run_cfg.get("community_output_parent_dir") or "").strip()
+        if community_parent:
+            parent = Path(community_parent).expanduser()
+            if not parent.is_absolute():
+                parent = (project_root / parent).resolve()
+            else:
+                parent = parent.resolve()
+            out_dir = parent / f"{stage_name}_{stamp}"
+        else:
+            out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sweep_partitions = _run_sweep_communities_once(
@@ -502,6 +522,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         resolutions=resolutions,
         weight_col=weight_col,
         seed=seed,
+        use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
     )
     n_graph_nodes = len(node_ids)
 
@@ -552,6 +573,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         "graph_run_id": graph_run_id,
         "anchor_run_dir": str(run_dir),
         "custom_edges_csv": custom_edges_resolved,
+        "use_edge_weights_in_partitioning": use_edge_weights_in_partitioning,
         "n_graph_nodes": n_graph_nodes,
         "anchor_summary_json": str((run_dir / "anchor_graph_summary.json").resolve()),
         "anchor_run_config_json": str((run_dir / "anchor_graph_run_config.json").resolve()),

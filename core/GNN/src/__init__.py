@@ -14,10 +14,6 @@ def __getattr__(name):
         "load_full_run",
         "load_training_state",
         "save_model_checkpoint",
-        "save_vicreg_checkpoint",
-        "save_contrastive_checkpoint",
-        "load_vicreg_encoder_checkpoint",
-        "load_contrastive_encoder_checkpoint",
     ):
         from . import model_io
         return getattr(model_io, name)
@@ -45,10 +41,6 @@ try:
         load_full_run,
         load_training_state,
         save_model_checkpoint,
-        save_vicreg_checkpoint,
-        save_contrastive_checkpoint,
-        load_vicreg_encoder_checkpoint,
-        load_contrastive_encoder_checkpoint,
     )
 except Exception as _e:  # pragma: no cover
     _model_io_import_error = _e
@@ -63,18 +55,6 @@ except Exception as _e:  # pragma: no cover
         raise ImportError("model_io could not be imported.") from _model_io_import_error
 
     def save_model_checkpoint(*_args, **_kwargs):
-        raise ImportError("model_io could not be imported.") from _model_io_import_error
-
-    def save_vicreg_checkpoint(*_args, **_kwargs):
-        raise ImportError("model_io could not be imported.") from _model_io_import_error
-
-    def load_vicreg_encoder_checkpoint(*_args, **_kwargs):
-        raise ImportError("model_io could not be imported.") from _model_io_import_error
-
-    def save_contrastive_checkpoint(*_args, **_kwargs):
-        raise ImportError("model_io could not be imported.") from _model_io_import_error
-
-    def load_contrastive_encoder_checkpoint(*_args, **_kwargs):
         raise ImportError("model_io could not be imported.") from _model_io_import_error
 
 try:
@@ -114,10 +94,6 @@ __all__ = [
     "load_full_run",
     "load_training_state",
     "save_model_checkpoint",
-    "save_vicreg_checkpoint",
-    "save_contrastive_checkpoint",
-    "load_vicreg_encoder_checkpoint",
-    "load_contrastive_encoder_checkpoint",
     "export_embeddings",
     "get_primary_embeddings",
     "embed_with_graph",

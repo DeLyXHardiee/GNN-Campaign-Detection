@@ -159,7 +159,7 @@
   "evaluation": {
     "enabled": true,
     "ground_truth": {
-      "paths": []
+      "paths": ["C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth_merged_2.json"]
     },
     "manual_review": {
       "random_seed": 1337,
