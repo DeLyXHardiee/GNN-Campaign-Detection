@@ -450,6 +450,8 @@ def run_graph_creation(
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
+        graph_mode=settings.mode,
+        email_only=settings.email_only,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -649,8 +651,8 @@ if __name__ == "__main__":
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
     #create_feature_sets()
-    run_featureset_clustering()
-    '''
+    #run_featureset_clustering()
+    
     misp_path = "preprocessing/output/incidents-lake-misp.json"
     run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()
@@ -661,4 +663,4 @@ if __name__ == "__main__":
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
-    '''
+    

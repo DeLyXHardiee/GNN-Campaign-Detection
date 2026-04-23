@@ -33,10 +33,15 @@ from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProjectionSettings
+from config.pipeline_config import (
+    DegreeNodeFilterSettings,
+    EmailFeatureProjectionSettings,
+    EmailOnlyGraphSettings,
+)
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
+from .email_only_projection import project_ir_to_email_only
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
 from .feature_projection import (
@@ -173,6 +178,34 @@ def _set_node_features_from_ir(
         set_simple(node_key, list(node_map.extra_attr_keys))
 
 
+def _set_email_x_from_ir(
+    data: Any,
+    ir: Any,
+    schema: GraphSchema,
+    *,
+    email_projection: EmailFeatureProjectionSettings,
+) -> None:
+    """Set only the email node feature matrix (email-only HeteroData)."""
+    _ensure_heterodata()
+    torch_lib = _ensure_torch()
+    N = schema.nodes
+    if "email" not in ir.nodes or not ir.nodes["email"].x:
+        if "email" in data.node_stores:
+            data[N["email"].pyg].num_nodes = 0
+        return
+    email_x = ir.nodes["email"].x
+    raw = torch_lib.tensor(email_x, dtype=torch_lib.float)
+    total_dim = raw.size(1)
+    subj_dim, body_dim = _infer_email_embedding_dims(total_dim)
+    torch_lib.manual_seed(email_projection.seed)
+    proj = EmailFeatureProjectionModule(
+        subj_dim=subj_dim,
+        body_dim=body_dim,
+        bert_out_dim=email_projection.bert_out_dim,
+        other_out_dim=email_projection.other_out_dim,
+    )
+    data[N["email"].pyg].x = proj(raw)
+
 
 def _set_edges_from_ir(data: Any, ir: Any, schema: GraphSchema) -> None:
     torch_lib = _ensure_torch()
@@ -221,6 +254,88 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
     return meta
 
 
+def _build_misp_graph_ir(
+    misp_events: List[dict],
+    *,
+    schema: GraphSchema,
+    exclude_nodes: Optional[Sequence[NodeType | str]] = None,
+    degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
+    embeddings_output_dir: Optional[str] = None,
+) -> Any:
+    """MISP list → GraphIR (shared by hetero and email-only build paths)."""
+    ir = assemble_misp_graph_ir(
+        misp_events,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+    )
+    if exclude_nodes:
+        ir = filter_graph_ir(
+            ir,
+            exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema),
+            schema=schema,
+        )
+    if degree_node_filter and degree_node_filter.enabled and degree_node_filter.strength > 0:
+        target_types = (
+            NodeType.canonical_set(degree_node_filter.target_node_types, schema=schema)
+            if degree_node_filter.target_node_types is not None
+            else None
+        )
+        ir = filter_graph_ir_by_degree(
+            ir,
+            schema=schema,
+            strength=degree_node_filter.strength,
+            target_node_types=target_types,
+            min_degree=degree_node_filter.min_degree,
+        )
+    return ir
+
+
+def build_email_only_graph_from_misp(
+    misp_events: List[dict],
+    *,
+    schema: Optional[GraphSchema] = None,
+    exclude_nodes: Optional[Sequence[NodeType | str]] = None,
+    degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
+    embeddings_output_dir: Optional[str] = None,
+    email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    email_only: Optional[EmailOnlyGraphSettings] = None,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    HeteroData with a single node type (email) and one (email, ``aggregated_edge_name``,
+    email) edge type whose ``edge_attr`` weights aggregate shared-infrastructure signal
+    (see :mod:`core.graph.email_only_projection`).
+    """
+    schema = schema or DEFAULT_SCHEMA
+    ir = _build_misp_graph_ir(
+        misp_events,
+        schema=schema,
+        exclude_nodes=exclude_nodes,
+        degree_node_filter=degree_node_filter,
+        embeddings_output_dir=embeddings_output_dir,
+    )
+    eos = email_only or EmailOnlyGraphSettings()
+    en = set(eos.enabled_relations) if eos.enabled_relations is not None else None
+    rw = {k: float(v) for k, v in eos.relation_weights.items()} if eos.relation_weights else None
+    rren = {k: v for k, v in eos.relation_renames.items()} if eos.relation_renames else None
+
+    data, metadata = project_ir_to_email_only(
+        ir,
+        schema,
+        enabled_ir_edges=en,
+        relation_renames=rren,
+        relation_weights=rw,
+        min_emails_per_infra=eos.min_emails_per_infra,
+        aggregated_edge_name=eos.aggregated_edge_name,
+        pair_weight_aggregation=eos.pair_weight_aggregation,
+    )
+    proj = email_feature_projection or EmailFeatureProjectionSettings()
+    _set_email_x_from_ir(data, ir, schema, email_projection=proj)
+    if "email" in data.node_types and "x" in data["email"] and data["email"].x is not None:
+        metadata["feature_shapes"] = {schema.nodes["email"].pyg: list(data["email"].x.shape)}
+    data = normalize_graph(data)
+    return data, metadata
+
+
 def build_hetero_graph_from_misp(
     misp_events: List[dict],
     *,
@@ -255,27 +370,13 @@ def build_hetero_graph_from_misp(
     Returns (graph, metadata) where metadata contains mappings for node indices.
     """
     schema = schema or DEFAULT_SCHEMA
-    N = schema.nodes
-    ir = assemble_misp_graph_ir(
+    ir = _build_misp_graph_ir(
         misp_events,
         schema=schema,
+        exclude_nodes=exclude_nodes,
+        degree_node_filter=degree_node_filter,
         embeddings_output_dir=embeddings_output_dir,
     )
-    if exclude_nodes:
-        ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
-    if degree_node_filter and degree_node_filter.enabled and degree_node_filter.strength > 0:
-        target_types = (
-            NodeType.canonical_set(degree_node_filter.target_node_types, schema=schema)
-            if degree_node_filter.target_node_types is not None
-            else None
-        )
-        ir = filter_graph_ir_by_degree(
-            ir,
-            schema=schema,
-            strength=degree_node_filter.strength,
-            target_node_types=target_types,
-            min_degree=degree_node_filter.min_degree,
-        )
 
     HData = _ensure_heterodata()
     data = HData()
@@ -323,8 +424,13 @@ def build_graph(
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    graph_mode: str = "hetero",
+    email_only: Optional[EmailOnlyGraphSettings] = None,
 ) -> Tuple[Any, str, str]:
-   
+    """
+    ``graph_mode`` ``hetero`` (default) builds the full component graph; ``email_only`` builds
+    a single node-type email graph with (email, *, email) relations from shared infrastructure.
+    """
     if misp_events is None and misp_json_path is None:
         raise ValueError("Provide either misp_events (in-memory) or misp_json_path (file path).")
 
@@ -336,21 +442,35 @@ def build_graph(
     if max_misp_events is not None and max_misp_events > 0:
         misp_events = misp_events[:max_misp_events]
 
-    graph, metadata = build_hetero_graph_from_misp(
-        misp_events,
-        schema=schema,
-        exclude_nodes=exclude_nodes,
-        degree_node_filter=degree_node_filter,
-        embeddings_output_dir=embeddings_output_dir,
-        email_feature_projection=email_feature_projection,
-    )
+    mode = (graph_mode or "hetero").strip().lower()
+    if mode not in ("hetero", "email_only"):
+        raise ValueError("graph_mode must be 'hetero' or 'email_only'.")
+    if mode == "email_only":
+        graph, metadata = build_email_only_graph_from_misp(
+            misp_events,
+            schema=schema,
+            exclude_nodes=exclude_nodes,
+            degree_node_filter=degree_node_filter,
+            embeddings_output_dir=embeddings_output_dir,
+            email_feature_projection=email_feature_projection,
+            email_only=email_only,
+        )
+    else:
+        graph, metadata = build_hetero_graph_from_misp(
+            misp_events,
+            schema=schema,
+            exclude_nodes=exclude_nodes,
+            degree_node_filter=degree_node_filter,
+            embeddings_output_dir=embeddings_output_dir,
+            email_feature_projection=email_feature_projection,
+        )
 
     if out_name is None:
         if misp_json_path:
             base = os.path.splitext(os.path.basename(misp_json_path))[0]
-            out_name = f"{base}_hetero.pt"
+            out_name = f"{base}_email_only.pt" if mode == "email_only" else f"{base}_hetero.pt"
         else:
-            out_name = "hetero_graph.pt"
+            out_name = "email_only_graph.pt" if mode == "email_only" else "hetero_graph.pt"
 
     graph_path, meta_path = save_graph(graph, metadata, out_dir=out_dir, out_name=out_name)
     return graph, graph_path, meta_path
@@ -362,6 +482,7 @@ def load_graph(graph_path: str) -> Any:
 
 
 __all__ = [
+    "build_email_only_graph_from_misp",
     "build_hetero_graph_from_misp",
     "build_graph",
     "save_graph",

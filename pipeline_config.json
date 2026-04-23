@@ -26,6 +26,10 @@
     "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
+    "mode": "email_only",
+    "email_only": {
+      "weights": {}
+    },
     "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
@@ -53,15 +57,11 @@
   },
   "featureset-clustering": {
     "feature_sets": [
-      "FS1",
       "FS2",
-      "FS3",
       "FS4",
-      "FS5",
-      "FS6",
-      "FS7"
+      "FS5"
     ],
-    "max_tfidf_features": 5000,
+    "max_tfidf_features": 100000,
     "n_components_values": [
       100000
     ],
@@ -70,17 +70,17 @@
       "contamination": 0.05
     },
     "dbscan": {
-      "eps_values": [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+      "eps_values": [0.6, 0.7, 0.8, 0.9, 1.0, 1.1],
       "min_samples": 2
     },
     "meanshift": {
-      "quantile_values": [0.8, 0.9, 0.1],
+      "quantile_values": [],
       "n_samples": 30000
     },
     "hdbscan": {
-      "enabled": true,
+      "enabled": false,
       "min_cluster_size_values": [ 
-        2
+        2, 5, 10
       ],
       "min_samples": null,
       "metric": "cosine"
@@ -88,7 +88,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "feature_set_ground_truth_merged_calc_all_ground_truth",
+  "run_id": "homogeneous_graph",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -151,7 +151,7 @@
       },
       "bert_embeddings": {
         "enabled": true,
-        "embeddings_json_path": "core/utils/embeddings/output/embeddings.json",
+        "embeddings_json_path": "core/utils/embeddings/output/embeddings_large.json",
         "optimization": {
           "l2_normalize": true,
           "max_components": 256,
@@ -165,11 +165,11 @@
     "config": {
       "dbscan": {
         "enabled": true,
-        "epsilon_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "epsilon_values": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         "min_samples": 5
       },
       "meanshift": {
-        "enabled": true,
+        "enabled": false,
         "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         "n_samples": 500
       },

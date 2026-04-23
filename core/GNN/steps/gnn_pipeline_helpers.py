@@ -5,7 +5,7 @@ from typing import Any
 
 from config.pipeline_config import (
     GnnPathLayout,
-    default_hetero_graph_pt_path,
+    default_graph_pt_path,
     gnn_path_layout_from_pipeline,
     resolve_project_path,
 )
@@ -99,7 +99,7 @@ def resolve_gnn_paths(
 
     # graph_path
     if graph_path is None or str(graph_path).strip() == "":
-        graph_path_str = default_hetero_graph_pt_path()
+        graph_path_str = default_graph_pt_path()
     else:
         graph_path_str = str(Path(graph_path).resolve())
 

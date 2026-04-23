@@ -23,9 +23,9 @@ def _default_hetero_pt_from_pipeline_config() -> str:
     repo_root = core_dir.parent
     if str(core_dir) not in sys.path:
         sys.path.insert(0, str(core_dir))
-    from config.pipeline_config import default_hetero_graph_pt_path
+    from config.pipeline_config import default_graph_pt_path
 
-    return default_hetero_graph_pt_path(project_root=repo_root)
+    return default_graph_pt_path(project_root=repo_root)
 
 
 def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_hetero.pt", to_undirected=True):

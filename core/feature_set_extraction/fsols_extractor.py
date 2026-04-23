@@ -37,7 +37,7 @@ def _load_embeddings() -> tuple[dict[str, list[float]], int]:
         / "utils"
         / "embeddings"
         / "output"
-        / "embeddings.json"
+        / "embeddings_large.json"
     )
 
     if not embeddings_path.exists():

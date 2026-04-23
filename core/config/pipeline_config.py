@@ -9,9 +9,9 @@ import os
 import re
 from functools import lru_cache
 from types import MappingProxyType
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 _RUN_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 
@@ -165,6 +165,41 @@ class EmailFeatureProjectionSettings:
     other_out_dim: int | None = None
 
 
+def _empty_str_float_map() -> Mapping[str, float]:
+    return MappingProxyType({})
+
+
+def _empty_str_str_map() -> Mapping[str, str]:
+    return MappingProxyType({})
+
+
+@dataclass(frozen=True)
+class EmailOnlyGraphSettings:
+    """
+    Build an email-only graph (see graph.email_only in pipeline_config).
+
+    - ``enabled_relations`` null: all IR relations present in the built GraphIR are used.
+    - ``relation_weights`` maps IR edge keys (e.g. has_url) to non-negative weights
+      (default 1.0 when absent); each co-occurrence of two emails on shared infrastructure
+      contributes that weight; see ``pair_weight_aggregation``.
+    - ``pair_weight_aggregation`` how to combine multiple contributions for the same email
+      pair: ``sum`` (default), ``max``, or ``mean``.
+    - ``aggregated_edge_name`` name of the single (email, *, email) edge type in PyG
+      (default ``aggregated``).
+    - ``relation_renames`` reserved / legacy; per-IR output names are not used when a
+      single aggregated edge is built.
+    - ``min_emails_per_infra`` minimum distinct emails on an infrastructure node before
+      adding pairwise email–email edges (default 2).
+    """
+
+    enabled_relations: Optional[frozenset[str]] = None
+    relation_weights: Mapping[str, float] = field(default_factory=_empty_str_float_map)
+    relation_renames: Mapping[str, str] = field(default_factory=_empty_str_str_map)
+    min_emails_per_infra: int = 2
+    pair_weight_aggregation: str = "sum"
+    aggregated_edge_name: str = "aggregated"
+
+
 @dataclass(frozen=True)
 class DegreeNodeFilterSettings:
     """
@@ -192,6 +227,9 @@ class GraphBuildSettings:
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
     degree_node_filter: DegreeNodeFilterSettings | None = None
+    # "hetero" = full multi-type graph; "email_only" = single aggregated email–email type
+    mode: str = "hetero"
+    email_only: Optional[EmailOnlyGraphSettings] = None
 
 
 def graph_build_settings_from_pipeline(
@@ -327,6 +365,71 @@ def graph_build_settings_from_pipeline(
             if v > 0:
                 max_misp_events = v
 
+    raw_mode = graph_cfg.get("mode", "hetero")
+    if raw_mode is None or str(raw_mode).strip() == "":
+        mode: str = "hetero"
+    else:
+        mode = str(raw_mode).strip().lower()
+    if mode not in ("hetero", "email_only"):
+        raise ValueError("pipeline_config graph.mode must be 'hetero' or 'email_only'.")
+
+    email_only_raw = graph_cfg.get("email_only")
+    email_only_res: Optional[EmailOnlyGraphSettings] = None
+    if email_only_raw is not None:
+        if not isinstance(email_only_raw, dict):
+            raise TypeError("graph.email_only must be an object or null.")
+        en = email_only_raw.get("enabled_relations")
+        if en is not None and not isinstance(en, list):
+            raise TypeError("graph.email_only.enabled_relations must be a list of strings or null.")
+        en_fr = frozenset(str(x) for x in en) if en else None
+        w_raw = email_only_raw.get("weights") or {}
+        if not isinstance(w_raw, dict):
+            raise TypeError("graph.email_only.weights must be an object.")
+        rw: dict[str, float] = {}
+        for k, v in w_raw.items():
+            try:
+                fv = float(v)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"graph.email_only.weights key {k!r} must be a non-negative number."
+                ) from e
+            if fv < 0.0:
+                raise ValueError(f"graph.email_only.weights key {k!r} must be >= 0.")
+            rw[str(k)] = fv
+        rnr = email_only_raw.get("relation_renames") or {}
+        if not isinstance(rnr, dict):
+            raise TypeError("graph.email_only.relation_renames must be an object.")
+        rr: dict[str, str] = {str(k): str(v) for k, v in rnr.items() if v}
+        min_e_raw = email_only_raw.get("min_emails_per_infra", 2)
+        if isinstance(min_e_raw, bool):
+            raise ValueError("graph.email_only.min_emails_per_infra must be an integer >= 2.")
+        try:
+            min_e = int(min_e_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                "graph.email_only.min_emails_per_infra must be an integer >= 2."
+            ) from e
+        if min_e < 2:
+            raise ValueError("graph.email_only.min_emails_per_infra must be >= 2.")
+        pwa = str(email_only_raw.get("pair_weight_aggregation", "sum")).strip().lower()
+        if pwa not in ("sum", "max", "mean"):
+            raise ValueError(
+                "graph.email_only.pair_weight_aggregation must be 'sum', 'max', or 'mean'."
+            )
+        aen = str(email_only_raw.get("aggregated_edge_name", "aggregated")).strip()
+        if not aen:
+            raise ValueError("graph.email_only.aggregated_edge_name must be a non-empty string.")
+        email_only_res = EmailOnlyGraphSettings(
+            enabled_relations=en_fr,
+            relation_weights=MappingProxyType(rw),
+            relation_renames=MappingProxyType(rr),
+            min_emails_per_infra=min_e,
+            pair_weight_aggregation=pwa,
+            aggregated_edge_name=aen,
+        )
+    if mode == "email_only" and email_only_res is None:
+        email_only_res = EmailOnlyGraphSettings()
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
@@ -336,15 +439,30 @@ def graph_build_settings_from_pipeline(
         max_misp_events=max_misp_events,
         email_feature_projection=email_feature_projection,
         degree_node_filter=degree_node_filter,
+        mode=mode,
+        email_only=email_only_res,
     )
+
+
+def default_graph_pt_path(*, project_root: Path | None = None) -> str:
+    """
+    Path to the .pt file produced by ``build_graph`` for the current pipeline config
+    (``_hetero.pt`` or ``_email_only.pt`` under graph.output_dir).
+    """
+    cfg = load_pipeline_config(project_root=project_root)
+    s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
+    base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
+    if s.mode == "email_only":
+        return os.path.join(s.output_dir, f"{base}_email_only.pt")
+    return os.path.join(s.output_dir, f"{base}_hetero.pt")
 
 
 def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     """
-    Path to the hetero .pt file produced by build_graph for the current pipeline config
-    (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
+    Path to the hetero .pt file (always ``{base}_hetero.pt``) under graph.output_dir.
+    For mode-aware resolution use :func:`default_graph_pt_path`.
     """
-    cfg = get_pipeline_config(project_root=project_root)
+    cfg = load_pipeline_config(project_root=project_root)
     s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
     base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
     return os.path.join(s.output_dir, f"{base}_hetero.pt")
