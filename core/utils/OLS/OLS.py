@@ -39,6 +39,39 @@ def _normalize_external_id(value):
     return str(value).strip()
 
 
+def _sanitize_feature_key(key):
+    return re.sub(r"[^0-9a-zA-Z_]+", "_", str(key)).strip("_") or "field"
+
+
+def _flatten_numeric_dict(data, prefix="", out=None):
+    """Flatten nested dictionaries into numeric/bool features.
+
+    Only numeric and boolean leaf values are included.
+    """
+    if out is None:
+        out = {}
+
+    if not isinstance(data, dict):
+        return out
+
+    for raw_key, value in data.items():
+        key = _sanitize_feature_key(raw_key)
+        feature_key = f"{prefix}_{key}" if prefix else key
+
+        if isinstance(value, dict):
+            _flatten_numeric_dict(value, prefix=feature_key, out=out)
+            continue
+
+        if isinstance(value, bool):
+            out[feature_key] = int(value)
+            continue
+
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            out[feature_key] = float(value)
+
+    return out
+
+
 def _iter_misp_events(payload):
     if isinstance(payload, list):
         for item in payload:
@@ -79,6 +112,19 @@ def load_emails(path):
 
     with open(misp_path, "r", encoding="utf-8-sig") as f:
         payload = json.load(f)
+
+    # Support direct record datasets:
+    # [ {"external_id": "...", ...}, ... ]
+    if isinstance(payload, list):
+        direct_records = [x for x in payload if isinstance(x, dict) and x.get("external_id")]
+        if direct_records:
+            emails = {}
+            for record in direct_records:
+                external_id = _normalize_external_id(record.get("external_id"))
+                if not external_id or external_id in emails:
+                    continue
+                emails[external_id] = record
+            return emails
 
     emails = {}
     for event in _iter_misp_events(payload):
@@ -177,7 +223,7 @@ def safe_bool(x):
 
 
 def extract_numeric_features(email):
-    features = {}
+    features = _flatten_numeric_dict(email)
 
     html = email.get("html", {})
     css = email.get("css", {})
@@ -273,6 +319,32 @@ def build_pairs(emails, clusters, max_pairs=float("inf")):
     return pairs, np.array(labels)
 
 
+def build_campaign_pairs(campaign_email_ids, all_email_ids, negative_multiplier=3, seed=42):
+    """Build one-vs-rest pair set for a single campaign.
+
+    Positive pairs: both emails in campaign.
+    Negative pairs: one email in campaign, one outside campaign.
+    """
+    campaign_set = set(campaign_email_ids)
+    outside_ids = [eid for eid in all_email_ids if eid not in campaign_set]
+
+    positives = list(itertools.combinations(campaign_email_ids, 2))
+    negatives = [(e1, e2) for e1 in campaign_email_ids for e2 in outside_ids]
+
+    if not positives or not negatives:
+        return [], np.array([])
+
+    max_negatives = min(len(negatives), len(positives) * max(1, int(negative_multiplier)))
+    if len(negatives) > max_negatives:
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(negatives), size=max_negatives, replace=False)
+        negatives = [negatives[i] for i in idx]
+
+    pairs = positives + negatives
+    labels = np.array([1] * len(positives) + [0] * len(negatives), dtype=np.int32)
+    return pairs, labels
+
+
 # -------------------------
 # Pairwise feature builder
 # -------------------------
@@ -355,7 +427,12 @@ def main(email_path, gt_path):
     clusters = load_ground_truth(gt_path)
     print(f"Ground truth clusters: {len(clusters)}")
 
-    all_misp_emails = load_emails(email_path)
+    hardcoded_email_path = resolve_project_path(
+        "core/feature_set_extraction/output/featuresets/incidents-lake-misp-FS1.json"
+    )
+    print(f"Using hardcoded feature set input: {hardcoded_email_path}")
+
+    all_misp_emails = load_emails(hardcoded_email_path)
     print(f"Loaded all emails from MISP: {len(all_misp_emails)}")
 
     if str(gt_path).lower().endswith(".csv"):
@@ -369,46 +446,83 @@ def main(email_path, gt_path):
     if not emails:
         raise ValueError("No emails available after joining ground truth with MISP data")
 
-    print("Building pairs...")
-    pairs, y = build_pairs(emails, clusters)
-
-    if len(pairs) == 0:
-        raise ValueError("No training pairs could be built from the joined campaign/email data")
-
-    print(f"Pairs: {len(pairs)}")
-
-    embeddings_path = Path(__file__).resolve().parents[1] / "embeddings" / "output" / "embeddings.json"
+    embeddings_path = Path(__file__).resolve().parents[1] / "embeddings" / "output" / "embeddings_large.json"
     print(f"Loading text embeddings: {embeddings_path}")
     embedding_by_id = load_text_embeddings(embeddings_path)
 
-    print("Extracting features...")
-    X_num, _, num_feature_names = build_pair_features(pairs, emails)
-    X_text, text_feature_names = compute_embedding_similarity(pairs, embedding_by_id)
+    print("Computing per-campaign signal impact...")
+    campaign_impacts = {}
+    all_email_ids = list(emails.keys())
 
-    # Combine
-    X = np.hstack([X_num, X_text])
-    feature_names = num_feature_names + text_feature_names
+    for campaign_id, campaign_ids in clusters.items():
+        campaign_ids = [eid for eid in campaign_ids if eid in emails]
+        unique_campaign_ids = sorted(set(campaign_ids))
 
-    # Scale
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
+        if len(unique_campaign_ids) < 2:
+            continue
 
-    print("Training model...")
-    model = LogisticRegression(max_iter=1000)
-    model.fit(X, y)
+        pairs, y = build_campaign_pairs(unique_campaign_ids, all_email_ids)
+        if len(pairs) == 0 or len(np.unique(y)) < 2:
+            continue
 
-    coefs = model.coef_[0]
+        X_num, _, num_feature_names = build_pair_features(pairs, emails)
+        X_text, text_feature_names = compute_embedding_similarity(pairs, embedding_by_id)
 
-    # Rank features
-    ranked = sorted(
-        zip(feature_names, coefs),
-        key=lambda x: abs(x[1]),
-        reverse=True
+        X = np.hstack([X_num, X_text])
+        feature_names = num_feature_names + text_feature_names
+
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
+        model = LogisticRegression(max_iter=1000)
+        model.fit(X, y)
+
+        coefs = model.coef_[0]
+        ranked = sorted(
+            zip(feature_names, coefs),
+            key=lambda x: abs(x[1]),
+            reverse=True,
+        )
+
+        # Store absolute coefficient as impact score (higher = more influential).
+        campaign_key = f"campaign{campaign_id}"
+        campaign_impacts[campaign_key] = {
+            name: float(abs(coef))
+            for name, coef in ranked
+        }
+
+    if not campaign_impacts:
+        raise ValueError("No campaign-specific models could be trained (insufficient data per campaign)")
+
+    output_path = Path.cwd() / "campaign_signal_impacts.json"
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(campaign_impacts, f, indent=2)
+
+    print(f"Wrote campaign signal impact JSON: {output_path}")
+
+    # Aggregate average impact per attribute across campaigns.
+    attribute_totals = defaultdict(float)
+    attribute_counts = defaultdict(int)
+    for impact_map in campaign_impacts.values():
+        for attr, score in impact_map.items():
+            attribute_totals[attr] += float(score)
+            attribute_counts[attr] += 1
+
+    attribute_averages = {
+        attr: attribute_totals[attr] / attribute_counts[attr]
+        for attr in attribute_totals
+        if attribute_counts[attr] > 0
+    }
+
+    sorted_attribute_averages = dict(
+        sorted(attribute_averages.items(), key=lambda x: x[1], reverse=True)
     )
 
-    print("\nTop 20 most important features:\n")
-    for name, coef in ranked:
-        print(f"{name:40s} {coef:.4f}")
+    avg_output_path = Path.cwd() / "attribute_average_impacts.json"
+    with avg_output_path.open("w", encoding="utf-8") as f:
+        json.dump(sorted_attribute_averages, f, indent=2)
+
+    print(f"Wrote attribute average impact JSON: {avg_output_path}")
 
 
 # -------------------------
