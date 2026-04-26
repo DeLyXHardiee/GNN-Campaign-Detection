@@ -1,9 +1,5 @@
 {
-  "run": {
-    "graph_run_id": "deafult_anchor_seeds",
-    "anchor_output_root": "analysis/output/anchor_graph",
-    "seed_output_root": "analysis/output/anchor_seeds"
-  },
+  "run": {},
   "candidates": {
     "generators": [
       {
@@ -190,7 +186,6 @@
     }
   },
   "output": {
-    "output_root": "analysis/output/anchor_candidates",
     "stage_name": "candidate_generation"
   }
 }

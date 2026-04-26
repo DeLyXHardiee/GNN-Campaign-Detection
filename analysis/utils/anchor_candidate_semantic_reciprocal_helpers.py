@@ -12,6 +12,7 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts, load_embedding_vectors
 
 try:
@@ -170,14 +171,12 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
     seed_cfg = config.get("seed") or {}
 
     project_root = gh.find_project_root()
-    graph_run_id = str(run_cfg.get("graph_run_id") or "").strip()
-    if not graph_run_id:
-        raise ValueError("run.graph_run_id is required")
+    graph_id = resolve_graph_id(run_cfg)
 
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root") or (project_root / "analysis" / "output" / "anchor_graph")
     ).expanduser().resolve()
-    anchor_run_dir = anchor_output_root / graph_run_id
+    anchor_run_dir = anchor_output_root / graph_id
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
@@ -264,7 +263,7 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
     out_root = Path(output_cfg.get("output_root") or (project_root / "analysis" / "output" / "anchor_candidates")).expanduser().resolve()
     stage_name = str(output_cfg.get("stage_name") or "candidate_generation")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
+    out_dir = out_root / graph_id / f"{stage_name}_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     p_candidates = out_dir / "candidates_semantic.csv"
@@ -272,7 +271,7 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
 
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "graph_run_id": graph_run_id,
+        "graph_id": graph_id,
         "anchor_run_dir": str(anchor_run_dir),
         "generator": "semantic_reciprocal_v1",
         "semantic_top_k": semantic_top_k,

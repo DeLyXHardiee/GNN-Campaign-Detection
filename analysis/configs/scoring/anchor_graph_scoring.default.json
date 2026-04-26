@@ -1,0 +1,9 @@
+{
+  "run": {},
+  "scoring": {
+    "score_mode": "anchor_handcrafted_v1",
+    "semantic_weight": 0.45,
+    "infra_weight": 0.45,
+    "temporal_weight": 0.1
+  }
+}

@@ -12,7 +12,10 @@ import pandas as pd
 from sklearn.metrics import completeness_score, homogeneity_score, v_measure_score
 
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils import raw_gnn_notebook as rn
+from analysis.utils.graph_scorer_registry import SCORER_REGISTRY
+from analysis.utils.anchor_candidate_rare_artifact_helpers import _resolve_latest_seed_dir
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 
 try:
@@ -67,17 +70,17 @@ def _sort_tiebreakers(primary: str) -> list[str]:
 
 def _load_anchor_run(
     *,
-    graph_run_id: str,
+    graph_id: str,
     anchor_output_root: Path,
 ) -> tuple[Path, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    run_dir = (anchor_output_root / graph_run_id).expanduser().resolve()
+    run_dir = (anchor_output_root / graph_id).expanduser().resolve()
     if not run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {run_dir}")
     nodes_df, edges_df, _cand, summary, _g = load_anchor_graph_artifacts(
         run_dir, load_graph_pickle=False
     )
     req_node_cols = {"external_id"}
-    req_edge_cols = {"email_a", "email_b", "edge_weight"}
+    req_edge_cols = {"email_i", "email_j"}
     miss_n = sorted(c for c in req_node_cols if c not in nodes_df.columns)
     miss_e = sorted(c for c in req_edge_cols if c not in edges_df.columns)
     if miss_n:
@@ -87,8 +90,8 @@ def _load_anchor_run(
     nodes_df = nodes_df.copy()
     edges_df = edges_df.copy()
     nodes_df["external_id"] = nodes_df["external_id"].astype(str)
-    edges_df["email_a"] = edges_df["email_a"].astype(str)
-    edges_df["email_b"] = edges_df["email_b"].astype(str)
+    edges_df["email_i"] = edges_df["email_i"].astype(str)
+    edges_df["email_j"] = edges_df["email_j"].astype(str)
     return run_dir, nodes_df, edges_df, summary
 
 
@@ -99,12 +102,18 @@ def _build_weighted_email_graph(
     weight_col: str,
     min_edge_weight: float,
     use_edge_weights_in_partitioning: bool = True,
+    apply_threshold_filter: bool = True,
 ) -> nx.Graph:
     g = nx.Graph()
     g.add_nodes_from(node_ids)
-    if edges_df.empty or weight_col not in edges_df.columns:
+    if edges_df.empty:
         return g
-    use = edges_df[pd.to_numeric(edges_df[weight_col], errors="coerce") >= float(min_edge_weight)].copy()
+    if apply_threshold_filter:
+        if weight_col not in edges_df.columns:
+            return g
+        use = edges_df[pd.to_numeric(edges_df[weight_col], errors="coerce") >= float(min_edge_weight)].copy()
+    else:
+        use = edges_df.copy()
     for _, r in use.iterrows():
         a, b = str(r["email_a"]), str(r["email_b"])
         if a not in g or b not in g or a == b:
@@ -127,15 +136,22 @@ def _run_leiden_partition(
     resolution: float,
     seed: int,
     use_edge_weights_in_partitioning: bool = True,
+    apply_threshold_filter: bool = True,
 ) -> tuple[dict[str, int], dict[str, Any]]:
     import igraph as ig
     import leidenalg as la
 
     id_to_idx = {eid: i for i, eid in enumerate(node_ids)}
-    if edges_df.empty or weight_col not in edges_df.columns:
+    if edges_df.empty:
         use = edges_df.iloc[0:0]
     else:
-        use = edges_df[pd.to_numeric(edges_df[weight_col], errors="coerce") >= float(min_edge_weight)]
+        if apply_threshold_filter:
+            if weight_col not in edges_df.columns:
+                use = edges_df.iloc[0:0]
+            else:
+                use = edges_df[pd.to_numeric(edges_df[weight_col], errors="coerce") >= float(min_edge_weight)]
+        else:
+            use = edges_df
 
     pair_w: dict[tuple[int, int], float] = {}
     for _, r in use.iterrows():
@@ -185,6 +201,7 @@ def run_weighted_email_community_detection(
     weight_col: str = "edge_weight",
     seed: int = 0,
     use_edge_weights_in_partitioning: bool = True,
+    apply_threshold_filter: bool = True,
 ) -> tuple[dict[str, int], dict[str, Any]]:
     m = str(method).strip().lower()
     wcol = str(weight_col)
@@ -197,6 +214,7 @@ def run_weighted_email_community_detection(
             resolution=resolution,
             seed=seed,
             use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+            apply_threshold_filter=apply_threshold_filter,
         )
 
     g = _build_weighted_email_graph(
@@ -205,6 +223,7 @@ def run_weighted_email_community_detection(
         weight_col=wcol,
         min_edge_weight=min_edge_weight,
         use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+        apply_threshold_filter=apply_threshold_filter,
     )
     if m != "louvain":
         raise ValueError(f"Unsupported method: {method!r} (expected: louvain, leiden)")
@@ -290,6 +309,7 @@ def _run_sweep_communities_once(
     weight_col: str,
     seed: int,
     use_edge_weights_in_partitioning: bool = True,
+    apply_threshold_filter: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Run community detection once per (method, threshold, resolution).
@@ -312,6 +332,7 @@ def _run_sweep_communities_once(
             weight_col=weight_col,
             seed=seed,
             use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+            apply_threshold_filter=apply_threshold_filter,
         )
         pred_map = _pred_map_from_assignment(node_ids, email_to_comm)
         out.append(
@@ -424,13 +445,16 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     out_cfg = config.get("output") or {}
 
     project_root = gh.find_project_root()
-    graph_run_id = str(run_cfg.get("graph_run_id") or "").strip()
-    if not graph_run_id:
-        raise ValueError("run.graph_run_id is required")
+    graph_id = resolve_graph_id(run_cfg)
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root")
         or (project_root / "analysis" / "output" / "anchor_graph")
     ).expanduser().resolve()
+
+    score_mode_raw = str(sweep_cfg.get("score_mode") or "").strip().lower()
+    use_scoring = bool(score_mode_raw)
+    use_pre_scored_edges = score_mode_raw in {"pre_scored", "weighted_pre_scored"}
+    score_params = dict(sweep_cfg.get("score_params") or {})
 
     custom_edges_csv_raw = str(run_cfg.get("custom_edges_csv") or "").strip()
     custom_edges_resolved: str | None = None
@@ -443,27 +467,109 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         if not p_edges.is_file():
             raise FileNotFoundError(f"run.custom_edges_csv not found: {p_edges}")
         edges_df = pd.read_csv(p_edges, low_memory=False)
-        req = {"email_a", "email_b", "edge_weight"}
+        req = {"email_i", "email_j"}
         miss = sorted(c for c in req if c not in edges_df.columns)
         if miss:
             raise ValueError(f"custom_edges_csv missing columns {miss}; required {sorted(req)}")
-        run_dir = (anchor_output_root / graph_run_id).expanduser().resolve()
+        run_dir = (anchor_output_root / graph_id).expanduser().resolve()
         if not run_dir.is_dir():
             raise FileNotFoundError(f"Anchor graph run directory not found: {run_dir}")
-        nodes_df, _edges_anchor, _cand, anchor_summary, _g = load_anchor_graph_artifacts(
-            run_dir, load_graph_pickle=False
+        p_nodes = run_dir / "anchor_graph_nodes.csv"
+        if not p_nodes.is_file():
+            raise FileNotFoundError(f"Missing anchor nodes CSV: {p_nodes}")
+        nodes_df = pd.read_csv(p_nodes, low_memory=False)
+        p_summary = run_dir / "anchor_graph_summary.json"
+        anchor_summary = (
+            json.loads(p_summary.read_text(encoding="utf-8")) if p_summary.is_file() else {}
         )
         nodes_df = nodes_df.copy()
         nodes_df["external_id"] = nodes_df["external_id"].astype(str)
         edges_df = edges_df.copy()
-        edges_df["email_a"] = edges_df["email_a"].astype(str)
-        edges_df["email_b"] = edges_df["email_b"].astype(str)
+        edges_df["email_i"] = edges_df["email_i"].astype(str)
+        edges_df["email_j"] = edges_df["email_j"].astype(str)
         custom_edges_resolved = str(p_edges)
     else:
         run_dir, nodes_df, edges_df, anchor_summary = _load_anchor_run(
-            graph_run_id=graph_run_id,
+            graph_id=graph_id,
             anchor_output_root=anchor_output_root,
         )
+        # Anchor-run loaded edges are unscored by default after refactor.
+        if "email_i" not in edges_df.columns or "email_j" not in edges_df.columns:
+            if "email_a" in edges_df.columns and "email_b" in edges_df.columns:
+                edges_df["email_i"] = edges_df["email_a"].astype(str)
+                edges_df["email_j"] = edges_df["email_b"].astype(str)
+            else:
+                raise ValueError("Anchor edge table must contain email_i/email_j.")
+
+    if use_scoring:
+        if not use_pre_scored_edges and score_mode_raw not in SCORER_REGISTRY:
+            raise ValueError(
+                f"Unknown sweep.score_mode {score_mode_raw!r}. Available: {sorted(SCORER_REGISTRY)}"
+            )
+        if use_pre_scored_edges:
+            if "edge_weight" not in edges_df.columns:
+                raise ValueError(
+                    "sweep.score_mode='pre_scored' requires custom edges with edge_weight."
+                )
+            scored_df = edges_df.copy()
+        elif score_mode_raw == "seed_candidate_handcrafted_v1":
+            seed_edges_csv_raw = str(run_cfg.get("seed_edges_csv") or "").strip()
+            if seed_edges_csv_raw:
+                p_seed = Path(seed_edges_csv_raw).expanduser()
+                if not p_seed.is_absolute():
+                    p_seed = (project_root / p_seed).resolve()
+                else:
+                    p_seed = p_seed.resolve()
+            else:
+                seed_stage_dir_override = str(run_cfg.get("seed_stage_dir") or "").strip()
+                if seed_stage_dir_override:
+                    seed_dir = Path(seed_stage_dir_override).expanduser()
+                    if not seed_dir.is_absolute():
+                        seed_dir = (project_root / seed_dir).resolve()
+                    else:
+                        seed_dir = seed_dir.resolve()
+                else:
+                    seed_output_root = Path(
+                        run_cfg.get("seed_output_root") or (project_root / "analysis" / "output" / "anchor_seeds")
+                    ).expanduser().resolve()
+                    seed_prefix = str(run_cfg.get("seed_stage_name_prefix") or "seed_generation_")
+                    seed_dir = _resolve_latest_seed_dir(
+                        seed_output_root=seed_output_root,
+                        graph_run_id=graph_id,
+                        seed_stage_name_prefix=seed_prefix,
+                    )
+                p_seed = seed_dir / "seed_edges_all.csv"
+            if not p_seed.is_file():
+                raise FileNotFoundError(f"seed edges CSV not found for handcrafted scoring: {p_seed}")
+            seed_edges_df = pd.read_csv(p_seed, low_memory=False)
+            scored_df = SCORER_REGISTRY[score_mode_raw](
+                candidate_union_df=edges_df,
+                seed_edges_df=seed_edges_df,
+                scoring_cfg=score_params,
+            )
+        elif score_mode_raw == "seed_candidate_pu_v1":
+            scored_all_df, _scored_thr_df = SCORER_REGISTRY[score_mode_raw](
+                candidate_union_df=edges_df,
+                scoring_cfg=score_params,
+                score_mode="seed_candidate_pu_v1",
+            )
+            scored_df = scored_all_df
+        else:
+            raise ValueError(f"Unsupported score_mode for community sweep: {score_mode_raw}")
+        edges_df = scored_df.copy()
+        edges_df["email_i"] = edges_df["email_i"].astype(str)
+        edges_df["email_j"] = edges_df["email_j"].astype(str)
+        edges_df["email_a"] = edges_df["email_i"]
+        edges_df["email_b"] = edges_df["email_j"]
+    else:
+        # Unweighted Option A: topology-only community detection.
+        edges_df = edges_df.copy()
+        edges_df["email_i"] = edges_df["email_i"].astype(str)
+        edges_df["email_j"] = edges_df["email_j"].astype(str)
+        edges_df["email_a"] = edges_df["email_i"]
+        edges_df["email_b"] = edges_df["email_j"]
+        if "edge_weight" in edges_df.columns:
+            edges_df = edges_df.drop(columns=["edge_weight"])
     node_ids = [str(x) for x in nodes_df["external_id"].astype(str).tolist()]
 
     methods = [str(x).strip().lower() for x in (sweep_cfg.get("methods") or ["louvain", "leiden"]) if str(x).strip()]
@@ -472,7 +578,10 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     weight_col = str(sweep_cfg.get("weight_col") or "edge_weight")
     seed = int(sweep_cfg.get("seed", 0))
     sort_by = _normalize_sort_metric(sweep_cfg.get("sort_by"))
-    use_edge_weights_in_partitioning = bool(sweep_cfg.get("use_edge_weights_in_partitioning", True))
+    use_edge_weights_in_partitioning = bool(sweep_cfg.get("use_edge_weights_in_partitioning", True)) if use_scoring else False
+    apply_threshold_filter = bool(use_scoring)
+    if not use_scoring and weight_thresholds != [0.0]:
+        weight_thresholds = [0.0]
 
     gt_paths_raw = gt_cfg.get("paths") or []
     if not isinstance(gt_paths_raw, list) or not gt_paths_raw:
@@ -511,7 +620,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                 parent = parent.resolve()
             out_dir = parent / f"{stage_name}_{stamp}"
         else:
-            out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
+            out_dir = out_root / graph_id / f"{stage_name}_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sweep_partitions = _run_sweep_communities_once(
@@ -523,6 +632,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         weight_col=weight_col,
         seed=seed,
         use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+        apply_threshold_filter=apply_threshold_filter,
     )
     n_graph_nodes = len(node_ids)
 
@@ -542,7 +652,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         graph_ids = {str(x) for x in node_ids}
         n_intersection = len(gt_ids & graph_ids)
         best_payload = {
-            "graph_run_id": graph_run_id,
+            "graph_id": graph_id,
             "anchor_run_dir": str(run_dir),
             "gt_path": str(gt_path),
             "gt_slug": gt_slug,
@@ -570,16 +680,21 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
 
     summary = {
         "created_at_utc": created_at_utc,
-        "graph_run_id": graph_run_id,
+        "graph_id": graph_id,
         "anchor_run_dir": str(run_dir),
         "custom_edges_csv": custom_edges_resolved,
+        "score_mode": (score_mode_raw or None),
         "use_edge_weights_in_partitioning": use_edge_weights_in_partitioning,
+        "apply_threshold_filter": apply_threshold_filter,
         "n_graph_nodes": n_graph_nodes,
         "anchor_summary_json": str((run_dir / "anchor_graph_summary.json").resolve()),
         "anchor_run_config_json": str((run_dir / "anchor_graph_run_config.json").resolve()),
         "anchor_summary": anchor_summary,
         "methods": methods,
         "weight_thresholds": weight_thresholds,
+        "weight_threshold_behavior": (
+            "active_threshold_filtering" if apply_threshold_filter else "disabled_in_unweighted_mode_option_a"
+        ),
         "resolutions": resolutions,
         "weight_col": weight_col,
         "seed": seed,

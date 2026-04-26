@@ -42,10 +42,12 @@ def main() -> None:
         "If omitted, tries resolve_graph_analysis_paths() from repo root.",
     )
     p.add_argument(
+        "--graph-id",
         "--graph-run-id",
         type=str,
+        dest="graph_id",
         default=None,
-        help="Optional graph run id recorded in pair_training_dataset_summary.json metadata.",
+        help="Optional graph id recorded in pair_training_dataset_summary.json metadata.",
     )
     p.add_argument(
         "--project-root",
@@ -74,7 +76,7 @@ def main() -> None:
         candidate_union_csv=args.candidate_union,
         output_dir=args.out_dir,
         graph_meta_json=args.graph_meta_json,
-        graph_run_id=args.graph_run_id,
+        graph_id=args.graph_id,
         write_parquet=not args.no_parquet,
         write_rejects_csv=not args.no_rejects,
         project_root=args.project_root.expanduser().resolve() if args.project_root else None,
