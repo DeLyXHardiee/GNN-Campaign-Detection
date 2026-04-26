@@ -60,7 +60,7 @@ def _build_seed_candidate_pairgraph(
                 "email_i": pd.Series(dtype=str),
                 "email_j": pd.Series(dtype=str),
                 "graph_kind": pd.Series(dtype=str),
-                "graph_run_id": pd.Series(dtype=str),
+                "graph_id": pd.Series(dtype=str),
                 "from_seed": pd.Series(dtype=bool),
                 "from_semantic": pd.Series(dtype=bool),
                 "from_rare_artifact": pd.Series(dtype=bool),
@@ -72,7 +72,7 @@ def _build_seed_candidate_pairgraph(
     else:
         pair_df = union.copy()
         pair_df["graph_kind"] = GRAPH_KIND_SEED_CANDIDATE
-        pair_df["graph_run_id"] = graph_id
+        pair_df["graph_id"] = graph_id
         pair_df["from_seed"] = pair_df.get("from_seed", False)
         pair_df["from_semantic"] = pair_df.get("from_semantic", False)
         pair_df["from_rare_artifact"] = pair_df.get("from_rare_artifact", False)

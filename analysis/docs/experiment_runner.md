@@ -1,8 +1,10 @@
 # Experiment Runner (Two-Phase)
 
-Use one canonical entrypoint:
+Use the **only** supported entrypoint for the full flow (anchor → seed → candidate → seed–candidate pairgraph, then scoring + community per target):
 
 `python analysis/pipelines/run_experiment.py --config analysis/configs/experiments/<name>.json`
+
+For a full build and evaluation in one go, set `experiment.mode` to `setup_and_score` (see e.g. [`analysis/configs/experiments/seed_candidate.pu.default.json`](../configs/experiments/seed_candidate.pu.default.json)) and tune `setup.enable` / `selection.score_targets` as needed.
 
 ## Pipeline model
 
@@ -21,14 +23,14 @@ Run mode is controlled by `experiment.mode`:
 
 Top-level keys:
 
-- `experiment` (must include `graph_id` and `scoring_run_id`; legacy `graph_run_id` / `run_id` are still read with a deprecation warning)
+- `experiment` (must include `graph_id` and `scoring_run_id`)
 - `artifacts`
 - `setup`
 - `selection`
 - `scoring`
 - `community`
 
-Legacy experiment keys are normalized with a warning: `experiment.run_id` → `scoring_run_id`, `experiment.graph_run_id` → `graph_id`.
+Stage JSON under `analysis/configs/` may include `run.graph_id` (e.g. `local_default`) for **direct** Python calls to stage helpers with those files. **`run_experiment`** always injects `run.graph_id` from **`experiment.graph_id`** via `run_graph_setup` before any stage runs.
 
 ## Artifact boundaries
 
@@ -65,6 +67,10 @@ Community output filenames are unchanged:
 
 `pair_training` is auto-created in setup when enabled and prerequisites are present.
 
+## Dry run
+
+With `--dry-run`, the runner does not execute graph setup or community sweeps. It also does **not** require the graph bundle directory to exist, including for `experiment.mode=score_only` (planned paths are used for manifests and injected community config).
+
 ## Scoring targets
 
 Select graph surfaces via `selection.score_targets`, for example:
@@ -87,8 +93,8 @@ Select graph surfaces via `selection.score_targets`, for example:
 
 ## Useful CLI overrides
 
-- `--scoring-run-id` (alias: `--run-id`)
+- `--scoring-run-id`
 - `--run-mode` (`setup_only|score_only|setup_and_score`)
 - `--mode-override` (scoring mode)
-- `--graph-id` (alias: `--graph-run-id`)
+- `--graph-id` (override `experiment.graph_id`)
 - `--gt-set`

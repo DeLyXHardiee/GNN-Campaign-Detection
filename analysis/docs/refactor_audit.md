@@ -24,7 +24,7 @@ while preserving existing hyper-parameter values.
 ### Seed + candidate unified construction
 
 - New unified stage output directory:
-  - `analysis/output/seed_candidate_graph/<graph_run_id>/seed_candidate_graph_<timestamp>/`
+  - `analysis/output/seed_candidate_graph/<graph_id>/seed_candidate_graph_<timestamp>/` (Path B layout; removed)
 - New canonical unscored artifact:
   - `seed_candidate_pairgraph_unscored.csv`
 - Stage summary:
@@ -48,10 +48,10 @@ while preserving existing hyper-parameter values.
 
 ## Config reorganization (values preserved)
 
-Added configs (no hyper-parameter value edits):
+Added configs during this audit (later removed with Path B; Path A uses experiment JSON + `analysis/configs/anchor_*.default.json` only):
 
-- `analysis/configs/scoring/anchor_graph_scoring.default.json`
-- `analysis/configs/seed_candidate_graph.default.json`
+- ~~`analysis/configs/scoring/anchor_graph_scoring.default.json`~~ (removed)
+- ~~`analysis/configs/seed_candidate_graph.default.json`~~ (removed)
 
 Channel semantic aliases were introduced to reduce ambiguity:
 
@@ -95,3 +95,13 @@ Channel semantic aliases were introduced to reduce ambiguity:
 - Canonical runtime path is now `analysis/pipelines/run_experiment.py`.
 - User-facing runtime configs live under `analysis/configs/experiments/`.
 - Legacy scored-clustering wrappers and PU stage script were removed from canonical runtime.
+
+## Superseded / removed (Path B)
+
+The following were **removed** in favor of Path A only (`run_experiment.py` + `graph_setup_pipeline.py`):
+
+- `analysis/pipelines/anchor_graph_pipeline.py` (per-stage CLI / `run_anchor_graph_pipeline`).
+- `analysis/utils/seed_candidate_graph_helpers.py` and `analysis/configs/seed_candidate_graph.default.json` (Path B unified seed+candidate output under `analysis/output/seed_candidate_graph/...`). Canonical seed–candidate pairgraph is built **inside the graph bundle** by `run_graph_setup`.
+- `analysis/utils/anchor_graph_scoring_helpers.py` and `analysis/configs/scoring/anchor_graph_scoring.default.json` (standalone anchor handcrafted scoring stage only used by Path B).
+
+The **Stage/API wiring** bullets above that reference `score_anchor_graph`, `build_seed_candidate_graph`, and those JSON paths describe the pre-consolidation state; use `run_experiment` + `setup` / `selection.score_targets` instead.

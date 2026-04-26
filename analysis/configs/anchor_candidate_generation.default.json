@@ -1,5 +1,7 @@
 {
-  "run": {},
+  "run": {
+    "graph_id": "local_default"
+  },
   "candidates": {
     "generators": [
       {

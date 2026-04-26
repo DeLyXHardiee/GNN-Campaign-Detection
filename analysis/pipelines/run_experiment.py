@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,8 +13,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from analysis.utils.anchor_graph_community_helpers import run_anchor_multi_gt_community_sweep
-from analysis.pipelines.graph_setup_pipeline import run_graph_setup
 from analysis.utils.config_run_fields import resolve_graph_id, resolve_scoring_run_id
 from analysis.utils.graph_scorer_registry import validate_scorer_target
 
@@ -29,6 +26,61 @@ DEFAULT_GT_SETS_PATH = (
 DEFAULT_ANCHOR_COMMUNITY_CONFIG_PATH = (
     PROJECT_ROOT / "analysis" / "configs" / "anchor_community.default.json"
 )
+
+
+def _print_cli_stage_done(stage_slug: str, detail: str) -> None:
+    """One-line stage footer; keep tqdm on its own lines above."""
+    d = str(detail or "").strip()
+    if d:
+        print(f"{stage_slug}: {d}", flush=True)
+    else:
+        print(f"{stage_slug}: complete", flush=True)
+
+
+def _print_experiment_cli_summary(out: dict[str, Any]) -> None:
+    """Short paths-only summary instead of dumping the full result dict."""
+    m = out.get("manifest") or {}
+    dry = bool(out.get("dry_run"))
+    print("", flush=True)
+    if dry:
+        print(
+            "experiment: dry run (paths resolved; graph setup and community not executed).",
+            flush=True,
+        )
+    else:
+        print("experiment: complete", flush=True)
+    mj = str(out.get("manifest_json") or "").strip()
+    if mj:
+        print(f"  run_manifest: {mj}", flush=True)
+    gbr = str(m.get("graph_bundle_root") or "").strip()
+    gid = str(m.get("graph_id") or "").strip()
+    if gbr and gid:
+        print(f"  graph_bundle: {Path(gbr) / gid}", flush=True)
+    rr = str(m.get("run_root") or "").strip()
+    if rr:
+        print(f"  scoring_run_dir: {rr}", flush=True)
+    mode = str(m.get("mode") or "").strip()
+    if mode:
+        print(f"  mode: {mode}", flush=True)
+    sm = m.get("score_mode")
+    if sm:
+        print(f"  score_mode: {sm}", flush=True)
+    for row in out.get("community_results") or []:
+        tgt = str(row.get("target") or "").strip() or "(target)"
+        cr = row.get("community_result") or {}
+        if not isinstance(cr, dict):
+            continue
+        if cr.get("dry_run"):
+            print(f"  [{tgt}] community: (dry run — not executed)", flush=True)
+            continue
+        od = str(cr.get("output_dir") or "").strip()
+        sj = str(cr.get("summary_json") or "").strip()
+        if od:
+            print(f"  [{tgt}] community_dir: {od}", flush=True)
+        if sj:
+            print(f"  [{tgt}] community_summary: {sj}", flush=True)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -49,29 +101,43 @@ def _resolve_bundle_dir(*, graph_bundle_root: Path, graph_id: str) -> Path:
     return p
 
 
-def _resolve_target_edges_csv(*, bundle_dir: Path, target: str) -> Path:
+def _resolve_target_edges_csv(*, bundle_dir: Path, graph_id: str, target: str) -> Path:
     target_l = str(target).strip().lower()
     if target_l == "seed_candidate":
-        p = bundle_dir / "seed_candidate" / bundle_dir.name / "seed_candidate_pairgraph_unscored.csv"
+        p = bundle_dir / "seed_candidate" / graph_id / "seed_candidate_pairgraph_unscored.csv"
     elif target_l == "candidate":
-        cand_root = bundle_dir / "candidate" / bundle_dir.name
+        cand_root = bundle_dir / "candidate" / graph_id
         dirs = [d for d in cand_root.iterdir() if d.is_dir() and d.name.startswith("candidate_generation_")]
         if not dirs:
             raise FileNotFoundError(f"No candidate stage dirs found under {cand_root}")
         p = max(dirs, key=lambda d: d.stat().st_mtime) / "candidate_union.csv"
     elif target_l == "seed":
-        seed_root = bundle_dir / "seed" / bundle_dir.name
+        seed_root = bundle_dir / "seed" / graph_id
         dirs = [d for d in seed_root.iterdir() if d.is_dir() and d.name.startswith("seed_generation_")]
         if not dirs:
             raise FileNotFoundError(f"No seed stage dirs found under {seed_root}")
         p = max(dirs, key=lambda d: d.stat().st_mtime) / "seed_edges_all.csv"
     elif target_l == "anchor":
-        p = bundle_dir / "anchor" / bundle_dir.name / "anchor_graph_edges_unscored.csv"
+        p = bundle_dir / "anchor" / graph_id / "anchor_graph_edges_unscored.csv"
     else:
         raise ValueError(f"Unsupported score target: {target!r}")
     if not p.is_file():
         raise FileNotFoundError(f"Target edges file not found for target={target!r}: {p}")
     return p
+
+
+def _dry_run_planned_target_edges_csv(*, bundle_dir: Path, graph_id: str, target: str) -> Path:
+    """Paths that match the bundle layout; files need not exist (``--dry-run``)."""
+    target_l = str(target).strip().lower()
+    if target_l == "seed_candidate":
+        return bundle_dir / "seed_candidate" / graph_id / "seed_candidate_pairgraph_unscored.csv"
+    if target_l == "candidate":
+        return bundle_dir / "candidate" / graph_id / "candidate_generation_dryrun" / "candidate_union.csv"
+    if target_l == "seed":
+        return bundle_dir / "seed" / graph_id / "seed_generation_dryrun" / "seed_edges_all.csv"
+    if target_l == "anchor":
+        return bundle_dir / "anchor" / graph_id / "anchor_graph_edges_unscored.csv"
+    raise ValueError(f"Unsupported score target: {target!r}")
 
 
 def _resolve_gt_paths(*, gt_set_name: str, gt_sets_path: Path) -> list[str]:
@@ -86,32 +152,8 @@ def _resolve_gt_paths(*, gt_set_name: str, gt_sets_path: Path) -> list[str]:
     return [str(v) for v in vals]
 
 
-def _normalize_experiment_block(cfg: dict[str, Any]) -> None:
-    exp = dict(cfg.get("experiment") or {})
-    gid = str(exp.get("graph_id") or "").strip()
-    legacy_gid = str(exp.get("graph_run_id") or "").strip()
-    if not gid and legacy_gid:
-        warnings.warn(
-            "experiment.graph_run_id is deprecated; use experiment.graph_id instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        exp["graph_id"] = legacy_gid
-    sid = str(exp.get("scoring_run_id") or "").strip()
-    legacy_sid = str(exp.get("run_id") or "").strip()
-    if not sid and legacy_sid:
-        warnings.warn(
-            "experiment.run_id is deprecated; use experiment.scoring_run_id instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        exp["scoring_run_id"] = legacy_sid
-    cfg["experiment"] = exp
-
-
 def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
     cfg = dict(config)
-    _normalize_experiment_block(cfg)
     exp = dict(cfg.get("experiment") or {})
     artifacts = dict(cfg.get("artifacts") or {})
     setup = dict(cfg.get("setup") or {})
@@ -151,16 +193,29 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
 
     setup_result = None
     if mode in {"setup_only", "setup_and_score"} and not dry_run:
+        from analysis.pipelines.graph_setup_pipeline import run_graph_setup
+
         setup_result = run_graph_setup(
             project_root=PROJECT_ROOT,
             graph_id=graph_id,
             graph_bundle_root=graph_bundle_root,
             setup_cfg=setup,
         )
-    if dry_run and mode in {"setup_only", "setup_and_score"}:
+        if setup_result and not dry_run:
+            br = str(setup_result.get("bundle_root") or "").strip()
+            if br:
+                _print_cli_stage_done("graph_setup", f"graph_bundle={br}")
+    if dry_run:
         bundle_dir = (graph_bundle_root / graph_id).resolve()
     else:
         bundle_dir = _resolve_bundle_dir(graph_bundle_root=graph_bundle_root, graph_id=graph_id)
+    # PU scorer: empty pair_dataset_csv would read pair_dataset_csv from GNN training_config.json,
+    # which often points at an old anchor_candidates/... layout. Prefer this run's graph bundle.
+    if score_mode == "seed_candidate_pu_v1":
+        pu_run = dict(score_params.get("pu_run") or {})
+        if not str(pu_run.get("pair_dataset_csv") or "").strip():
+            bundle_pair_csv = (bundle_dir / "pair_training" / graph_id / "pair_training_dataset.csv").resolve()
+            score_params = {**score_params, "pu_run": {**pu_run, "pair_dataset_csv": str(bundle_pair_csv)}}
     anchor_output_root = bundle_dir / "anchor"
     if not dry_run and not (anchor_output_root / graph_id).is_dir():
         raise FileNotFoundError(f"Anchor graph bundle missing: {anchor_output_root / graph_id}")
@@ -197,10 +252,14 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
     for target in score_targets:
         if score_mode:
             validate_scorer_target(score_mode=score_mode, graph_kind=target)
-        if dry_run and mode in {"setup_only", "setup_and_score"}:
-            target_edges_csv = bundle_dir / f"dry_run_{target}.csv"
+        if dry_run:
+            target_edges_csv = _dry_run_planned_target_edges_csv(
+                bundle_dir=bundle_dir, graph_id=graph_id, target=target
+            )
         else:
-            target_edges_csv = _resolve_target_edges_csv(bundle_dir=bundle_dir, target=target)
+            target_edges_csv = _resolve_target_edges_csv(
+                bundle_dir=bundle_dir, graph_id=graph_id, target=target
+            )
         target_root = (run_root / target).resolve()
         target_root.mkdir(parents=True, exist_ok=True)
 
@@ -231,6 +290,8 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
         if dry_run:
             comm_res = {"dry_run": True, "target": target, "community_config": comm_cfg}
         else:
+            from analysis.utils.anchor_graph_community_helpers import run_anchor_multi_gt_community_sweep
+
             comm_res = run_anchor_multi_gt_community_sweep(comm_cfg)
         target_results.append(
             {
@@ -275,20 +336,23 @@ def main() -> None:
     )
     p.add_argument(
         "--scoring-run-id",
-        "--run-id",
         type=str,
         default="",
         dest="scoring_run_id",
-        help="Override experiment.scoring_run_id (legacy: experiment.run_id; --run-id alias).",
+        help="Override experiment.scoring_run_id.",
     )
     p.add_argument("--gt-set", type=str, default="", help="Override selection.gt_set")
     p.add_argument(
         "--graph-id",
-        "--graph-run-id",
         type=str,
         default="",
         dest="graph_id",
-        help="Override experiment.graph_id (legacy: experiment.graph_run_id).",
+        help="Override experiment.graph_id.",
+    )
+    p.add_argument(
+        "--dump-json",
+        action="store_true",
+        help="Print the full JSON result to stdout (default is a short paths-only summary).",
     )
     args = p.parse_args()
 
@@ -311,7 +375,10 @@ def main() -> None:
         cfg["experiment"]["graph_id"] = str(args.graph_id)
 
     out = run_experiment(cfg, dry_run=bool(args.dry_run))
-    print(json.dumps(out, indent=2, ensure_ascii=False))
+    if args.dump_json:
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    else:
+        _print_experiment_cli_summary(out)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from sklearn.neighbors import NearestNeighbors
 from analysis.utils import graph_structure_helpers as gh
 from analysis.utils import semantic_shard_helpers as ssh
 from analysis.utils.config_run_fields import resolve_graph_id
+from analysis.utils.pair_graph_contract import migrate_unscored_graph_id_column
 
 try:
     from tqdm.auto import tqdm
@@ -921,9 +922,13 @@ def load_anchor_graph_artifacts(
             f"Missing anchor edge table in {d}; expected anchor_graph_edges_unscored.csv"
         )
     edges = pd.read_csv(p_edges_unscored)
+    edges = migrate_unscored_graph_id_column(edges)
     p_cand = d / "anchor_graph_candidates.csv"
     candidates = pd.read_csv(p_cand) if p_cand.is_file() else None
     summary = json.loads((d / "anchor_graph_summary.json").read_text(encoding="utf-8"))
+    if isinstance(summary, dict) and "graph_run_id" in summary and "graph_id" not in summary:
+        summary = dict(summary)
+        summary["graph_id"] = summary.pop("graph_run_id")
 
     for c in nodes.columns:
         if c.endswith("_set"):
@@ -1003,7 +1008,7 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
     persistence_cfg = config.get("persistence") or {}
     node_fields_cfg = config.get("node_fields") or {}
 
-    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
+    graph_id = resolve_graph_id(run_cfg)
     pbar = tqdm(total=7, desc=f"Building anchor graph [{graph_id}]") if tqdm is not None else None
     try:
         default_paths = gh.resolve_graph_analysis_paths()
@@ -1085,7 +1090,7 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         edges_df["email_i"] = edges_df["email_a"].astype(str)
         edges_df["email_j"] = edges_df["email_b"].astype(str)
         edges_df["graph_kind"] = "anchor"
-        edges_df["graph_run_id"] = graph_id
+        edges_df["graph_id"] = graph_id
         # Anchor graph does not use seed/candidate generator provenance; semantic candidate is exposed.
         edges_df["from_seed"] = False
         if "from_semantic_candidate" in edges_df.columns:
@@ -1117,7 +1122,7 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         created_at_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
         run_meta = {
             "created_at_utc": created_at_utc,
-            "graph_run_id": graph_id,
+            "graph_id": graph_id,
             "output_dir": str(out_dir),
             "config": config,
         }
@@ -1136,7 +1141,7 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             node_columns=node_cols_for_graph,
         )
         summary = {
-            "graph_run_id": graph_id,
+            "graph_id": graph_id,
             "created_at_utc": created_at_utc,
             "output_dir": str(out_dir),
             "run_config_json": str(p_run_cfg),

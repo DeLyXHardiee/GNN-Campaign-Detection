@@ -24,10 +24,10 @@ except Exception:  # pragma: no cover
 def _resolve_latest_seed_dir(
     *,
     seed_output_root: Path,
-    graph_run_id: str,
+    graph_id: str,
     seed_stage_name_prefix: str,
 ) -> Path:
-    base = (seed_output_root / graph_run_id).expanduser().resolve()
+    base = (seed_output_root / graph_id).expanduser().resolve()
     if not base.is_dir():
         raise FileNotFoundError(f"Seed output root missing: {base}")
     dirs = [d for d in base.iterdir() if d.is_dir() and d.name.startswith(seed_stage_name_prefix)]
