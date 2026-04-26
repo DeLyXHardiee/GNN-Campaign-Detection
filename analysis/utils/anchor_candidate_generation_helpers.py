@@ -128,7 +128,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     out_cfg = config.get("output") or {}
 
     project_root = gh.find_project_root()
-    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
+    graph_id = resolve_graph_id(run_cfg)
     _debug_log(
         run_id=graph_id or "unknown",
         hypothesis_id="H1",
@@ -170,7 +170,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     else:
         seed_dir = _resolve_latest_seed_dir(
             seed_output_root=seed_output_root,
-            graph_run_id=graph_id,
+            graph_id=graph_id,
             seed_stage_name_prefix=seed_stage_prefix,
         )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
@@ -529,7 +529,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         )
         eval_outputs = run_candidate_evaluation_report(
             project_root=project_root,
-            graph_run_id=graph_id,
+            graph_id=graph_id,
             out_dir=out_dir,
             seed_dir=seed_dir,
             candidate_union_df=candidate_union_df,

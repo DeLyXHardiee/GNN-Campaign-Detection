@@ -1,5 +1,7 @@
 {
-  "run": {},
+  "run": {
+    "graph_id": "local_default"
+  },
   "inputs": {
     "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
     "meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json",

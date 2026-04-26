@@ -748,7 +748,7 @@ def _variant_pairs(
 def run_candidate_evaluation_report(
     *,
     project_root: Path,
-    graph_run_id: str,
+    graph_id: str,
     out_dir: Path,
     seed_dir: Path,
     candidate_union_df: pd.DataFrame,
@@ -839,7 +839,7 @@ def run_candidate_evaluation_report(
     )
     gt_maps = _load_gt_maps(gt_paths)
     _debug_log(
-        run_id=graph_run_id,
+        run_id=graph_id,
         hypothesis_id="H1",
         location="anchor_candidate_eval_helpers.py:gt_load",
         message="candidate eval gt discovery",
@@ -854,7 +854,7 @@ def run_candidate_evaluation_report(
     # Metadata
     metadata = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "graph_run_id": str(graph_run_id),
+        "graph_id": str(graph_id),
         "seed_input_paths": {
             "seed_edges_all_csv": str(seed_edges_all_csv),
             "seed_union_component_members_csv": str(seed_members_csv),
@@ -1313,7 +1313,7 @@ def run_candidate_evaluation_report(
 
                 silver_pack = run_silver_hidden_link_benchmark(
                     project_root=project_root,
-                    graph_run_id=graph_run_id,
+                    graph_id=graph_id,
                     main_out_dir=out_dir,
                     original_seed_dir=seed_dir,
                     full_generation_config=full_candidate_generation_config,
@@ -1322,7 +1322,7 @@ def run_candidate_evaluation_report(
                 silver_eval = silver_pack.get("silver_hidden_link_eval") or {"enabled": False}
             except Exception as exc:  # pragma: no cover - defensive benchmark isolation
                 _debug_log(
-                    run_id=graph_run_id,
+                    run_id=graph_id,
                     hypothesis_id="H5",
                     location="anchor_candidate_eval_helpers.py:silver_benchmark",
                     message="silver hidden-link benchmark failed",
@@ -1495,7 +1495,7 @@ def run_candidate_evaluation_report(
         "key_warnings": key_warnings,
     }
     _debug_log(
-        run_id=graph_run_id,
+        run_id=graph_id,
         hypothesis_id="H4",
         location="anchor_candidate_eval_helpers.py:readiness",
         message="candidate eval readiness computed",

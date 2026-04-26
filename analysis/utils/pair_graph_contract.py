@@ -16,12 +16,14 @@ GRAPH_KIND_ALL: tuple[str, ...] = (
     GRAPH_KIND_SEED_CANDIDATE,
 )
 
+# Legacy unscored PairGraph CSV column (pre-migration). Read paths normalize to ``graph_id``.
+LEGACY_GRAPH_ID_COLUMN = "graph_run_id"
 
 REQUIRED_UNSCORED_COLUMNS: tuple[str, ...] = (
     "email_i",
     "email_j",
     "graph_kind",
-    "graph_run_id",
+    "graph_id",
     "from_seed",
     "from_semantic",
     "from_rare_artifact",
@@ -42,6 +44,22 @@ def _pair(a: str, b: str) -> tuple[str, str]:
     return (a, b) if a <= b else (b, a)
 
 
+def migrate_unscored_graph_id_column(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a copy with legacy ``graph_run_id`` normalized to ``graph_id``.
+
+    If both columns exist, ``graph_id`` is kept and ``graph_run_id`` is dropped.
+    """
+    out = df.copy()
+    has_new = "graph_id" in out.columns
+    has_old = LEGACY_GRAPH_ID_COLUMN in out.columns
+    if has_new and has_old:
+        return out.drop(columns=[LEGACY_GRAPH_ID_COLUMN])
+    if has_old and not has_new:
+        return out.rename(columns={LEGACY_GRAPH_ID_COLUMN: "graph_id"})
+    return out
+
+
 def ensure_pairgraph_identity(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "email_i" not in out.columns or "email_j" not in out.columns:
@@ -58,6 +76,7 @@ def ensure_pairgraph_identity(df: pd.DataFrame) -> pd.DataFrame:
 
 def ensure_unscored_contract(df: pd.DataFrame) -> pd.DataFrame:
     out = ensure_pairgraph_identity(df)
+    out = migrate_unscored_graph_id_column(out)
     missing = [c for c in REQUIRED_UNSCORED_COLUMNS if c not in out.columns]
     if missing:
         raise ValueError(f"Missing required unscored PairGraph columns: {missing}")
@@ -65,7 +84,7 @@ def ensure_unscored_contract(df: pd.DataFrame) -> pd.DataFrame:
         out[c] = out[c].fillna(False).astype(bool)
     out["source_count"] = pd.to_numeric(out["source_count"], errors="coerce").fillna(0).astype(int)
     out["graph_kind"] = out["graph_kind"].astype(str)
-    out["graph_run_id"] = out["graph_run_id"].astype(str)
+    out["graph_id"] = out["graph_id"].astype(str)
     return out
 
 
@@ -80,8 +99,8 @@ def ensure_scored_contract(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def pairgraph_meta(graph_kind: str, graph_run_id: str) -> dict[str, Any]:
-    return {"graph_kind": str(graph_kind), "graph_run_id": str(graph_run_id)}
+def pairgraph_meta(graph_kind: str, graph_id: str) -> dict[str, Any]:
+    return {"graph_kind": str(graph_kind), "graph_id": str(graph_id)}
 
 
 def validate_graph_kind(graph_kind: str) -> str:

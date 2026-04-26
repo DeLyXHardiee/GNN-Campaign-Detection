@@ -43,7 +43,6 @@ def main() -> None:
     )
     p.add_argument(
         "--graph-id",
-        "--graph-run-id",
         type=str,
         dest="graph_id",
         default=None,

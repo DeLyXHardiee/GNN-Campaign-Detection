@@ -1002,7 +1002,7 @@ def run_anchor_seed_generation(config: dict[str, Any]) -> dict[str, Any]:
     gt_cfg = config.get("ground_truth") or {}
 
     project_root = gh.find_project_root()
-    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
+    graph_id = resolve_graph_id(run_cfg)
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root")
         or (project_root / "analysis" / "output" / "anchor_graph")

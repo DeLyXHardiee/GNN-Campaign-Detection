@@ -535,7 +535,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                     seed_prefix = str(run_cfg.get("seed_stage_name_prefix") or "seed_generation_")
                     seed_dir = _resolve_latest_seed_dir(
                         seed_output_root=seed_output_root,
-                        graph_run_id=graph_id,
+                        graph_id=graph_id,
                         seed_stage_name_prefix=seed_prefix,
                     )
                 p_seed = seed_dir / "seed_edges_all.csv"

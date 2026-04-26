@@ -194,7 +194,7 @@ def _score_summary_recovered(
 def run_silver_hidden_link_benchmark(
     *,
     project_root: Path,
-    graph_run_id: str,
+    graph_id: str,
     main_out_dir: Path,
     original_seed_dir: Path,
     full_generation_config: dict[str, Any],

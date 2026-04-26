@@ -45,10 +45,10 @@ def _artifact_idf(df_val: int, n_docs: int) -> float:
 def _resolve_latest_seed_dir(
     *,
     seed_output_root: Path,
-    graph_run_id: str,
+    graph_id: str,
     seed_stage_name_prefix: str,
 ) -> Path:
-    base = (seed_output_root / graph_run_id).expanduser().resolve()
+    base = (seed_output_root / graph_id).expanduser().resolve()
     if not base.is_dir():
         raise FileNotFoundError(f"Seed output root missing: {base}")
 
@@ -252,7 +252,7 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
     seed_stage_prefix = str(seed_cfg.get("seed_stage_name_prefix") or "seed_generation_")
     seed_dir = _resolve_latest_seed_dir(
         seed_output_root=seed_output_root,
-        graph_run_id=graph_id,
+        graph_id=graph_id,
         seed_stage_name_prefix=seed_stage_prefix,
     )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
