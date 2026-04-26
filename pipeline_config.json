@@ -30,7 +30,7 @@
     "misp_json_path": "data/misp/incidents-lake-misp-large.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "graph_pt_path_override": "core/graph/output/incidents-lake-misp-large_hetero.pt",
+    "graph_pt_path_override": "core/graph/output/incidents-lake-misp-large_pruned_hetero.pt",
     "exclude_node_types": [],
     "embeddings_output_dir": null,
     "memgraph": {
@@ -66,7 +66,7 @@
   },
   "device": "cpu",
   "to_undirected": true,
-  "run_id": "pair_pu_008_reliable_negative_pool_reduced",
+  "run_id": "pair_pu_009_pruned_graph",
   "gnn": {
     "runs_parent": "core/GNN/outputs",
     "models_subdir": "models",
@@ -117,7 +117,7 @@
     "pair_tqdm_batches": true,
     "pair_loss_type": "nnpu_with_reliable_negatives",
     "reliable_negative_loss_weight": 0.1,
-    "pu_class_prior": 0.2,
+    "pu_class_prior": 0.1,
     "pu_non_negative": true,
     "pair_eval_threshold": 0.5,
     "pair_placeholder_loss_mode": "bce_pos_vs_unlabeled_as_neg",
@@ -156,7 +156,7 @@
       "shuffle_each_epoch": true
     },
     "reliable_negative_pool": {
-      "enabled": true,
+      "enabled": false,
       "max_pairs_total": 3000,
       "semantic_max_cosine": 0.93,
       "twohop_rarity_max_le": 6.0,

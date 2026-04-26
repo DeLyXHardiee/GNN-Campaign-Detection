@@ -184,7 +184,7 @@ def build_pair_training_dataset(
     candidate_union_csv: Path,
     output_dir: Path,
     graph_meta_json: Path | None = None,
-    graph_run_id: str | None = None,
+    graph_id: str | None = None,
     write_parquet: bool = True,
     write_rejects_csv: bool = True,
     project_root: Path | None = None,
@@ -465,7 +465,7 @@ def build_pair_training_dataset(
     summary: dict[str, Any] = {
         "metadata": {
             "created_at_utc": created_at,
-            "graph_run_id": graph_run_id,
+            "graph_id": graph_id,
             "seed_edges_all_csv": str(seed_edges_all_csv),
             "candidate_union_csv": str(candidate_union_csv),
             "graph_meta_json": meta_path_resolved,

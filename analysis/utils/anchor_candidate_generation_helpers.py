@@ -9,6 +9,7 @@ import time
 import pandas as pd
 
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils.anchor_candidate_rare_artifact_helpers import (
     _load_seed_pairs,
     _resolve_latest_seed_dir,
@@ -127,16 +128,14 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     out_cfg = config.get("output") or {}
 
     project_root = gh.find_project_root()
-    graph_run_id = str(run_cfg.get("graph_run_id") or "").strip()
-    if not graph_run_id:
-        raise ValueError("run.graph_run_id is required")
+    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
     _debug_log(
-        run_id=graph_run_id or "unknown",
+        run_id=graph_id or "unknown",
         hypothesis_id="H1",
         location="anchor_candidate_generation_helpers.py:run_anchor_candidate_generation:start",
         message="candidate stage start",
         data={
-            "graph_run_id": graph_run_id,
+            "graph_id": graph_id,
             "enabled_generators": [
                 str(g.get("name"))
                 for g in (generators if isinstance(generators, list) else [])
@@ -149,7 +148,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root") or (project_root / "analysis" / "output" / "anchor_graph")
     ).expanduser().resolve()
-    anchor_run_dir = (anchor_output_root / graph_run_id).resolve()
+    anchor_run_dir = (anchor_output_root / graph_id).resolve()
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
@@ -171,13 +170,13 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     else:
         seed_dir = _resolve_latest_seed_dir(
             seed_output_root=seed_output_root,
-            graph_run_id=graph_run_id,
+            graph_run_id=graph_id,
             seed_stage_name_prefix=seed_stage_prefix,
         )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
     seed_pairs = _load_seed_pairs(seed_edges_all_csv)
     _debug_log(
-        run_id=graph_run_id,
+        run_id=graph_id,
         hypothesis_id="H1",
         location="anchor_candidate_generation_helpers.py:seed_load",
         message="loaded seed pairs and dirs",
@@ -192,7 +191,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     out_root = Path(out_cfg.get("output_root") or (project_root / "analysis" / "output" / "anchor_candidates")).expanduser().resolve()
     stage_name = str(out_cfg.get("stage_name") or "candidate_generation")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = (out_root / graph_run_id / f"{stage_name}_{stamp}").resolve()
+    out_dir = (out_root / graph_id / f"{stage_name}_{stamp}").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not isinstance(generators, list) or not generators:
@@ -246,8 +245,16 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     twohop_rarity_max: dict[tuple[str, str], float] = {}
     pair_time_gap_min: dict[tuple[str, str], float] = {}
 
+    pbar_total = 5 + int(len(generators))
+    pbar = tqdm(total=pbar_total, desc=f"Anchor candidate generation [{graph_id}]") if tqdm is not None else None
+    if pbar is not None:
+        pbar.update(1)  # loaded anchor + seed context
+        pbar.update(1)  # output dir + config resolution
+        pbar.update(1)  # embeddings loaded
     for g in generators:
         if not isinstance(g, dict):
+            if pbar is not None:
+                pbar.update(1)
             continue
         name = str(g.get("name") or "").strip().lower()
         enabled = bool(g.get("enabled", True))
@@ -255,6 +262,8 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         if name:
             generator_cfg_map[name] = {"enabled": enabled, "config": cfg}
         if not enabled or not name:
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         if name == "seed_backbone_v1":
@@ -265,6 +274,8 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             pairs = _pairs_from_df(df)
             union_pairs |= pairs
             per_gen_outputs.append({"name": name, "enabled": True, "csv": str(p), "n_rows": int(len(df)), "n_pairs": int(len(pairs))})
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         if name == "rare_artifact_v1":
@@ -284,6 +295,8 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             for k, v in tmin.items():
                 pair_time_gap_min[k] = min(pair_time_gap_min.get(k, float("inf")), v)
             per_gen_outputs.append({"name": name, "enabled": True, "csv": str(p), "n_rows": int(len(df)), "n_pairs": int(len(pairs)), "diagnostics": diag})
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         if name == "semantic_reciprocal_v1":
@@ -338,11 +351,13 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                     "max_time_gap_seconds": max_time_gap_seconds,
                 }
             )
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         if name == "component_expansion_v1":
             _debug_log(
-                run_id=graph_run_id,
+                run_id=graph_id,
                 hypothesis_id="H2",
                 location="anchor_candidate_generation_helpers.py:component_branch_enter",
                 message="component generator branch entered",
@@ -377,7 +392,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             _debug_log(
-                run_id=graph_run_id,
+                run_id=graph_id,
                 hypothesis_id="H2",
                 location="anchor_candidate_generation_helpers.py:component_branch_exit",
                 message="component generator branch completed",
@@ -387,11 +402,13 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                     "expanded_csv": result.get("candidates_component_expanded_csv"),
                 },
             )
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         if name == "2hop_bounded_v1":
             _debug_log(
-                run_id=graph_run_id,
+                run_id=graph_id,
                 hypothesis_id="H3",
                 location="anchor_candidate_generation_helpers.py:twohop_branch_enter",
                 message="2hop generator branch entered",
@@ -427,7 +444,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 }
             )
             _debug_log(
-                run_id=graph_run_id,
+                run_id=graph_id,
                 hypothesis_id="H3",
                 location="anchor_candidate_generation_helpers.py:twohop_branch_exit",
                 message="2hop generator branch completed",
@@ -437,6 +454,8 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                     "diagnostics": result.get("diagnostics"),
                 },
             )
+            if pbar is not None:
+                pbar.update(1)
             continue
 
         raise ValueError(f"Unknown candidate generator: {name!r}")
@@ -493,11 +512,13 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     candidate_union_df = pd.DataFrame(candidate_union_rows)
     p_candidate_union = out_dir / "candidate_union.csv"
     candidate_union_df.to_csv(p_candidate_union, index=False)
+    if pbar is not None:
+        pbar.update(1)
 
     eval_outputs = None
     if bool(eval_cfg.get("enabled", True)):
         _debug_log(
-            run_id=graph_run_id,
+            run_id=graph_id,
             hypothesis_id="H1",
             location="anchor_candidate_generation_helpers.py:eval_enter",
             message="candidate evaluation enter",
@@ -508,7 +529,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         )
         eval_outputs = run_candidate_evaluation_report(
             project_root=project_root,
-            graph_run_id=graph_run_id,
+            graph_run_id=graph_id,
             out_dir=out_dir,
             seed_dir=seed_dir,
             candidate_union_df=candidate_union_df,
@@ -520,7 +541,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             full_candidate_generation_config=config,
         )
         _debug_log(
-            run_id=graph_run_id,
+            run_id=graph_id,
             hypothesis_id="H4",
             location="anchor_candidate_generation_helpers.py:eval_exit",
             message="candidate evaluation exit",
@@ -529,11 +550,13 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 "readiness": None if not eval_outputs else eval_outputs.get("readiness"),
             },
         )
+    if pbar is not None:
+        pbar.update(1)
 
     # Summary
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "graph_run_id": graph_run_id,
+        "graph_id": graph_id,
         "anchor_run_dir": str(anchor_run_dir),
         "seed_stage_dir": str(seed_dir),
         "generators_run": per_gen_outputs,
@@ -556,6 +579,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     }
     p_summary = out_dir / "anchor_candidates_summary.json"
     p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    if pbar is not None:
+        pbar.update(1)
+        pbar.close()
 
     return {
         "output_dir": str(out_dir),

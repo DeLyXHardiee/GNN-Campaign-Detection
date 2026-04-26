@@ -14,8 +14,14 @@ import pandas as pd
 from sklearn.metrics import homogeneity_score
 
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils import raw_gnn_notebook as rn
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts
+
+try:
+    from tqdm.auto import tqdm
+except Exception:  # pragma: no cover
+    tqdm = None
 
 
 def _slugify(s: str) -> str:
@@ -996,241 +1002,255 @@ def run_anchor_seed_generation(config: dict[str, Any]) -> dict[str, Any]:
     gt_cfg = config.get("ground_truth") or {}
 
     project_root = gh.find_project_root()
-    graph_run_id = str(run_cfg.get("graph_run_id") or "").strip()
-    if not graph_run_id:
-        raise ValueError("run.graph_run_id is required")
+    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root")
         or (project_root / "analysis" / "output" / "anchor_graph")
     ).expanduser().resolve()
-    anchor_run_dir = anchor_output_root / graph_run_id
+    anchor_run_dir = anchor_output_root / graph_id
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
-
-    nodes_df, edges_df, _cand, _summary, _g = load_anchor_graph_artifacts(
-        anchor_run_dir, load_graph_pickle=False
-    )
-    nodes_df["external_id"] = nodes_df["external_id"].astype(str)
-    edges_df["email_a"] = edges_df["email_a"].astype(str)
-    edges_df["email_b"] = edges_df["email_b"].astype(str)
-
-    # Optional pre-filter by edge weight to operate "on top of graph" while allowing strict pruning.
-    min_edge_weight = input_cfg.get("min_edge_weight")
-    if min_edge_weight is not None and "edge_weight" in edges_df.columns:
-        edges_df = edges_df[
-            pd.to_numeric(edges_df["edge_weight"], errors="coerce") >= float(min_edge_weight)
-        ].copy()
 
     generators = seed_cfg.get("generators") or []
     if not isinstance(generators, list) or not generators:
         raise ValueError("seeds.generators must be a non-empty list")
 
-    registry = _generator_registry()
-    seed_frames: list[pd.DataFrame] = []
-    for gcfg in generators:
-        if not isinstance(gcfg, dict):
-            continue
-        name = str(gcfg.get("name") or "").strip().lower()
-        if not name:
-            continue
-        if name not in registry:
-            raise ValueError(f"Unknown seed generator {name!r}. Available: {sorted(registry)}")
-        enabled = bool(gcfg.get("enabled", True))
-        if not enabled:
-            continue
-        sdf = registry[name](nodes_df, edges_df, gcfg)
-        if not sdf.empty:
-            seed_frames.append(sdf)
-
-    seed_edges_all = (
-        pd.concat(seed_frames, axis=0, ignore_index=True)
-        if seed_frames
-        else pd.DataFrame(
-            columns=[
-                "email_i",
-                "email_j",
-                "evidence_type",
-                "evidence_value",
-                "evidence_rarity",
-                "artifact_df",
-                "seed_tier",
-                "seed_generator",
-                "rule_id",
-                "n_support_channels",
-                "semantic_support",
-                "evidence_fields_json",
-            ]
+    pbar_total = 6 + int(len(generators))
+    pbar = tqdm(total=pbar_total, desc=f"Anchor seed generation [{graph_id}]") if tqdm is not None else None
+    try:
+        nodes_df, edges_df, _cand, _summary, _g = load_anchor_graph_artifacts(
+            anchor_run_dir, load_graph_pickle=False
         )
-    )
-    if not seed_edges_all.empty:
-        seed_edges_all = seed_edges_all.drop_duplicates(
-            subset=["email_i", "email_j", "evidence_type", "evidence_value", "seed_generator", "rule_id"]
-        ).reset_index(drop=True)
-    hard_edges = seed_edges_all[seed_edges_all.get("seed_tier", "").astype(str) == "hard"].copy()
-    corroborated_edges = seed_edges_all[
-        seed_edges_all.get("seed_tier", "").astype(str) == "corroborated"
-    ].copy()
+        nodes_df["external_id"] = nodes_df["external_id"].astype(str)
+        edges_df["email_a"] = edges_df["email_a"].astype(str)
+        edges_df["email_b"] = edges_df["email_b"].astype(str)
+        if pbar is not None:
+            pbar.update(1)
 
-    out_root = Path(
-        out_cfg.get("output_root")
-        or (project_root / "analysis" / "output" / "anchor_seeds")
-    ).expanduser().resolve()
-    stage_name = str(out_cfg.get("stage_name") or "seed_generation")
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+        min_edge_weight = input_cfg.get("min_edge_weight")
+        if min_edge_weight is not None and "edge_weight" in edges_df.columns:
+            edges_df = edges_df[
+                pd.to_numeric(edges_df["edge_weight"], errors="coerce") >= float(min_edge_weight)
+            ].copy()
+        if pbar is not None:
+            pbar.update(1)
 
-    p_seed_all = out_dir / "seed_edges_all.csv"
-    p_seed_hard = out_dir / "seed_edges_hard.csv"
-    p_seed_corr = out_dir / "seed_edges_corroborated.csv"
-    seed_edges_all.to_csv(p_seed_all, index=False)
-    hard_edges.to_csv(p_seed_hard, index=False)
-    corroborated_edges.to_csv(p_seed_corr, index=False)
+        registry = _generator_registry()
+        seed_frames: list[pd.DataFrame] = []
+        for gcfg in generators:
+            if not isinstance(gcfg, dict):
+                if pbar is not None:
+                    pbar.update(1)
+                continue
+            name = str(gcfg.get("name") or "").strip().lower()
+            if not name:
+                if pbar is not None:
+                    pbar.update(1)
+                continue
+            if name not in registry:
+                raise ValueError(f"Unknown seed generator {name!r}. Available: {sorted(registry)}")
+            if bool(gcfg.get("enabled", True)):
+                sdf = registry[name](nodes_df, edges_df, gcfg)
+                if not sdf.empty:
+                    seed_frames.append(sdf)
+            if pbar is not None:
+                pbar.update(1)
 
-    include_all_nodes = bool(component_cfg.get("include_all_nodes", True))
-    if include_all_nodes:
-        all_node_ids = nodes_df["external_id"].astype(str).tolist()
-    else:
-        all_node_ids = sorted(
-            set(seed_edges_all["email_i"].astype(str)).union(set(seed_edges_all["email_j"].astype(str)))
-        ) if not seed_edges_all.empty else []
-    union_members_df, union_components_df, union_component_summary = _build_union_components(
-        all_node_ids=all_node_ids,
-        seed_edges_all=seed_edges_all,
-    )
-    p_union_members = out_dir / "seed_union_component_members.csv"
-    p_union_components = out_dir / "seed_union_components.csv"
-    union_members_df.to_csv(p_union_members, index=False)
-    union_components_df.to_csv(p_union_components, index=False)
+        seed_edges_all = (
+            pd.concat(seed_frames, axis=0, ignore_index=True)
+            if seed_frames
+            else pd.DataFrame(
+                columns=[
+                    "email_i",
+                    "email_j",
+                    "evidence_type",
+                    "evidence_value",
+                    "evidence_rarity",
+                    "artifact_df",
+                    "seed_tier",
+                    "seed_generator",
+                    "rule_id",
+                    "n_support_channels",
+                    "semantic_support",
+                    "evidence_fields_json",
+                ]
+            )
+        )
+        if not seed_edges_all.empty:
+            seed_edges_all = seed_edges_all.drop_duplicates(
+                subset=["email_i", "email_j", "evidence_type", "evidence_value", "seed_generator", "rule_id"]
+            ).reset_index(drop=True)
+        hard_edges = seed_edges_all[seed_edges_all.get("seed_tier", "").astype(str) == "hard"].copy()
+        corroborated_edges = seed_edges_all[
+            seed_edges_all.get("seed_tier", "").astype(str) == "corroborated"
+        ].copy()
+        if pbar is not None:
+            pbar.update(1)
 
-    gt_paths = _resolve_gt_paths(project_root, gt_cfg)
-    gt_maps = _load_gt_maps(gt_paths)
-    all_emails = nodes_df["external_id"].astype(str).tolist()
-    coverage = _coverage_diagnostics(
-        all_emails=all_emails,
-        hard_edges=hard_edges,
-        corroborated_edges=corroborated_edges,
-        union_edges=seed_edges_all,
-    )
-    touched_union = set(coverage["_touched_union"])
-    touched_hard = set(coverage["_touched_hard"])
-    touched_corr = set(coverage["_touched_corroborated"])
-    concentration = _component_concentration_diagnostics(
-        union_components_df=union_components_df,
-        seeded_emails=touched_union,
-    )
-    redundancy = _corroborated_redundancy_diagnostics(
-        hard_edges=hard_edges,
-        corroborated_edges=corroborated_edges,
-        all_node_ids=all_node_ids,
-    )
+        out_root = Path(
+            out_cfg.get("output_root")
+            or (project_root / "analysis" / "output" / "anchor_seeds")
+        ).expanduser().resolve()
+        stage_name = str(out_cfg.get("stage_name") or "seed_generation")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        out_dir = out_root / graph_id / f"{stage_name}_{stamp}"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-    gt_metrics: list[dict[str, Any]] = []
-    for p, label_map in gt_maps.items():
-        hard_pair_prec = _labeled_pair_precision(seed_edges_df=hard_edges, gt_label_map=label_map)
-        hard_comp_h = _component_homogeneity_on_gt(seed_edges_df=hard_edges, gt_label_map=label_map)
-        all_pair_prec = _labeled_pair_precision(seed_edges_df=seed_edges_all, gt_label_map=label_map)
-        all_comp_h = _component_homogeneity_on_gt(seed_edges_df=seed_edges_all, gt_label_map=label_map)
-        gt_ids = set(str(k) for k in label_map.keys())
-        gt_touched_union = gt_ids & touched_union
-        campaign_dist = _campaign_touch_distribution(
+        p_seed_all = out_dir / "seed_edges_all.csv"
+        p_seed_hard = out_dir / "seed_edges_hard.csv"
+        p_seed_corr = out_dir / "seed_edges_corroborated.csv"
+        seed_edges_all.to_csv(p_seed_all, index=False)
+        hard_edges.to_csv(p_seed_hard, index=False)
+        corroborated_edges.to_csv(p_seed_corr, index=False)
+
+        include_all_nodes = bool(component_cfg.get("include_all_nodes", True))
+        if include_all_nodes:
+            all_node_ids = nodes_df["external_id"].astype(str).tolist()
+        else:
+            all_node_ids = sorted(
+                set(seed_edges_all["email_i"].astype(str)).union(set(seed_edges_all["email_j"].astype(str)))
+            ) if not seed_edges_all.empty else []
+        union_members_df, union_components_df, union_component_summary = _build_union_components(
+            all_node_ids=all_node_ids,
+            seed_edges_all=seed_edges_all,
+        )
+        p_union_members = out_dir / "seed_union_component_members.csv"
+        p_union_components = out_dir / "seed_union_components.csv"
+        union_members_df.to_csv(p_union_members, index=False)
+        union_components_df.to_csv(p_union_components, index=False)
+
+        gt_paths = _resolve_gt_paths(project_root, gt_cfg)
+        gt_maps = _load_gt_maps(gt_paths)
+        all_emails = nodes_df["external_id"].astype(str).tolist()
+        coverage = _coverage_diagnostics(
+            all_emails=all_emails,
+            hard_edges=hard_edges,
+            corroborated_edges=corroborated_edges,
+            union_edges=seed_edges_all,
+        )
+        touched_union = set(coverage["_touched_union"])
+        concentration = _component_concentration_diagnostics(
+            union_components_df=union_components_df,
+            seeded_emails=touched_union,
+        )
+        redundancy = _corroborated_redundancy_diagnostics(
+            hard_edges=hard_edges,
+            corroborated_edges=corroborated_edges,
+            all_node_ids=all_node_ids,
+        )
+
+        gt_metrics: list[dict[str, Any]] = []
+        for p, label_map in gt_maps.items():
+            hard_pair_prec = _labeled_pair_precision(seed_edges_df=hard_edges, gt_label_map=label_map)
+            hard_comp_h = _component_homogeneity_on_gt(seed_edges_df=hard_edges, gt_label_map=label_map)
+            all_pair_prec = _labeled_pair_precision(seed_edges_df=seed_edges_all, gt_label_map=label_map)
+            all_comp_h = _component_homogeneity_on_gt(seed_edges_df=seed_edges_all, gt_label_map=label_map)
+            gt_ids = set(str(k) for k in label_map.keys())
+            gt_touched_union = gt_ids & touched_union
+            campaign_dist = _campaign_touch_distribution(
+                union_members_df=union_members_df,
+                union_edges_df=seed_edges_all,
+                gt_label_map=label_map,
+                touched_union=touched_union,
+            )
+            purity_spread = _union_component_purity_spread(
+                union_members_df=union_members_df,
+                gt_label_map=label_map,
+                mixed_threshold=float(component_cfg.get("mixed_component_threshold", 0.90)),
+            )
+            gt_metrics.append(
+                {
+                    "gt_path": p,
+                    "gt_labeled_emails_total": int(len(gt_ids)),
+                    "gt_labeled_emails_touched_by_union": int(len(gt_touched_union)),
+                    "pct_gt_labeled_emails_touched_by_union": float(len(gt_touched_union) / max(1, len(gt_ids))),
+                    "hard": {**hard_pair_prec, **hard_comp_h},
+                    "union_edges": {**all_pair_prec, **all_comp_h},
+                    "union_components": {
+                        **_b_cubed_precision(members_df=union_members_df, gt_label_map=label_map),
+                        **_labeled_campaign_touch_rate(
+                            touched_email_ids=touched_union,
+                            gt_label_map=label_map,
+                        ),
+                        "purity_spread": purity_spread,
+                        "campaign_touch_distribution": campaign_dist,
+                    },
+                }
+            )
+        if pbar is not None:
+            pbar.update(1)
+
+        manual_seed = int(component_cfg.get("manual_review_random_seed", 1337))
+        manual_gt_map = next(iter(gt_maps.values()), None)
+        manual_review_csv = _manual_review_sample(
+            out_dir=out_dir,
+            seed_edges_all=seed_edges_all,
+            hard_edges=hard_edges,
+            corroborated_edges=corroborated_edges,
             union_members_df=union_members_df,
-            union_edges_df=seed_edges_all,
-            gt_label_map=label_map,
-            touched_union=touched_union,
-        )
-        purity_spread = _union_component_purity_spread(
-            union_members_df=union_members_df,
-            gt_label_map=label_map,
-            mixed_threshold=float(component_cfg.get("mixed_component_threshold", 0.90)),
-        )
-        gt_metrics.append(
-            {
-                "gt_path": p,
-                "gt_labeled_emails_total": int(len(gt_ids)),
-                "gt_labeled_emails_touched_by_union": int(len(gt_touched_union)),
-                "pct_gt_labeled_emails_touched_by_union": float(len(gt_touched_union) / max(1, len(gt_ids))),
-                "hard": {**hard_pair_prec, **hard_comp_h},
-                "union_edges": {**all_pair_prec, **all_comp_h},
-                "union_components": {
-                    **_b_cubed_precision(members_df=union_members_df, gt_label_map=label_map),
-                    **_labeled_campaign_touch_rate(
-                        touched_email_ids=touched_union,
-                        gt_label_map=label_map,
-                    ),
-                    "purity_spread": purity_spread,
-                    "campaign_touch_distribution": campaign_dist,
-                },
-            }
+            gt_label_map=manual_gt_map,
+            random_seed=manual_seed,
         )
 
-    manual_seed = int(component_cfg.get("manual_review_random_seed", 1337))
-    manual_gt_map = next(iter(gt_maps.values()), None)
-    manual_review_csv = _manual_review_sample(
-        out_dir=out_dir,
-        seed_edges_all=seed_edges_all,
-        hard_edges=hard_edges,
-        corroborated_edges=corroborated_edges,
-        union_members_df=union_members_df,
-        gt_label_map=manual_gt_map,
-        random_seed=manual_seed,
-    )
+        coverage_public = {k: v for k, v in coverage.items() if not str(k).startswith("_")}
+        if gt_maps:
+            gt_union_ids: set[str] = set()
+            for lm in gt_maps.values():
+                gt_union_ids |= {str(k) for k in lm.keys()}
+            gt_touched = gt_union_ids & touched_union
+            coverage_public.update(
+                {
+                    "gt_labeled_emails_total": int(len(gt_union_ids)),
+                    "gt_labeled_emails_touched_by_union": int(len(gt_touched)),
+                    "pct_gt_labeled_emails_touched_by_union": float(len(gt_touched) / max(1, len(gt_union_ids))),
+                }
+            )
 
-    # Strip internal working sets before writing JSON.
-    coverage_public = {k: v for k, v in coverage.items() if not str(k).startswith("_")}
-    if gt_maps:
-        gt_union_ids: set[str] = set()
-        for lm in gt_maps.values():
-            gt_union_ids |= {str(k) for k in lm.keys()}
-        gt_touched = gt_union_ids & touched_union
-        coverage_public.update(
-            {
-                "gt_labeled_emails_total": int(len(gt_union_ids)),
-                "gt_labeled_emails_touched_by_union": int(len(gt_touched)),
-                "pct_gt_labeled_emails_touched_by_union": float(len(gt_touched) / max(1, len(gt_union_ids))),
-            }
-        )
-
-    summary = {
-        "metadata": {
-            "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "graph_run_id": graph_run_id,
-            "anchor_run_dir": str(anchor_run_dir),
-            "seed_output_dir": str(out_dir),
-            "include_all_nodes_in_components": bool(include_all_nodes),
-        },
-        "hard": {
-            "metrics": _seed_graph_metrics(hard_edges),
-            "per_channel_ablation": _channel_ablation(hard_edges),
-        },
-        "corroborated": {
-            "metrics": _seed_graph_metrics(corroborated_edges),
-            "per_channel_ablation": _channel_ablation(corroborated_edges),
-            "corroborated_specific_metrics": _corroborated_specific_metrics(corroborated_edges, hard_edges),
-        },
-        "union_edges": {
-            "metrics": _seed_graph_metrics(seed_edges_all),
-        },
-        "union_components": {
-            **union_component_summary,
-            "concentration_diagnostics": concentration,
-        },
-        "gt_eval": gt_metrics,
-        "diagnostics": {
-            "seed_coverage": coverage_public,
-            "corroborated_redundancy": redundancy,
-            "manual_review_sample_csv": str(manual_review_csv),
-        },
-    }
-    p_summary = out_dir / "anchor_seed_summary.json"
-    p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-    return {
-        "output_dir": str(out_dir),
-        "seed_edges_all_csv": str(p_seed_all),
-        "seed_edges_hard_csv": str(p_seed_hard),
-        "seed_edges_corroborated_csv": str(p_seed_corr),
-        "seed_union_component_members_csv": str(p_union_members),
-        "seed_union_components_csv": str(p_union_components),
-        "summary_json": str(p_summary),
-    }
+        summary = {
+            "metadata": {
+                "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "graph_id": graph_id,
+                "anchor_run_dir": str(anchor_run_dir),
+                "seed_output_dir": str(out_dir),
+                "include_all_nodes_in_components": bool(include_all_nodes),
+            },
+            "hard": {
+                "metrics": _seed_graph_metrics(hard_edges),
+                "per_channel_ablation": _channel_ablation(hard_edges),
+            },
+            "corroborated": {
+                "metrics": _seed_graph_metrics(corroborated_edges),
+                "per_channel_ablation": _channel_ablation(corroborated_edges),
+                "corroborated_specific_metrics": _corroborated_specific_metrics(corroborated_edges, hard_edges),
+            },
+            "union_edges": {
+                "metrics": _seed_graph_metrics(seed_edges_all),
+            },
+            "union_components": {
+                **union_component_summary,
+                "concentration_diagnostics": concentration,
+            },
+            "gt_eval": gt_metrics,
+            "diagnostics": {
+                "seed_coverage": coverage_public,
+                "corroborated_redundancy": redundancy,
+                "manual_review_sample_csv": str(manual_review_csv),
+            },
+        }
+        p_summary = out_dir / "anchor_seed_summary.json"
+        p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+        if pbar is not None:
+            pbar.update(1)
+        return {
+            "output_dir": str(out_dir),
+            "seed_edges_all_csv": str(p_seed_all),
+            "seed_edges_hard_csv": str(p_seed_hard),
+            "seed_edges_corroborated_csv": str(p_seed_corr),
+            "seed_union_component_members_csv": str(p_union_members),
+            "seed_union_components_csv": str(p_union_components),
+            "summary_json": str(p_summary),
+        }
+    finally:
+        if pbar is not None:
+            pbar.close()
 

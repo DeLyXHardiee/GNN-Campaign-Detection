@@ -1,8 +1,5 @@
 {
-  "run": {
-    "graph_run_id": "deafult_anchor_seeds",
-    "anchor_output_root": "analysis/output/anchor_graph"
-  },
+  "run": {},
   "input": {
     "min_edge_weight": null
   },
@@ -72,7 +69,6 @@
     "include_all_nodes": true
   },
   "output": {
-    "output_root": "analysis/output/anchor_seeds",
     "stage_name": "seed_generation"
   }
 }

@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 
 
@@ -63,7 +64,7 @@ def _resolve_latest_seed_dir(
 
 
 def _load_seed_pairs(seed_edges_all_csv: Path) -> set[tuple[str, str]]:
-    df = pd.read_csv(seed_edges_all_csv)
+    df = pd.read_csv(seed_edges_all_csv, low_memory=False)
     if df.empty:
         return set()
     if not {"email_i", "email_j"}.issubset(df.columns):
@@ -233,16 +234,14 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
     out_cfg = config.get("output") or {}
     seed_cfg = config.get("seed") or {}
 
-    graph_run_id = str(run_cfg.get("graph_run_id") or "").strip()
-    if not graph_run_id:
-        raise ValueError("run.graph_run_id is required")
+    graph_id = resolve_graph_id(run_cfg)
 
     project_root = gh.find_project_root()
 
     anchor_output_root = Path(
         run_cfg.get("anchor_output_root") or (project_root / "analysis" / "output" / "anchor_graph")
     ).expanduser().resolve()
-    anchor_run_dir = anchor_output_root / graph_run_id
+    anchor_run_dir = anchor_output_root / graph_id
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
@@ -253,7 +252,7 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
     seed_stage_prefix = str(seed_cfg.get("seed_stage_name_prefix") or "seed_generation_")
     seed_dir = _resolve_latest_seed_dir(
         seed_output_root=seed_output_root,
-        graph_run_id=graph_run_id,
+        graph_run_id=graph_id,
         seed_stage_name_prefix=seed_stage_prefix,
     )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
@@ -265,7 +264,7 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
     out_root = Path(out_cfg.get("output_root") or (project_root / "analysis" / "output" / "anchor_candidates")).expanduser().resolve()
     stage_name = str(out_cfg.get("stage_name") or "candidate_generation")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_dir = out_root / graph_run_id / f"{stage_name}_{stamp}"
+    out_dir = out_root / graph_id / f"{stage_name}_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     gen_name = str(candidate_cfg.get("generator") or "rare_artifact_v1").strip().lower()
@@ -286,7 +285,7 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
 
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "graph_run_id": graph_run_id,
+        "graph_id": graph_id,
         "anchor_run_dir": str(anchor_run_dir),
         "seed_stage_dir": str(seed_dir),
         "generator": gen_name,

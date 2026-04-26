@@ -1,0 +1,12 @@
+{
+  "graph_setup": {
+    "paths": {
+      "anchor_config": "analysis/configs/anchor_graph.default.json",
+      "seed_config": "analysis/configs/anchor_seed.default.json",
+      "candidate_config": "analysis/configs/anchor_candidate_generation.default.json",
+      "pair_training": {
+        "graph_meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json"
+      }
+    }
+  }
+}

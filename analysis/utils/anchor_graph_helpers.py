@@ -17,6 +17,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from analysis.utils import graph_structure_helpers as gh
 from analysis.utils import semantic_shard_helpers as ssh
+from analysis.utils.config_run_fields import resolve_graph_id
 
 try:
     from tqdm.auto import tqdm
@@ -570,7 +571,6 @@ def _resolve_unified_channel_configuration(
     """
     channels_cfg = config.get("channels") or {}
     cand_cfg = config.get("candidate_generation") or {}
-    weight_cfg = config.get("weighting") or {}
 
     settings = channels_cfg.get("channel_settings")
     if not isinstance(settings, dict) or not settings:
@@ -585,11 +585,10 @@ def _resolve_unified_channel_configuration(
 
     sem_raw = settings.get("semantic", {}) if isinstance(settings.get("semantic"), dict) else {}
     semantic = {
-        "candidate_enabled": bool(sem_raw.get("candidate_enabled", True)),
+        "candidate_enabled": bool(sem_raw.get("edge_create_enabled", sem_raw.get("candidate_enabled", True))),
         "score_enabled": bool(sem_raw.get("score_enabled", True)),
         "top_k": int(sem_raw.get("top_k", cand_cfg.get("semantic_top_k", 20))),
         "min_cos": float(sem_raw.get("min_cos", cand_cfg.get("semantic_min_cos", 0.80))),
-        "weight": float(sem_raw.get("weight", weight_cfg.get("semantic_weight", 0.45))),
     }
 
     for raw_key, raw_cfg in settings.items():
@@ -598,7 +597,13 @@ def _resolve_unified_channel_configuration(
         if not isinstance(raw_cfg, dict):
             raw_cfg = {}
         enabled = bool(raw_cfg.get("enabled", True))
-        candidate_enabled = bool(raw_cfg.get("candidate_enabled", enabled))
+        # New explicit names are aliases; preserve old behavior/values.
+        candidate_enabled = bool(
+            raw_cfg.get(
+                "edge_create_enabled",
+                raw_cfg.get("candidate_enabled", enabled),
+            )
+        )
         score_enabled = bool(raw_cfg.get("score_enabled", enabled))
         ch = _normalize_channel_to_set_col(str(raw_key))
 
@@ -623,9 +628,6 @@ def build_anchor_weighted_edges(
     semantic_cosine_map: dict[tuple[int, int], float],
     scoring_channels: tuple[str, ...],
     channel_scoring: dict[str, AnchorChannelScoring],
-    semantic_weight: float = 0.45,
-    infra_weight: float = 0.45,
-    temporal_weight: float = 0.10,
     temporal_decay_days: float = 30.0,
     temporal_overlap_seconds: float = 3600.0,
 ) -> pd.DataFrame:
@@ -655,7 +657,6 @@ def build_anchor_weighted_edges(
         a, b = node_recs[i], node_recs[j]
         pair = (i, j) if i < j else (j, i)
         sem = float(semantic_cosine_map.get(pair, 0.0))
-        sem_pos = max(0.0, sem)
 
         rec: dict[str, Any] = {
             "email_a": str(a["external_id"]),
@@ -664,7 +665,6 @@ def build_anchor_weighted_edges(
             "idx_b": int(j),
             "semantic_score": sem,
         }
-        infra_score = 0.0
         active_bases: list[str] = []
         for ch in active_channels:
             base = _base_channel_name(ch)
@@ -685,13 +685,6 @@ def build_anchor_weighted_edges(
                 raw = _idf_raw(n_docs, df)
                 eff = float(spec.idf_scale) * (max(0.0, raw) ** float(spec.idf_exponent))
                 idf_sum += eff
-            contrib_pre_cap = float(spec.weight) * (1.0 - math.exp(-idf_sum)) if idf_sum > 0 else 0.0
-            contrib = (
-                min(contrib_pre_cap, float(spec.contribution_cap))
-                if spec.contribution_cap is not None
-                else contrib_pre_cap
-            )
-            infra_score += contrib
             has_overlap = bool(cnt > 0)
             if has_overlap:
                 active_bases.append(base)
@@ -700,8 +693,6 @@ def build_anchor_weighted_edges(
             rec[f"{base}_jaccard"] = jac
             rec[f"shared_{base}_idf_sum"] = float(idf_sum)
             rec[f"shared_{base}_n_cutoff_filtered"] = int(n_cut)
-            rec[f"infra_contrib_{base}_pre_cap"] = float(contrib_pre_cap)
-            rec[f"infra_contrib_{base}"] = float(contrib)
 
         t_overlap, t_gap_days, t_score = _temporal_score(
             float(a.get("ts", np.nan)),
@@ -709,16 +700,9 @@ def build_anchor_weighted_edges(
             decay_days=float(temporal_decay_days),
             overlap_seconds=float(temporal_overlap_seconds),
         )
-        edge_weight = (
-            float(semantic_weight) * sem_pos
-            + float(infra_weight) * float(infra_score)
-            + float(temporal_weight) * float(t_score)
-        )
-        rec["infra_score"] = float(infra_score)
         rec["temporal_overlap"] = float(t_overlap)
         rec["temporal_gap_days"] = float(t_gap_days) if pd.notna(t_gap_days) else np.nan
         rec["temporal_score"] = float(t_score)
-        rec["edge_weight"] = float(edge_weight)
         rec["active_channel_list"] = json.dumps(sorted(active_bases), ensure_ascii=False)
         rec["n_active_channels"] = int(len(active_bases))
         rows.append(rec)
@@ -822,8 +806,11 @@ def validate_anchor_graph_artifacts(
     *,
     edges_df: pd.DataFrame,
     required_channels: tuple[str, ...],
+    require_edge_weight: bool = True,
 ) -> dict[str, Any]:
-    req = {"email_a", "email_b", "edge_weight", "active_channel_list", "n_active_channels"}
+    req = {"email_a", "email_b", "active_channel_list", "n_active_channels"}
+    if require_edge_weight:
+        req.add("edge_weight")
     missing = sorted(c for c in req if c not in edges_df.columns)
     has_mismatch = 0
     if not edges_df.empty and "active_channel_list" in edges_df.columns and "n_active_channels" in edges_df.columns:
@@ -863,7 +850,7 @@ def save_anchor_graph_artifacts(
     out = output_dir.expanduser().resolve()
     out.mkdir(parents=True, exist_ok=True)
     p_nodes = out / "anchor_graph_nodes.csv"
-    p_edges = out / "anchor_graph_edges_weighted.csv"
+    p_edges = out / "anchor_graph_edges_unscored.csv"
     p_cand = out / "anchor_graph_candidates.csv"
     p_summary = out / "anchor_graph_summary.json"
     p_graph = out / "anchor_graph.graph.pkl"
@@ -879,7 +866,7 @@ def save_anchor_graph_artifacts(
     p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     paths: dict[str, str] = {
         "nodes_csv": str(p_nodes),
-        "edges_csv": str(p_edges),
+        "edges_unscored_csv": str(p_edges),
         "summary_json": str(p_summary),
     }
     if write_candidates:
@@ -892,6 +879,35 @@ def save_anchor_graph_artifacts(
     return paths
 
 
+def score_anchor_pairgraph_handcrafted(
+    *,
+    unscored_df: pd.DataFrame,
+    semantic_weight: float,
+    infra_weight: float,
+    temporal_weight: float,
+    score_mode: str = "anchor_handcrafted_v1",
+) -> pd.DataFrame:
+    """
+    Score an unscored anchor PairGraph using the existing handcrafted rule.
+    """
+    if unscored_df.empty:
+        out = unscored_df.copy()
+        out["edge_weight"] = pd.Series(dtype=float)
+        out["score_mode"] = score_mode
+        return out
+    out = unscored_df.copy()
+    sem = pd.to_numeric(out.get("semantic_score"), errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+    infra = pd.to_numeric(out.get("infra_score"), errors="coerce").fillna(0.0)
+    temp = pd.to_numeric(out.get("temporal_score"), errors="coerce").fillna(0.0)
+    out["edge_weight"] = (
+        float(semantic_weight) * sem
+        + float(infra_weight) * infra
+        + float(temporal_weight) * temp
+    ).astype(float)
+    out["score_mode"] = str(score_mode)
+    return out
+
+
 def load_anchor_graph_artifacts(
     output_dir: str | Path,
     *,
@@ -899,7 +915,12 @@ def load_anchor_graph_artifacts(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None, dict[str, Any], nx.Graph | None]:
     d = Path(output_dir).expanduser().resolve()
     nodes = pd.read_csv(d / "anchor_graph_nodes.csv")
-    edges = pd.read_csv(d / "anchor_graph_edges_weighted.csv")
+    p_edges_unscored = d / "anchor_graph_edges_unscored.csv"
+    if not p_edges_unscored.is_file():
+        raise FileNotFoundError(
+            f"Missing anchor edge table in {d}; expected anchor_graph_edges_unscored.csv"
+        )
+    edges = pd.read_csv(p_edges_unscored)
     p_cand = d / "anchor_graph_candidates.csv"
     candidates = pd.read_csv(p_cand) if p_cand.is_file() else None
     summary = json.loads((d / "anchor_graph_summary.json").read_text(encoding="utf-8"))
@@ -979,12 +1000,11 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
     inputs = config.get("inputs") or {}
     filters = config.get("filters") or {}
     cand_cfg = config.get("candidate_generation") or {}
-    weight_cfg = config.get("weighting") or {}
     persistence_cfg = config.get("persistence") or {}
     node_fields_cfg = config.get("node_fields") or {}
 
-    graph_run_id = str(run_cfg.get("graph_run_id") or "anchor_graph_run").strip() or "anchor_graph_run"
-    pbar = tqdm(total=7, desc=f"Building anchor graph [{graph_run_id}]") if tqdm is not None else None
+    graph_id = resolve_graph_id(run_cfg, default_if_missing="anchor_graph_run")
+    pbar = tqdm(total=7, desc=f"Building anchor graph [{graph_id}]") if tqdm is not None else None
     try:
         default_paths = gh.resolve_graph_analysis_paths()
         project_root = gh.find_project_root()
@@ -1059,14 +1079,25 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             semantic_cosine_map=sem_cos_map,
             scoring_channels=scoring_channels,
             channel_scoring=channel_scoring,
-            semantic_weight=(
-                float(semantic_cfg["weight"]) if bool(semantic_cfg["score_enabled"]) else 0.0
-            ),
-            infra_weight=float(weight_cfg.get("infra_weight", 0.45)),
-            temporal_weight=float(weight_cfg.get("temporal_weight", 0.10)),
-            temporal_decay_days=float(weight_cfg.get("temporal_decay_days", 30.0)),
-            temporal_overlap_seconds=float(weight_cfg.get("temporal_overlap_seconds", 3600.0)),
+            temporal_decay_days=30.0,
+            temporal_overlap_seconds=3600.0,
         )
+        edges_df["email_i"] = edges_df["email_a"].astype(str)
+        edges_df["email_j"] = edges_df["email_b"].astype(str)
+        edges_df["graph_kind"] = "anchor"
+        edges_df["graph_run_id"] = graph_id
+        # Anchor graph does not use seed/candidate generator provenance; semantic candidate is exposed.
+        edges_df["from_seed"] = False
+        if "from_semantic_candidate" in edges_df.columns:
+            edges_df["from_semantic"] = edges_df["from_semantic_candidate"].fillna(False).astype(bool)
+        else:
+            edges_df["from_semantic"] = False
+        edges_df["from_rare_artifact"] = False
+        edges_df["from_component"] = False
+        edges_df["from_2hop"] = False
+        edges_df["source_count"] = pd.to_numeric(
+            edges_df.get("n_active_channels"), errors="coerce"
+        ).fillna(0).astype(int)
         if pbar is not None:
             pbar.update(1)
 
@@ -1074,18 +1105,19 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         validation = validate_anchor_graph_artifacts(
             edges_df=edges_df,
             required_channels=required_channels,
+            require_edge_weight=False,
         )
 
         out_base = Path(
             persistence_cfg.get("output_dir")
             or (project_root / "analysis" / "output" / "anchor_graph")
         ).expanduser().resolve()
-        out_dir = (out_base / graph_run_id).resolve()
+        out_dir = (out_base / graph_id).resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         created_at_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
         run_meta = {
             "created_at_utc": created_at_utc,
-            "graph_run_id": graph_run_id,
+            "graph_run_id": graph_id,
             "output_dir": str(out_dir),
             "config": config,
         }
@@ -1104,22 +1136,13 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             node_columns=node_cols_for_graph,
         )
         summary = {
-            "graph_run_id": graph_run_id,
+            "graph_run_id": graph_id,
             "created_at_utc": created_at_utc,
             "output_dir": str(out_dir),
             "run_config_json": str(p_run_cfg),
             "n_nodes": int(len(nodes_df)),
             "n_candidates": int(len(candidates_df)),
             "n_edges": int(len(edges_df)),
-            "edge_weight_min": float(pd.to_numeric(edges_df.get("edge_weight"), errors="coerce").min())
-            if not edges_df.empty and "edge_weight" in edges_df.columns
-            else float("nan"),
-            "edge_weight_max": float(pd.to_numeric(edges_df.get("edge_weight"), errors="coerce").max())
-            if not edges_df.empty and "edge_weight" in edges_df.columns
-            else float("nan"),
-            "edge_weight_mean": float(pd.to_numeric(edges_df.get("edge_weight"), errors="coerce").mean())
-            if not edges_df.empty and "edge_weight" in edges_df.columns
-            else float("nan"),
             "channel_prevalence": _channel_prevalence(edges_df),
             "candidate_summary": candidate_summary,
             "semantic_config_resolved": semantic_cfg,
