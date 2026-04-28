@@ -4,14 +4,16 @@ import json
 import math
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
 
 from analysis.utils.anchor_candidate_eval_helpers import _pair
 from analysis.utils.pair_graph_contract import (
+    GRAPH_KIND_SEMANTIC_SHARD,
     GRAPH_KIND_SEED_CANDIDATE,
     ensure_scored_contract,
     validate_score_mode_target_compatibility,
@@ -19,6 +21,32 @@ from analysis.utils.pair_graph_contract import (
 from analysis.utils import graph_structure_helpers as gh
 
 ScorerFn = Callable[..., pd.DataFrame]
+
+
+@dataclass(frozen=True)
+class ScorerSpec:
+    name: str
+    fn: ScorerFn
+    graph_kinds: tuple[str, ...]
+    param_keys: tuple[str, ...]
+    supports_thresholded_output: bool = False
+    required_payload_keys: tuple[str, ...] = ()
+
+
+@dataclass
+class ScorerResult:
+    scored_all: pd.DataFrame
+    scored_filtered: pd.DataFrame | None
+    metadata: dict[str, Any]
+
+
+class SeedCandidatePayload(TypedDict):
+    candidate_union_df: pd.DataFrame
+    seed_edges_df: pd.DataFrame
+
+
+class SemanticShardPayload(TypedDict):
+    shard_edges_df: pd.DataFrame
 
 
 def _ensure_gnn_on_path() -> None:
@@ -366,9 +394,113 @@ def score_seed_candidate_pu(
     return ensure_scored_contract(all_out), ensure_scored_contract(thr_out)
 
 
+def score_semantic_shard_handcrafted(
+    *,
+    shard_edges_df: pd.DataFrame,
+    scoring_cfg: dict[str, Any] | None = None,
+    score_mode: str = "semantic_shard_handcrafted_v1",
+) -> pd.DataFrame:
+    """Compute shard-edge weights from semantic/infra/temporal components."""
+    cfg = dict(scoring_cfg or {})
+    w_sem = float(cfg.get("w_semantic", 0.45))
+    w_infra = float(cfg.get("w_infra", 0.45))
+    w_temporal = float(cfg.get("w_temporal", 0.10))
+    min_weight = float(cfg.get("min_edge_weight", 0.0))
+
+    df = shard_edges_df.copy()
+    if "shard_a" not in df.columns or "shard_b" not in df.columns:
+        if "email_i" in df.columns and "email_j" in df.columns:
+            df["shard_a"] = df["email_i"].astype(str)
+            df["shard_b"] = df["email_j"].astype(str)
+        else:
+            raise ValueError("semantic shard scorer requires shard_a/shard_b or email_i/email_j columns")
+    df["shard_a"] = df["shard_a"].astype(str)
+    df["shard_b"] = df["shard_b"].astype(str)
+    sem = pd.to_numeric(df.get("centroid_cosine"), errors="coerce").fillna(0.0).clip(lower=0.0)
+    infra = pd.to_numeric(df.get("infra_score"), errors="coerce").fillna(0.0).clip(lower=0.0)
+    temporal = pd.to_numeric(df.get("temporal_score"), errors="coerce").fillna(0.0).clip(lower=0.0)
+    edge_weight = (w_sem * sem) + (w_infra * infra) + (w_temporal * temporal)
+    df["edge_weight"] = pd.to_numeric(edge_weight, errors="coerce").fillna(0.0)
+    if min_weight > 0.0:
+        df = df[df["edge_weight"] >= float(min_weight)].copy()
+    df["score_mode"] = str(score_mode)
+    df["email_i"] = df["shard_a"].astype(str)
+    df["email_j"] = df["shard_b"].astype(str)
+    _ = ensure_scored_contract(df[["email_i", "email_j", "edge_weight", "score_mode"]])
+    return df
+
+
+def score_semantic_shard_affine(
+    *,
+    shard_edges_df: pd.DataFrame,
+    scoring_cfg: dict[str, Any] | None = None,
+    score_mode: str = "semantic_shard_affine_v1",
+) -> pd.DataFrame:
+    """Affine transform of existing shard edge_weight with optional clipping."""
+    cfg = dict(scoring_cfg or {})
+    scale = float(cfg.get("scale", 1.0))
+    bias = float(cfg.get("bias", 0.0))
+    clip_min = float(cfg.get("clip_min", 0.0))
+    clip_max_raw = cfg.get("clip_max")
+    clip_max = None if clip_max_raw in (None, "") else float(clip_max_raw)
+
+    df = shard_edges_df.copy()
+    if "shard_a" not in df.columns or "shard_b" not in df.columns:
+        if "email_i" in df.columns and "email_j" in df.columns:
+            df["shard_a"] = df["email_i"].astype(str)
+            df["shard_b"] = df["email_j"].astype(str)
+        else:
+            raise ValueError("semantic shard scorer requires shard_a/shard_b or email_i/email_j columns")
+    base = pd.to_numeric(df.get("edge_weight"), errors="coerce").fillna(0.0)
+    ew = (base * scale) + bias
+    ew = ew.clip(lower=clip_min)
+    if clip_max is not None:
+        ew = ew.clip(upper=float(clip_max))
+    df["edge_weight"] = pd.to_numeric(ew, errors="coerce").fillna(0.0)
+    df["score_mode"] = str(score_mode)
+    df["email_i"] = df["shard_a"].astype(str)
+    df["email_j"] = df["shard_b"].astype(str)
+    _ = ensure_scored_contract(df[["email_i", "email_j", "edge_weight", "score_mode"]])
+    return df
+
+
 SCORER_REGISTRY: dict[str, ScorerFn] = {
     "seed_candidate_handcrafted_v1": score_seed_candidate_handcrafted,
     "seed_candidate_pu_v1": score_seed_candidate_pu,
+    "semantic_shard_handcrafted_v1": score_semantic_shard_handcrafted,
+    "semantic_shard_affine_v1": score_semantic_shard_affine,
+}
+
+SCORER_SPECS: dict[str, ScorerSpec] = {
+    "seed_candidate_handcrafted_v1": ScorerSpec(
+        name="seed_candidate_handcrafted_v1",
+        fn=score_seed_candidate_handcrafted,
+        graph_kinds=(GRAPH_KIND_SEED_CANDIDATE,),
+        param_keys=("handcrafted",),
+        required_payload_keys=("candidate_union_df", "seed_edges_df"),
+    ),
+    "seed_candidate_pu_v1": ScorerSpec(
+        name="seed_candidate_pu_v1",
+        fn=score_seed_candidate_pu,
+        graph_kinds=(GRAPH_KIND_SEED_CANDIDATE,),
+        param_keys=("pu",),
+        supports_thresholded_output=True,
+        required_payload_keys=("candidate_union_df",),
+    ),
+    "semantic_shard_handcrafted_v1": ScorerSpec(
+        name="semantic_shard_handcrafted_v1",
+        fn=score_semantic_shard_handcrafted,
+        graph_kinds=(GRAPH_KIND_SEMANTIC_SHARD,),
+        param_keys=("semantic_shard_handcrafted", "semantic_shard"),
+        required_payload_keys=("shard_edges_df",),
+    ),
+    "semantic_shard_affine_v1": ScorerSpec(
+        name="semantic_shard_affine_v1",
+        fn=score_semantic_shard_affine,
+        graph_kinds=(GRAPH_KIND_SEMANTIC_SHARD,),
+        param_keys=("semantic_shard_affine", "semantic_shard"),
+        required_payload_keys=("shard_edges_df",),
+    ),
 }
 
 
@@ -380,4 +512,60 @@ def validate_scorer_target(score_mode: str, graph_kind: str) -> None:
 SCORER_TARGET_GRAPH_KINDS: dict[str, tuple[str, ...]] = {
     "seed_candidate_handcrafted_v1": (GRAPH_KIND_SEED_CANDIDATE,),
     "seed_candidate_pu_v1": (GRAPH_KIND_SEED_CANDIDATE,),
+    "semantic_shard_handcrafted_v1": (GRAPH_KIND_SEMANTIC_SHARD,),
+    "semantic_shard_affine_v1": (GRAPH_KIND_SEMANTIC_SHARD,),
 }
+
+
+def resolve_score_params(score_mode: str, params_root: dict[str, Any]) -> dict[str, Any]:
+    spec = SCORER_SPECS.get(str(score_mode))
+    if spec is None:
+        return {}
+    for k in spec.param_keys:
+        v = params_root.get(k)
+        if isinstance(v, dict):
+            return dict(v)
+    return {}
+
+
+def apply_scorer(
+    *,
+    score_mode: str,
+    graph_kind: str,
+    score_params: dict[str, Any],
+    payload: dict[str, Any],
+) -> ScorerResult:
+    validate_scorer_target(score_mode=score_mode, graph_kind=graph_kind)
+    if score_mode not in SCORER_REGISTRY:
+        raise ValueError(f"Unknown score_mode {score_mode!r}. Available: {sorted(SCORER_REGISTRY)}")
+    spec = SCORER_SPECS[score_mode]
+    miss = [k for k in spec.required_payload_keys if k not in payload]
+    if miss:
+        raise ValueError(f"Missing scorer payload keys for {score_mode}: {miss}")
+    fn = SCORER_REGISTRY[score_mode]
+    if score_mode == "seed_candidate_handcrafted_v1":
+        scored_all = fn(
+            candidate_union_df=payload["candidate_union_df"],
+            seed_edges_df=payload["seed_edges_df"],
+            scoring_cfg=score_params,
+        )
+        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata={"score_mode": score_mode})
+    if score_mode == "seed_candidate_pu_v1":
+        scored_all, scored_filtered = fn(
+            candidate_union_df=payload["candidate_union_df"],
+            scoring_cfg=score_params,
+            score_mode=score_mode,
+        )
+        return ScorerResult(
+            scored_all=scored_all,
+            scored_filtered=scored_filtered,
+            metadata={"score_mode": score_mode},
+        )
+    if score_mode in {"semantic_shard_handcrafted_v1", "semantic_shard_affine_v1"}:
+        scored_all = fn(
+            shard_edges_df=payload["shard_edges_df"],
+            scoring_cfg=score_params,
+            score_mode=score_mode,
+        )
+        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata={"score_mode": score_mode})
+    raise ValueError(f"Unsupported score_mode envelope: {score_mode!r}")

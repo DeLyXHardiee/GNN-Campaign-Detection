@@ -16,7 +16,11 @@ import pandas as pd
 
 from analysis.pipelines.run_experiment import run_experiment
 from analysis.utils.config_run_fields import resolve_graph_id, resolve_scoring_run_id
-from analysis.utils.pair_graph_contract import ensure_unscored_contract, migrate_unscored_graph_id_column
+from analysis.utils.pair_graph_contract import (
+    ensure_unscored_contract,
+    migrate_unscored_graph_id_column,
+    validate_score_mode_target_compatibility,
+)
 
 
 def test_resolve_graph_id_requires_value() -> None:
@@ -78,8 +82,14 @@ def test_run_experiment_dry_run_score_only_without_graph_bundle(tmp_path: Path) 
     assert out["dry_run"] is True
     assert out["manifest"]["graph_id"] == "g_test"
     assert out["manifest"]["scoring_run_id"] == "sc_test"
+    assert out["manifest"]["manifest_version"] == "2.0"
     assert len(out["community_results"]) == 1
     assert out["community_results"][0]["community_result"].get("dry_run") is True
+    assert "inputs" in out["community_results"][0]
+    assert "artifacts" in out["community_results"][0]
+    assert "metrics" in out["community_results"][0]
+    assert len(out["community_results_legacy"]) == 1
+    assert out["community_results_legacy"][0]["target"] == out["community_results"][0]["target"]
     p_manifest = Path(out["manifest_json"])
     assert p_manifest.is_file()
 
@@ -156,3 +166,53 @@ def test_run_experiment_setup_only_dry_run_writes_manifest(tmp_path: Path) -> No
     assert out["dry_run"] is True
     assert out["setup_result"] is None
     assert Path(out["manifest_json"]).is_file()
+
+
+def test_validate_score_mode_target_compatibility_for_semantic_shard() -> None:
+    validate_score_mode_target_compatibility(
+        score_mode="semantic_shard_handcrafted_v1",
+        graph_kind="semantic_shard",
+    )
+    with pytest.raises(ValueError, match="semantic_shard"):
+        validate_score_mode_target_compatibility(
+            score_mode="semantic_shard_handcrafted_v1",
+            graph_kind="anchor",
+        )
+
+
+def test_run_experiment_dry_run_semantic_shard_target(tmp_path: Path) -> None:
+    bundles = tmp_path / "graph_bundles"
+    bundles.mkdir(parents=True, exist_ok=True)
+    scoring = tmp_path / "scoring_runs"
+    scoring.mkdir(parents=True, exist_ok=True)
+    cfg = _minimal_experiment_cfg(
+        tmp_path=tmp_path,
+        mode="score_only",
+        graph_bundle_root=bundles,
+        scoring_output_root=scoring,
+    )
+    cfg["selection"]["score_targets"] = ["semantic_shard"]
+    out = run_experiment(cfg, dry_run=True)
+    assert out["dry_run"] is True
+    assert out["community_results"][0]["target"] == "semantic_shard"
+    cr = out["community_results"][0]
+    assert "inputs" in cr
+    assert "artifacts" in cr
+    assert "metrics" in cr
+    assert "semantic_shard" in str(cr["inputs"]["edges_csv"])
+
+
+def test_run_experiment_rejects_invalid_target(tmp_path: Path) -> None:
+    bundles = tmp_path / "graph_bundles"
+    bundles.mkdir(parents=True, exist_ok=True)
+    scoring = tmp_path / "scoring_runs"
+    scoring.mkdir(parents=True, exist_ok=True)
+    cfg = _minimal_experiment_cfg(
+        tmp_path=tmp_path,
+        mode="score_only",
+        graph_bundle_root=bundles,
+        scoring_output_root=scoring,
+    )
+    cfg["selection"]["score_targets"] = ["not_a_target"]
+    with pytest.raises(ValueError, match="Unsupported targets"):
+        run_experiment(cfg, dry_run=True)

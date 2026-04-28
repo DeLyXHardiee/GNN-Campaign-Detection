@@ -1,7 +1,7 @@
 {
   "experiment": {
-    "scoring_run_id": "seed_candidate_none_default",
-    "graph_id": "refactor_test",
+    "scoring_run_id": "run_seedcand_pu",
+    "graph_id": "bundle_seedcand_pu",
     "mode": "setup_and_score",
     "graph_family": "seed_candidate"
   },
@@ -15,7 +15,7 @@
       "seed": true,
       "candidate": true,
       "seed_candidate": true,
-      "pair_training": false
+      "pair_training": true
     },
     "policy": {
       "on_missing": "build",
@@ -38,10 +38,22 @@
     "gt_sets_path": "analysis/configs/experiments/gt_sets.json"
   },
   "scoring": {
-    "score_mode": "none",
+    "score_mode": "seed_candidate_pu_v1",
     "params": {
       "handcrafted": {},
-      "pu": {}
+      "pu": {
+        "pu_run": {
+          "run_dir": "core/GNN/outputs/pair_pu_001",
+          "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
+          "checkpoint": "best_model.pt",
+          "pair_dataset_csv": "",
+          "device": "cpu",
+          "no_to_undirected": false
+        },
+        "seed_edge_weight": 1.0,
+        "weight_mode": "raw_score",
+        "export_non_seed_min_pu_score": 0.0
+      }
     }
   },
   "community": {
@@ -52,14 +64,17 @@
         "leiden"
       ],
       "weight_thresholds": [
-        0.0
+        0.0,
+        0.1,
+        0.2,
+        0.3
       ],
       "resolutions": [
         1.0,
         1.5,
         2.0
       ],
-      "use_edge_weights_in_partitioning": false,
+      "use_edge_weights_in_partitioning": true,
       "sort_by": "v-measure"
     }
   }

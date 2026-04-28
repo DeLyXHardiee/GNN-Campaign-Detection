@@ -341,6 +341,14 @@ def _summarize_one_gt(
 def _infer_graph_id_from_pair_csv(pair_csv: Path) -> str | None:
     parts = [p.lower() for p in pair_csv.parts]
     try:
+        i = parts.index("graph_bundles")
+        if i + 1 < len(pair_csv.parts):
+            v = str(pair_csv.parts[i + 1]).strip()
+            if v:
+                return v
+    except ValueError:
+        pass
+    try:
         i = parts.index("anchor_candidates")
     except ValueError:
         return None
@@ -361,7 +369,9 @@ def _load_anchor_nodes_by_email(
         run_id = _infer_graph_id_from_pair_csv(pair_csv)
         if not run_id:
             return {}, {"status": "skipped", "reason": "could_not_infer_graph_id_from_pair_csv"}
-        run_dir = (project_root / "analysis" / "output" / "anchor_graph" / run_id).resolve()
+        run_dir = (
+            project_root / "analysis" / "output" / "graph_bundles" / run_id / "anchor" / run_id
+        ).resolve()
     if not run_dir.is_dir():
         return {}, {"status": "skipped", "reason": f"anchor_run_dir_not_found:{run_dir}"}
 

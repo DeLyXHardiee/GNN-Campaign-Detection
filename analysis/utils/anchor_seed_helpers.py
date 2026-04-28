@@ -1003,11 +1003,14 @@ def run_anchor_seed_generation(config: dict[str, Any]) -> dict[str, Any]:
 
     project_root = gh.find_project_root()
     graph_id = resolve_graph_id(run_cfg)
-    anchor_output_root = Path(
-        run_cfg.get("anchor_output_root")
-        or (project_root / "analysis" / "output" / "anchor_graph")
-    ).expanduser().resolve()
-    anchor_run_dir = anchor_output_root / graph_id
+    anchor_output_root_raw = str(run_cfg.get("anchor_output_root") or "").strip()
+    if anchor_output_root_raw:
+        anchor_output_root = Path(anchor_output_root_raw).expanduser().resolve()
+        anchor_run_dir = anchor_output_root / graph_id
+    else:
+        anchor_run_dir = (
+            project_root / "analysis" / "output" / "graph_bundles" / graph_id / "anchor" / graph_id
+        ).resolve()
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
@@ -1087,10 +1090,12 @@ def run_anchor_seed_generation(config: dict[str, Any]) -> dict[str, Any]:
         if pbar is not None:
             pbar.update(1)
 
-        out_root = Path(
-            out_cfg.get("output_root")
-            or (project_root / "analysis" / "output" / "anchor_seeds")
-        ).expanduser().resolve()
+        out_root_raw = str(out_cfg.get("output_root") or "").strip()
+        out_root = (
+            Path(out_root_raw).expanduser().resolve()
+            if out_root_raw
+            else (project_root / "analysis" / "output" / "graph_bundles" / graph_id / "seed").resolve()
+        )
         stage_name = str(out_cfg.get("stage_name") or "seed_generation")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         out_dir = out_root / graph_id / f"{stage_name}_{stamp}"

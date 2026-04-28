@@ -1,8 +1,8 @@
 {
   "experiment": {
-    "scoring_run_id": "seed_candidate_pu_default",
-    "graph_id": "seed_candidate_pu_default",
-    "mode": "setup_and_score",
+    "scoring_run_id": "run_seedcand_handcrafted_on_seedcand_pu",
+    "graph_id": "bundle_seedcand_pu",
+    "mode": "score_only",
     "graph_family": "seed_candidate"
   },
   "artifacts": {
@@ -11,14 +11,14 @@
   },
   "setup": {
     "enable": {
-      "anchor": true,
-      "seed": true,
-      "candidate": true,
-      "seed_candidate": true,
-      "pair_training": true
+      "anchor": false,
+      "seed": false,
+      "candidate": false,
+      "seed_candidate": false,
+      "pair_training": false
     },
     "policy": {
-      "on_missing": "build",
+      "on_missing": "fail",
       "on_present": "reuse"
     },
     "paths": {
@@ -38,22 +38,22 @@
     "gt_sets_path": "analysis/configs/experiments/gt_sets.json"
   },
   "scoring": {
-    "score_mode": "seed_candidate_pu_v1",
+    "score_mode": "seed_candidate_handcrafted_v1",
     "params": {
-      "handcrafted": {},
-      "pu": {
-        "pu_run": {
-          "run_dir": "core/GNN/outputs/pair_pu_001",
-          "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
-          "checkpoint": "best_model.pt",
-          "pair_dataset_csv": "",
-          "device": "cpu",
-          "no_to_undirected": false
-        },
-        "seed_edge_weight": 1.0,
-        "weight_mode": "raw_score",
-        "export_non_seed_min_pu_score": 0.0
-      }
+      "handcrafted": {
+        "w_semantic": 0.42,
+        "w_rare_artifact": 0.28,
+        "w_twohop": 0.22,
+        "w_component": 0.08,
+        "component_scale": 0.12,
+        "w_multi_source": 0.08,
+        "w_time_penalty": 0.1,
+        "seed_weight_floor": 0.88,
+        "seed_weight_base": 0.92,
+        "seed_evidence_rarity_scale": 0.08,
+        "use_seed_evidence_rarity": true
+      },
+      "pu": {}
     }
   },
   "community": {

@@ -4,7 +4,7 @@ Threshold-conditioned retention analysis on PU-scored candidate pairs.
 
 Example:
   python analysis/scripts/run_pu_threshold_retention_analysis.py ^
-    --scored-csv analysis/output/anchor_candidates/deafult_anchor_seeds/candidate_generation_20260419T115430Z/pu_scored_candidate_edges_all.csv ^
+    --scored-csv path/to/pu_scored_candidate_edges_all.csv ^
     --gt-dir data/groundtruth
 """
 

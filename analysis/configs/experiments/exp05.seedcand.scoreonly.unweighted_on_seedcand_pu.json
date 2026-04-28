@@ -1,0 +1,66 @@
+{
+  "experiment": {
+    "scoring_run_id": "run_seedcand_unweighted_on_seedcand_pu",
+    "graph_id": "bundle_seedcand_pu",
+    "mode": "score_only",
+    "graph_family": "seed_candidate"
+  },
+  "artifacts": {
+    "graph_bundle_root": "analysis/output/graph_bundles",
+    "scoring_output_root": "analysis/output/scoring_runs"
+  },
+  "setup": {
+    "enable": {
+      "anchor": false,
+      "seed": false,
+      "candidate": false,
+      "seed_candidate": false,
+      "pair_training": false
+    },
+    "policy": {
+      "on_missing": "fail",
+      "on_present": "reuse"
+    },
+    "paths": {
+      "anchor_config": "analysis/configs/anchor_graph.default.json",
+      "seed_config": "analysis/configs/anchor_seed.default.json",
+      "candidate_config": "analysis/configs/anchor_candidate_generation.default.json",
+      "pair_training": {
+        "graph_meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json"
+      }
+    }
+  },
+  "selection": {
+    "score_targets": [
+      "seed_candidate"
+    ],
+    "gt_set": "default_multi_gt",
+    "gt_sets_path": "analysis/configs/experiments/gt_sets.json"
+  },
+  "scoring": {
+    "score_mode": "none",
+    "params": {
+      "handcrafted": {},
+      "pu": {}
+    }
+  },
+  "community": {
+    "base_config": "analysis/configs/anchor_community.default.json",
+    "sweep": {
+      "methods": [
+        "louvain",
+        "leiden"
+      ],
+      "weight_thresholds": [
+        0.0
+      ],
+      "resolutions": [
+        1.0,
+        1.5,
+        2.0
+      ],
+      "use_edge_weights_in_partitioning": false,
+      "sort_by": "v-measure"
+    }
+  }
+}
