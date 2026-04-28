@@ -238,17 +238,26 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
 
     project_root = gh.find_project_root()
 
-    anchor_output_root = Path(
-        run_cfg.get("anchor_output_root") or (project_root / "analysis" / "output" / "anchor_graph")
-    ).expanduser().resolve()
-    anchor_run_dir = anchor_output_root / graph_id
+    anchor_output_root_raw = str(run_cfg.get("anchor_output_root") or "").strip()
+    if anchor_output_root_raw:
+        anchor_output_root = Path(anchor_output_root_raw).expanduser().resolve()
+        anchor_run_dir = anchor_output_root / graph_id
+    else:
+        anchor_run_dir = (
+            project_root / "analysis" / "output" / "graph_bundles" / graph_id / "anchor" / graph_id
+        ).resolve()
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
     nodes_df, edges_df, _candidates, _summary, _g = load_anchor_graph_artifacts(anchor_run_dir, load_graph_pickle=False)
 
     # Resolve seed stage latest dir.
-    seed_output_root = Path(seed_cfg.get("seed_output_root") or (project_root / "analysis" / "output" / "anchor_seeds")).expanduser().resolve()
+    seed_output_root_raw = str(seed_cfg.get("seed_output_root") or "").strip()
+    seed_output_root = (
+        Path(seed_output_root_raw).expanduser().resolve()
+        if seed_output_root_raw
+        else (project_root / "analysis" / "output" / "graph_bundles" / graph_id / "seed").resolve()
+    )
     seed_stage_prefix = str(seed_cfg.get("seed_stage_name_prefix") or "seed_generation_")
     seed_dir = _resolve_latest_seed_dir(
         seed_output_root=seed_output_root,
@@ -261,7 +270,12 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
     seed_pairs = _load_seed_pairs(seed_edges_all_csv)
 
     # Output dir.
-    out_root = Path(out_cfg.get("output_root") or (project_root / "analysis" / "output" / "anchor_candidates")).expanduser().resolve()
+    out_root_raw = str(out_cfg.get("output_root") or "").strip()
+    out_root = (
+        Path(out_root_raw).expanduser().resolve()
+        if out_root_raw
+        else (project_root / "analysis" / "output" / "graph_bundles" / graph_id / "candidate").resolve()
+    )
     stage_name = str(out_cfg.get("stage_name") or "candidate_generation")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = out_root / graph_id / f"{stage_name}_{stamp}"

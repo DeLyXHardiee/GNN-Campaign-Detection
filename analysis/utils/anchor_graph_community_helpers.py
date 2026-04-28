@@ -9,8 +9,9 @@ from typing import Any
 import networkx as nx
 import numpy as np
 import pandas as pd
-from sklearn.metrics import completeness_score, homogeneity_score, v_measure_score
 
+from analysis.utils import community_eval_contract as cec
+from analysis.utils import community_sweep_driver as csd
 from analysis.utils import graph_structure_helpers as gh
 from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils import raw_gnn_notebook as rn
@@ -56,16 +57,7 @@ def _normalize_sort_metric(raw: str | None) -> str:
 
 def _sort_tiebreakers(primary: str) -> list[str]:
     """Descending sort key: primary first, then stable tie-breakers."""
-    all_m = ("homogeneity", "completeness", "v_measure")
-    rest = [m for m in all_m if m != primary]
-    if primary == "homogeneity":
-        order_rest = ["v_measure", "completeness"]
-    elif primary == "completeness":
-        order_rest = ["v_measure", "homogeneity"]
-    else:
-        order_rest = ["homogeneity", "completeness"]
-    # Keep only metrics that are in rest (always two)
-    return [primary] + [m for m in order_rest if m in rest]
+    return cec.metric_sort_columns(primary)
 
 
 def _load_anchor_run(
@@ -273,25 +265,17 @@ def evaluate_external_metrics(
     pred_map: dict[str, int],
     gt_label_map: dict[str, Any],
 ) -> dict[str, float]:
-    gt = {str(k): v for k, v in gt_label_map.items()}
-    pred = {str(k): int(v) for k, v in pred_map.items()}
-    common = sorted(set(gt.keys()) & set(pred.keys()))
-    if not common:
-        return {
-            "n_eval": 0.0,
-            "homogeneity": float("nan"),
-            "completeness": float("nan"),
-            "v_measure": float("nan"),
-            "coverage_gt": 0.0,
-        }
-    y_true = [gt[e] for e in common]
-    y_pred = [pred[e] for e in common]
+    m = cec.evaluate_external_metrics(
+        gt_label_map=gt_label_map,
+        pred_label_map=pred_map,
+        n_predictions_total=len(pred_map),
+    )
     return {
-        "n_eval": float(len(common)),
-        "homogeneity": float(homogeneity_score(y_true, y_pred)),
-        "completeness": float(completeness_score(y_true, y_pred)),
-        "v_measure": float(v_measure_score(y_true, y_pred)),
-        "coverage_gt": float(len(common) / max(1, len(gt))),
+        "n_eval": m["n_eval"],
+        "homogeneity": m["homogeneity"],
+        "completeness": m["completeness"],
+        "v_measure": m["v_measure"],
+        "coverage_gt": m["coverage_gt"],
     }
 
 
@@ -394,14 +378,8 @@ def _metrics_for_gt(
 
 
 def _best_row(df: pd.DataFrame, metric: str = "v_measure") -> dict[str, Any]:
-    if df.empty:
-        return {}
-    d = df.copy()
-    d["_m"] = pd.to_numeric(d[metric], errors="coerce")
-    d = d[np.isfinite(d["_m"])]
-    if d.empty:
-        return {}
-    return d.sort_values("_m", ascending=False).iloc[0].drop(labels=["_m"], errors="ignore").to_dict()
+    r = cec.best_sweep_metric_row(df, metric=metric)
+    return r.to_dict() if not r.empty else {}
 
 
 def _validate_output_contract(df: pd.DataFrame, *, sort_by: str) -> None:
@@ -446,10 +424,13 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
 
     project_root = gh.find_project_root()
     graph_id = resolve_graph_id(run_cfg)
-    anchor_output_root = Path(
-        run_cfg.get("anchor_output_root")
-        or (project_root / "analysis" / "output" / "anchor_graph")
-    ).expanduser().resolve()
+    anchor_output_root_raw = str(run_cfg.get("anchor_output_root") or "").strip()
+    if anchor_output_root_raw:
+        anchor_output_root = Path(anchor_output_root_raw).expanduser().resolve()
+    else:
+        anchor_output_root = (
+            project_root / "analysis" / "output" / "graph_bundles" / graph_id / "anchor"
+        ).resolve()
 
     score_mode_raw = str(sweep_cfg.get("score_mode") or "").strip().lower()
     use_scoring = bool(score_mode_raw)
@@ -529,9 +510,12 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                     else:
                         seed_dir = seed_dir.resolve()
                 else:
-                    seed_output_root = Path(
-                        run_cfg.get("seed_output_root") or (project_root / "analysis" / "output" / "anchor_seeds")
-                    ).expanduser().resolve()
+                    seed_output_root_raw = str(run_cfg.get("seed_output_root") or "").strip()
+                    seed_output_root = (
+                        Path(seed_output_root_raw).expanduser().resolve()
+                        if seed_output_root_raw
+                        else (project_root / "analysis" / "output" / "graph_bundles" / graph_id / "seed").resolve()
+                    )
                     seed_prefix = str(run_cfg.get("seed_stage_name_prefix") or "seed_generation_")
                     seed_dir = _resolve_latest_seed_dir(
                         seed_output_root=seed_output_root,
@@ -636,18 +620,21 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     )
     n_graph_nodes = len(node_ids)
 
-    per_gt_outputs: list[dict[str, Any]] = []
-    best_rows: list[dict[str, Any]] = []
-    for gt_path in gt_paths:
+    def _per_gt(gt_path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
         gt_label_map, _eid_row, _campaign_to_members = rn.load_ground_truth_structures(gt_path)
         sweep_df = _metrics_for_gt(sweep_partitions, gt_label_map, sort_by=sort_by)
+        best = _best_row(sweep_df, metric=sort_by)
+        return sweep_df, {"gt_label_map": gt_label_map, "best_row": best}
+
+    def _write_gt(gt_path_raw: str, sweep_df: pd.DataFrame, best_info: dict[str, Any]) -> dict[str, Any]:
+        gt_path = Path(gt_path_raw)
+        gt_label_map = dict(best_info.get("gt_label_map") or {})
+        best = dict(best_info.get("best_row") or {})
         gt_slug = _gt_slug(gt_path)
         if not sweep_df.empty:
             _validate_output_contract(sweep_df, sort_by=sort_by)
         p_csv = out_dir / f"anchor_community_sweep__{gt_slug}.csv"
         sweep_df.to_csv(p_csv, index=False)
-
-        best = _best_row(sweep_df, metric=sort_by)
         gt_ids = {str(k) for k in gt_label_map.keys()}
         graph_ids = {str(x) for x in node_ids}
         n_intersection = len(gt_ids & graph_ids)
@@ -666,17 +653,20 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         }
         p_best = out_dir / f"anchor_community_best__{gt_slug}.json"
         p_best.write_text(json.dumps(best_payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        per_gt_outputs.append(
-            {
-                "gt_path": str(gt_path),
-                "gt_slug": gt_slug,
-                "sweep_csv": str(p_csv),
-                "best_json": str(p_best),
-                "n_rows": int(len(sweep_df)),
-            }
-        )
-        if best:
-            best_rows.append({"gt_path": str(gt_path), "gt_slug": gt_slug, **best})
+        return {
+            "gt_path": str(gt_path),
+            "gt_slug": gt_slug,
+            "sweep_csv": str(p_csv),
+            "best_json": str(p_best),
+            "n_rows": int(len(sweep_df)),
+            "best_row": best,
+        }
+
+    per_gt_outputs, best_rows = csd.run_multi_gt_sweep(
+        gt_paths=[str(p) for p in gt_paths],
+        per_gt_sweep=lambda p: _per_gt(Path(p)),
+        write_per_gt=_write_gt,
+    )
 
     summary = {
         "created_at_utc": created_at_utc,

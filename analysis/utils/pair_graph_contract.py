@@ -9,11 +9,13 @@ GRAPH_KIND_ANCHOR = "anchor"
 GRAPH_KIND_SEED = "seed"
 GRAPH_KIND_CANDIDATE = "candidate"
 GRAPH_KIND_SEED_CANDIDATE = "seed_candidate"
+GRAPH_KIND_SEMANTIC_SHARD = "semantic_shard"
 GRAPH_KIND_ALL: tuple[str, ...] = (
     GRAPH_KIND_ANCHOR,
     GRAPH_KIND_SEED,
     GRAPH_KIND_CANDIDATE,
     GRAPH_KIND_SEED_CANDIDATE,
+    GRAPH_KIND_SEMANTIC_SHARD,
 )
 
 # Legacy unscored PairGraph CSV column (pre-migration). Read paths normalize to ``graph_id``.
@@ -116,4 +118,8 @@ def validate_score_mode_target_compatibility(*, score_mode: str, graph_kind: str
     if mode in {"seed_candidate_handcrafted_v1", "seed_candidate_pu_v1"} and kind != GRAPH_KIND_SEED_CANDIDATE:
         raise ValueError(
             f"score_mode {mode!r} supports only graph_kind={GRAPH_KIND_SEED_CANDIDATE!r}, got {kind!r}"
+        )
+    if mode in {"semantic_shard_handcrafted_v1", "semantic_shard_affine_v1"} and kind != GRAPH_KIND_SEMANTIC_SHARD:
+        raise ValueError(
+            f"score_mode {mode!r} supports only graph_kind={GRAPH_KIND_SEMANTIC_SHARD!r}, got {kind!r}"
         )

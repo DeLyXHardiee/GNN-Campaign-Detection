@@ -1113,10 +1113,12 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             require_edge_weight=False,
         )
 
-        out_base = Path(
-            persistence_cfg.get("output_dir")
-            or (project_root / "analysis" / "output" / "anchor_graph")
-        ).expanduser().resolve()
+        out_base_raw = str(persistence_cfg.get("output_dir") or "").strip()
+        out_base = (
+            Path(out_base_raw).expanduser().resolve()
+            if out_base_raw
+            else (project_root / "analysis" / "output" / "graph_bundles" / graph_id / "anchor").resolve()
+        )
         out_dir = (out_base / graph_id).resolve()
         out_dir.mkdir(parents=True, exist_ok=True)
         created_at_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")

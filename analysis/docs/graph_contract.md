@@ -29,7 +29,7 @@ Required identity:
 
 - `email_i` (string)
 - `email_j` (string)
-- `graph_kind` (string; one of `anchor`, `seed`, `candidate`, `seed_candidate`)
+- `graph_kind` (string; one of `anchor`, `seed`, `candidate`, `seed_candidate`, `semantic_shard`)
 - `graph_id` (string): graph bundle / anchor run directory name.
 
 Legacy CSVs may still use the column name `graph_run_id` with the same meaning; `analysis.utils.pair_graph_contract` normalizes it to `graph_id` (`migrate_unscored_graph_id_column`, `ensure_unscored_contract`).

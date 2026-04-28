@@ -6,9 +6,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import completeness_score, homogeneity_score, v_measure_score
 
 from analysis.utils import completeness_fragmentation_helpers as cfh
+from analysis.utils import community_eval_contract as cec
 from analysis.utils import graph_structure_helpers as gh
 from analysis.utils import raw_gnn_notebook as rn
 
@@ -203,31 +203,18 @@ def evaluate_external_metrics(
     email_pred_df: pd.DataFrame,
     gt_label_map: dict[str, Any],
 ) -> dict[str, float]:
-    gt = {str(k): v for k, v in gt_label_map.items()}
     pred = {
         str(r["external_id"]): int(r["pred_community"])
         for _, r in email_pred_df.iterrows()
     }
-    common = sorted(set(gt.keys()) & set(pred.keys()))
-    n_assign = int(len(email_pred_df))
-    if not common:
-        return {
-            "n_eval": 0.0,
-            "homogeneity": float("nan"),
-            "completeness": float("nan"),
-            "v_measure": float("nan"),
-            "coverage_gt": 0.0,
-            "coverage_assignments": 0.0,
-        }
-    y_true = [gt[e] for e in common]
-    y_pred = [pred[e] for e in common]
+    m = cec.evaluate_external_metrics(
+        gt_label_map=gt_label_map,
+        pred_label_map=pred,
+        n_predictions_total=len(email_pred_df),
+    )
     return {
-        "n_eval": float(len(common)),
-        "homogeneity": float(homogeneity_score(y_true, y_pred)),
-        "completeness": float(completeness_score(y_true, y_pred)),
-        "v_measure": float(v_measure_score(y_true, y_pred)),
-        "coverage_gt": float(len(common) / max(1, len(gt))),
-        "coverage_assignments": float(len(common) / max(1, n_assign)),
+        **m,
+        "coverage_assignments": m["coverage_predictions"],
     }
 
 
@@ -285,13 +272,7 @@ def run_community_sweep(
 
 def best_sweep_metric_row(sweep_df: pd.DataFrame, metric: str = "v_measure") -> pd.Series:
     """Return the sweep row with highest finite ``metric`` (default V-measure)."""
-    if sweep_df.empty:
-        return pd.Series(dtype=float)
-    d = sweep_df.copy()
-    d = d[np.isfinite(pd.to_numeric(d[metric], errors="coerce"))]
-    if d.empty:
-        return pd.Series(dtype=float)
-    return d.sort_values(metric, ascending=False).iloc[0]
+    return cec.best_sweep_metric_row(sweep_df=sweep_df, metric=metric)
 
 
 def load_method1_refined_edges(method1_dir: str | Path) -> pd.DataFrame:
