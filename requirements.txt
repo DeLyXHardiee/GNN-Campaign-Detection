@@ -1,10 +1,13 @@
 torch
 torch-geometric
+pyg-lib
 torch-sparse
 torch_scatter
 pandas
 numpy
 networkx
+igraph
+leidenalg
 scikit-learn
 sentence-transformers
 neo4j
@@ -13,5 +16,12 @@ mail-parser
 lxml
 hdbscan
 tqdm
+matplotlib
 beautifulsoup4
 tldextract
+httpx
+pyarrow
+requests
+joblib
+scipy
+idna

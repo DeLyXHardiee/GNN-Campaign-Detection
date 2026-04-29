@@ -8,6 +8,7 @@ output/runs/
 core/GNN/data
 core/GNN/notebooks/data
 data/*
+test_data/*
 core/results
 core/GNN/models
 core/GNN/outputs/*
@@ -25,7 +26,10 @@ core/utils/embeddings/output
 core/GNN/outputs/*
 core/feature_set_extraction/output/*
 reports/*
-
+*.parquet
+*.pkl
+*.npy
+seed_candidate_workflow/output/*
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
