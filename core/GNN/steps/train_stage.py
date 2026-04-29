@@ -47,10 +47,6 @@ def run_train_stage(
     run_dir = run_dir_for(runs_parent, run_id)
 
     objective = str(training_cfg.get("training_objective", "link_prediction")).lower().strip()
-    if objective in ("vicreg", "contrastive"):
-        raise ValueError(
-            f"training_objective={objective!r} is no longer supported; use 'link_prediction'."
-        )
 
     project_root = Path(__file__).resolve().parents[3]
 

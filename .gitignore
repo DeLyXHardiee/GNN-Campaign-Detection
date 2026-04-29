@@ -22,7 +22,7 @@ core/GNN/notebooks/models
 core/utils/embeddings/output
 core/GNN/outputs/*
 core/feature_set_extraction/output/*
-analysis/output/*
+seed_candidate_workflow/output/*
 
 # Ignore Python cache files
 __pycache__/

@@ -100,13 +100,6 @@ def save_model_checkpoint(
 
 
 def _build_model_from_checkpoint(checkpoint, device, metadata_override=None):
-    obj = checkpoint.get("training_objective")
-    if obj in ("vicreg", "contrastive"):
-        raise ValueError(
-            f"Checkpoint has unsupported training_objective={obj!r} (removed from codebase). "
-            "Use a link-prediction checkpoint (training_objective='link_prediction' or omitted)."
-        )
-
     config = checkpoint.get("config", {})
     hidden = config.get("hidden", 256)
     out_dim = config.get("out_dim", 256)
@@ -168,11 +161,6 @@ def load_full_run(data, device=None, filename="best_model.pt"):
     checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         load_path, map_location=device, weights_only=True
     )
-    obj = checkpoint.get("training_objective")
-    if obj in ("vicreg", "contrastive"):
-        raise ValueError(
-            "Checkpoint is from removed VICReg/contrastive training; load_full_run (link loaders) does not apply."
-        )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 
     train_pos = checkpoint.get("train_pos")
@@ -226,12 +214,6 @@ def load_training_state(data, device=None, filename="best_model.pt"):
     checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         load_path, map_location=device, weights_only=True
     )
-    obj = checkpoint.get("training_objective")
-    if obj in ("vicreg", "contrastive"):
-        raise ValueError(
-            "Checkpoint is from removed VICReg/contrastive training; load_training_state is not supported."
-        )
-
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 
     train_pos = checkpoint.get("train_pos")
