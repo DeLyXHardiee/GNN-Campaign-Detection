@@ -16,20 +16,24 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import torch
 
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts
+from analysis.utils.pair_model_inference import (
+    load_pair_supervision_for_inference as _load_pair_supervision_for_inference,
+    score_pair_rows as _score_pair_rows,
+)
 from analysis.utils.raw_gnn_notebook import load_ground_truth_structures
-from src.load_graph_data import load_hetero_pt
-from src.model import HeteroSAGE
-from src.pair_graph_sampling import sample_hetero_around_pair_endpoints
-from src.pair_scorer import build_email_pair_mlp_scorer
-from src.pair_train import (
-    PAIR_FEATURE_COLUMNS,
-    build_pair_feature_matrix,
-    forward_encoder_and_pair_logits,
-    iter_pair_batches,
-    load_pair_training_dataframe,
+from analysis.utils.scorer_diagnostics_core import (
+    quantiles_dict as _quantiles_dict_core,
+    safe_auroc as _safe_auroc_core,
+)
+from analysis.utils.scorer_diagnostics_rules import (
+    BINARY_CONDITION_RULES_DEFAULT,
+    CANDIDATE_RULES_DEFAULT,
+    FEATURE_KEYS_DEFAULT,
+    PROVENANCE_KEYS_DEFAULT,
+    SEMANTIC_BUCKET_RULES_DEFAULT,
+    SHARED_EVIDENCE_KEYS_DEFAULT,
 )
 
 
@@ -41,58 +45,13 @@ def load_pair_supervision_for_inference(
     device: str = "cpu",
     to_undirected: bool = True,
 ) -> dict[str, Any]:
-    """
-    Load training_config, hetero graph, HeteroSAGE + pair scorer for inference-only stages.
-    Caller must have ``core/GNN`` on sys.path (same as pair training).
-    """
-    run_dir = Path(run_dir).resolve()
-    graph_pt = Path(graph_pt).resolve()
-    ckpt_path = run_dir / "models" / checkpoint_name
-    if not ckpt_path.is_file():
-        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
-    cfg_path = run_dir / "training_config.json"
-    if not cfg_path.is_file():
-        raise FileNotFoundError(f"training_config.json not found under run_dir: {cfg_path}")
-    with open(cfg_path, encoding="utf-8") as f:
-        train_cfg = json.load(f)
-    fanout = list(train_cfg.get("pair_fanout") or train_cfg.get("fanout") or [25, 15])
-    pair_batch_size = int(train_cfg.get("pair_batch_size", 64))
-    max_unique = int(train_cfg.get("pair_max_unique_emails_per_graph_batch", 2048))
-
-    dev = torch.device(device)
-    data = load_hetero_pt(str(graph_pt), to_undirected=to_undirected)
-    data_cpu = data.to("cpu")
-    metadata = data_cpu.metadata()
-
-    ckpt = torch.load(str(ckpt_path), map_location=dev, weights_only=False)  # nosemgrep
-    enc = train_cfg
-    hidden = int(enc.get("hidden", 128))
-    out_dim = int(enc.get("out_dim", 128))
-    layers = int(enc.get("layers", 2))
-    dropout = float(enc.get("dropout", 0.0))
-
-    model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(dev)
-    model.load_state_dict(ckpt["model_state_dict"], strict=True)
-
-    pair_feat_dim = int(enc.get("pair_feature_dim_passed_to_scorer") or len(PAIR_FEATURE_COLUMNS))
-    use_exp = bool(enc.get("pair_scorer_use_explicit_features", True))
-    if not use_exp:
-        pair_feat_dim = 0
-    pair_scorer = build_email_pair_mlp_scorer(out_dim, pair_feat_dim, train_cfg).to(dev)
-    pair_scorer.load_state_dict(ckpt["pair_scorer_state_dict"], strict=True)
-
-    return {
-        "train_cfg": train_cfg,
-        "model": model,
-        "pair_scorer": pair_scorer,
-        "data_cpu": data_cpu,
-        "fanout": fanout,
-        "pair_batch_size": pair_batch_size,
-        "max_unique_emails": max_unique,
-        "device": dev,
-        "checkpoint_path": str(ckpt_path),
-        "training_config_path": str(cfg_path),
-    }
+    return _load_pair_supervision_for_inference(
+        run_dir=run_dir,
+        graph_pt=graph_pt,
+        checkpoint_name=checkpoint_name,
+        device=device,
+        to_undirected=to_undirected,
+    )
 
 
 def _sanitize_filename_stem(name: str) -> str:
@@ -101,64 +60,36 @@ def _sanitize_filename_stem(name: str) -> str:
 
 
 def _quantiles_dict(x: np.ndarray, qs: tuple[float, ...]) -> dict[str, float]:
-    if x.size == 0:
-        return {f"q{int(q * 100)}": float("nan") for q in qs}
-    return {f"q{int(q * 100)}": float(np.quantile(x, q)) for q in qs}
+    return _quantiles_dict_core(x, qs)
 
 
 def _safe_auroc(y_true: np.ndarray, y_score: np.ndarray) -> float | None:
-    try:
-        from sklearn.metrics import roc_auc_score
-    except ImportError:
-        return None
-    if y_true.size < 2 or len(np.unique(y_true)) < 2:
-        return None
-    return float(roc_auc_score(y_true, y_score))
+    return _safe_auroc_core(y_true, y_score)
 
 
-@torch.no_grad()
 def score_pair_rows(
     *,
-    model: HeteroSAGE,
-    pair_scorer: torch.nn.Module,
+    model: Any,
+    pair_scorer: Any,
     data_cpu: Any,
     df_work: pd.DataFrame,
-    device: torch.device,
+    device: Any,
     fanout: list[int],
     pair_batch_size: int,
     max_unique_emails: int,
     with_logits: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-    """Sigmoid scores aligned to df_work row order (NaN if endpoint batch mapping failed).
-
-    If ``with_logits`` is True, returns ``(pu_score, pu_logit)`` arrays of the same shape.
-    """
-    model.eval()
-    pair_scorer.eval()
-    n = len(df_work)
-    scores = np.full(n, np.nan, dtype=np.float64)
-    logits_out = np.full(n, np.nan, dtype=np.float64) if with_logits else None
-    for chunk, gi, gj in iter_pair_batches(df_work, pair_batch_size, max_unique_emails):
-        sample = sample_hetero_around_pair_endpoints(data_cpu, gi, gj, fanout)
-        feats: torch.Tensor | None = None
-        if pair_scorer.use_explicit_pair_features:
-            feats = torch.from_numpy(build_pair_feature_matrix(chunk))
-        logits, ok_m, _, _ = forward_encoder_and_pair_logits(
-            model, pair_scorer, sample, feats, device
-        )
-        probs = torch.sigmoid(logits).detach().cpu().numpy()
-        log_np = logits.detach().cpu().numpy().reshape(-1)
-        ok_np = ok_m.cpu().numpy().astype(bool)
-        row_ids = chunk["_row"].to_numpy(dtype=np.int64, copy=False)
-        for i in range(len(row_ids)):
-            if ok_np[i]:
-                ri = int(row_ids[i])
-                scores[ri] = float(probs[i])
-                if logits_out is not None:
-                    logits_out[ri] = float(log_np[i])
-    if with_logits:
-        return scores, logits_out  # type: ignore[return-value]
-    return scores
+    return _score_pair_rows(
+        model=model,
+        pair_scorer=pair_scorer,
+        data_cpu=data_cpu,
+        df_work=df_work,
+        device=device,
+        fanout=fanout,
+        pair_batch_size=pair_batch_size,
+        max_unique_emails=max_unique_emails,
+        with_logits=with_logits,
+    )
 
 
 def _bin_edges_for_scores(
@@ -639,17 +570,7 @@ def _build_low_band_separator_for_gt(
 
     rows: list[dict[str, Any]] = []
 
-    prov_keys = [
-        "from_semantic",
-        "from_rare_artifact",
-        "from_2hop",
-        "from_component",
-        "source_count_eq_1",
-        "source_count_eq_2",
-        "source_count_ge_3",
-        "same_seed_component_flag",
-        "cross_seed_component_flag",
-    ]
+    prov_keys = list(PROVENANCE_KEYS_DEFAULT)
     prov_out: dict[str, Any] = {}
     for k in prov_keys:
         same_v = ((same.get("provenance") or {}).get(k) or {}).get("fraction")
@@ -670,13 +591,7 @@ def _build_low_band_separator_for_gt(
         )
     out["provenance_comparison"] = prov_out
 
-    feature_keys = [
-        "semantic_cosine_max",
-        "rare_artifact_rarity_max",
-        "twohop_rarity_max",
-        "component_cosine_max",
-        "time_gap_seconds_min",
-    ]
+    feature_keys = list(FEATURE_KEYS_DEFAULT)
     feat_out: dict[str, Any] = {}
     for k in feature_keys:
         ssum = (same.get("feature_summaries") or {}).get(k) or {}
@@ -717,14 +632,7 @@ def _build_low_band_separator_for_gt(
         )
     out["feature_comparison"] = feat_out
 
-    shared_keys = [
-        "shared_url",
-        "shared_sender",
-        "shared_attachment",
-        "shared_sender_domain",
-        "shared_domain",
-        "shared_stem",
-    ]
+    shared_keys = list(SHARED_EVIDENCE_KEYS_DEFAULT)
     shared_out: dict[str, Any] = {}
     for k in shared_keys:
         same_v = ((same.get("shared_evidence") or {}).get(k) or {}).get("fraction_edges_with_at_least_1")
@@ -863,22 +771,31 @@ def _build_low_band_joint_separator_for_gt(
     n_cross = int(cross_low.sum())
     n_low = int(n_same + n_cross)
 
+    bool_terms: dict[str, np.ndarray] = {
+        "from_semantic": fs,
+        "from_2hop": f2,
+        "from_component": fc,
+        "shared_sender": has_shared_sender,
+        "shared_stem": has_shared_stem,
+        "shared_sender_domain": has_shared_sender_domain,
+    }
+
+    def _eval_rule(expr: str) -> np.ndarray:
+        toks = expr.split("_AND_")
+        if not toks:
+            return np.zeros(n, dtype=bool)
+        out_mask = np.ones(n, dtype=bool)
+        for tok in toks:
+            neg = tok.startswith("NOT_")
+            key = tok[4:] if neg else tok
+            base = bool_terms.get(key)
+            if base is None:
+                return np.zeros(n, dtype=bool)
+            out_mask = out_mask & (~base if neg else base)
+        return out_mask
+
     condition_defs: list[tuple[str, np.ndarray]] = [
-        ("from_semantic_AND_shared_sender", fs & has_shared_sender),
-        ("from_semantic_AND_NOT_shared_sender", fs & ~has_shared_sender),
-        ("from_2hop_AND_shared_sender", f2 & has_shared_sender),
-        ("from_2hop_AND_NOT_shared_sender", f2 & ~has_shared_sender),
-        ("from_component_AND_shared_sender", fc & has_shared_sender),
-        ("from_component_AND_NOT_shared_sender", fc & ~has_shared_sender),
-        ("from_semantic_AND_from_2hop", fs & f2),
-        ("from_semantic_AND_NOT_from_2hop", fs & ~f2),
-        ("from_2hop_AND_NOT_from_semantic", f2 & ~fs),
-        ("from_component_AND_NOT_from_semantic", fc & ~fs),
-        ("from_component_AND_from_2hop", fc & f2),
-        ("shared_sender_AND_shared_stem", has_shared_sender & has_shared_stem),
-        ("shared_sender_AND_NOT_shared_stem", has_shared_sender & ~has_shared_stem),
-        ("shared_sender_domain_AND_NOT_shared_sender", has_shared_sender_domain & ~has_shared_sender),
-        ("shared_sender_domain_AND_shared_sender", has_shared_sender_domain & has_shared_sender),
+        (name, _eval_rule(name)) for name in BINARY_CONDITION_RULES_DEFAULT
     ]
 
     bin_out: dict[str, Any] = {}
@@ -904,12 +821,14 @@ def _build_low_band_joint_separator_for_gt(
         )
 
     # Bucketed semantic analysis
-    bucket_defs: list[tuple[str, np.ndarray]] = [
-        ("semantic_lt_0_91", sem.lt(0.91).fillna(False).to_numpy()),
-        ("semantic_0_91_to_0_93", sem.ge(0.91).fillna(False).to_numpy() & sem.lt(0.93).fillna(False).to_numpy()),
-        ("semantic_0_93_to_0_95", sem.ge(0.93).fillna(False).to_numpy() & sem.lt(0.95).fillna(False).to_numpy()),
-        ("semantic_ge_0_95", sem.ge(0.95).fillna(False).to_numpy()),
-    ]
+    bucket_defs: list[tuple[str, np.ndarray]] = []
+    for bname, low, high in SEMANTIC_BUCKET_RULES_DEFAULT:
+        mask = np.ones(n, dtype=bool)
+        if low is not None:
+            mask = mask & sem.ge(float(low)).fillna(False).to_numpy()
+        if high is not None:
+            mask = mask & sem.lt(float(high)).fillna(False).to_numpy()
+        bucket_defs.append((bname, mask))
     sem_out: dict[str, Any] = {}
     for bname, bmask in bucket_defs:
         cmp_base = _cmp_from_masks(cond_same=bmask, base_same=same_low, cond_cross=bmask, base_cross=cross_low)
@@ -950,16 +869,14 @@ def _build_low_band_joint_separator_for_gt(
             )
 
     # Candidate rule templates
-    rule_defs: list[tuple[str, np.ndarray]] = [
-        ("likely_positive__from_semantic_AND_shared_sender", fs & has_shared_sender),
-        ("likely_positive__from_semantic_AND_semantic_ge_0_93", fs & sem.ge(0.93).fillna(False).to_numpy()),
-        ("likely_positive__from_semantic_AND_shared_sender_AND_NOT_from_2hop", fs & has_shared_sender & ~f2),
-        ("likely_positive__shared_sender_AND_NOT_from_2hop", has_shared_sender & ~f2),
-        ("likely_negative__from_2hop_AND_NOT_shared_sender", f2 & ~has_shared_sender),
-        ("likely_negative__from_2hop_AND_NOT_from_semantic", f2 & ~fs),
-        ("likely_negative__from_component_AND_NOT_shared_sender", fc & ~has_shared_sender),
-        ("likely_negative__shared_sender_domain_AND_NOT_shared_sender", has_shared_sender_domain & ~has_shared_sender),
-    ]
+    rule_defs: list[tuple[str, np.ndarray]] = []
+    for rname in CANDIDATE_RULES_DEFAULT:
+        expr = rname.split("__", 1)[1] if "__" in rname else rname
+        if "semantic_ge_0_93" in expr:
+            dynamic = sem.ge(0.93).fillna(False).to_numpy()
+            expr = expr.replace("semantic_ge_0_93", "dynamic_semantic_ge_0_93")
+            bool_terms["dynamic_semantic_ge_0_93"] = dynamic
+        rule_defs.append((rname, _eval_rule(expr)))
     rule_out: dict[str, Any] = {}
     for rname, rmask in rule_defs:
         cmp = _cmp_from_masks(cond_same=rmask, base_same=same_low, cond_cross=rmask, base_cross=cross_low)
@@ -1023,6 +940,8 @@ def run_pair_score_separation_analysis(
     high_score_min: float = 0.8,
     anchor_run_dir: Path | None = None,
 ) -> dict[str, Any]:
+    from src.pair_train import load_pair_training_dataframe
+
     run_dir = Path(run_dir).resolve()
     graph_pt = Path(graph_pt).resolve()
     pair_csv = Path(pair_csv).resolve()

@@ -5,31 +5,9 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
-import time
 
 import numpy as np
 import pandas as pd
-
-
-# region agent log
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "23c729",
-            "runId": str(run_id),
-            "hypothesisId": str(hypothesis_id),
-            "location": str(location),
-            "message": str(message),
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-23c729.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 
 def _to_set_cell(v: Any) -> set[str]:
@@ -88,7 +66,6 @@ def generate_candidates_2hop_bounded_v1(
     out_dir: Path,
 ) -> dict[str, Any]:
     cfg = dict(generator_cfg or {})
-    run_id = str(seed_dir.parent.name) if seed_dir.parent else "unknown"
     artifact_specs = cfg.get("artifact_specs") or []
     if not isinstance(artifact_specs, list) or not artifact_specs:
         raise ValueError("2hop_bounded_v1 requires non-empty config.artifact_specs")
@@ -286,22 +263,6 @@ def generate_candidates_2hop_bounded_v1(
 
     p_csv = out_dir / "candidates_2hop.csv"
     out_df.to_csv(p_csv, index=False)
-    _debug_log(
-        run_id=run_id,
-        hypothesis_id="H3",
-        location="anchor_candidate_2hop_bounded_helpers.py:generate_candidates_2hop_bounded_v1",
-        message="2hop generator diagnostics",
-        data={
-            "allowed_path_types": sorted({str(s.get("path_type")) for s in artifact_specs if isinstance(s, dict)}),
-            "scanned_intermediary_artifacts_by_type": dict(sorted(scanned_by_type.items())),
-            "passing_degree_threshold_by_type": dict(sorted(passing_by_type.items())),
-            "rows_before_filters": int(rows_before_filters),
-            "rows_after_filters": int(len(out_df)),
-            "dropped_by_reason": dict(sorted(drop_counts.items())),
-            "output_csv": str(p_csv),
-        },
-    )
-
     pairs_set = set()
     if not out_df.empty:
         pairs_set = set(zip(out_df["email_i"].astype(str).tolist(), out_df["email_j"].astype(str).tolist(), strict=False))

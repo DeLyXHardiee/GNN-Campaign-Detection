@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import time
 
 import pandas as pd
 
@@ -32,27 +31,6 @@ try:
     from tqdm.auto import tqdm
 except Exception:  # pragma: no cover
     tqdm = None
-
-
-# region agent log
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "23c729",
-            "runId": str(run_id),
-            "hypothesisId": str(hypothesis_id),
-            "location": str(location),
-            "message": str(message),
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-23c729.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 
 def _pair_key(a: str, b: str) -> tuple[str, str]:
@@ -129,22 +107,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
 
     project_root = gh.find_project_root()
     graph_id = resolve_graph_id(run_cfg)
-    _debug_log(
-        run_id=graph_id or "unknown",
-        hypothesis_id="H1",
-        location="anchor_candidate_generation_helpers.py:run_anchor_candidate_generation:start",
-        message="candidate stage start",
-        data={
-            "graph_id": graph_id,
-            "enabled_generators": [
-                str(g.get("name"))
-                for g in (generators if isinstance(generators, list) else [])
-                if isinstance(g, dict) and bool(g.get("enabled", True))
-            ],
-            "evaluation_enabled": bool((config.get("evaluation") or {}).get("enabled", True)),
-        },
-    )
-
     anchor_output_root_raw = str(run_cfg.get("anchor_output_root") or "").strip()
     if anchor_output_root_raw:
         anchor_output_root = Path(anchor_output_root_raw).expanduser().resolve()
@@ -181,18 +143,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
     seed_pairs = _load_seed_pairs(seed_edges_all_csv)
-    _debug_log(
-        run_id=graph_id,
-        hypothesis_id="H1",
-        location="anchor_candidate_generation_helpers.py:seed_load",
-        message="loaded seed pairs and dirs",
-        data={
-            "anchor_run_dir": str(anchor_run_dir),
-            "seed_dir": str(seed_dir),
-            "n_seed_pairs": int(len(seed_pairs)),
-        },
-    )
-
     # Output dir
     out_root_raw = str(out_cfg.get("output_root") or "").strip()
     out_root = (
@@ -367,13 +317,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             continue
 
         if name == "component_expansion_v1":
-            _debug_log(
-                run_id=graph_id,
-                hypothesis_id="H2",
-                location="anchor_candidate_generation_helpers.py:component_branch_enter",
-                message="component generator branch entered",
-                data={"enabled": True},
-            )
             result = generate_component_expansion_v1(
                 nodes_df=nodes_df,
                 id_to_vec=id_to_vec,
@@ -402,29 +345,11 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                     "n_pairs": int(result.get("n_candidate_pairs", 0)),
                 }
             )
-            _debug_log(
-                run_id=graph_id,
-                hypothesis_id="H2",
-                location="anchor_candidate_generation_helpers.py:component_branch_exit",
-                message="component generator branch completed",
-                data={
-                    "n_pairs": int(len(pairs)),
-                    "component_links_csv": result.get("component_links_csv"),
-                    "expanded_csv": result.get("candidates_component_expanded_csv"),
-                },
-            )
             if pbar is not None:
                 pbar.update(1)
             continue
 
         if name == "2hop_bounded_v1":
-            _debug_log(
-                run_id=graph_id,
-                hypothesis_id="H3",
-                location="anchor_candidate_generation_helpers.py:twohop_branch_enter",
-                message="2hop generator branch entered",
-                data={"enabled": True},
-            )
             result = generate_candidates_2hop_bounded_v1(
                 nodes_df=nodes_df,
                 id_to_vec=id_to_vec,
@@ -453,17 +378,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                     "n_pairs": int(result.get("n_pairs", 0)),
                     "diagnostics": result.get("diagnostics"),
                 }
-            )
-            _debug_log(
-                run_id=graph_id,
-                hypothesis_id="H3",
-                location="anchor_candidate_generation_helpers.py:twohop_branch_exit",
-                message="2hop generator branch completed",
-                data={
-                    "n_pairs": int(len(pairs)),
-                    "csv": result.get("candidates_2hop_csv"),
-                    "diagnostics": result.get("diagnostics"),
-                },
             )
             if pbar is not None:
                 pbar.update(1)
@@ -528,16 +442,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
 
     eval_outputs = None
     if bool(eval_cfg.get("enabled", True)):
-        _debug_log(
-            run_id=graph_id,
-            hypothesis_id="H1",
-            location="anchor_candidate_generation_helpers.py:eval_enter",
-            message="candidate evaluation enter",
-            data={
-                "candidate_union_rows": int(len(candidate_union_df)),
-                "candidate_union_csv": str(p_candidate_union),
-            },
-        )
         eval_outputs = run_candidate_evaluation_report(
             project_root=project_root,
             graph_id=graph_id,
@@ -550,16 +454,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             generator_configs=generator_cfg_map,
             generator_outputs=per_gen_outputs,
             full_candidate_generation_config=config,
-        )
-        _debug_log(
-            run_id=graph_id,
-            hypothesis_id="H4",
-            location="anchor_candidate_generation_helpers.py:eval_exit",
-            message="candidate evaluation exit",
-            data={
-                "summary_json": None if not eval_outputs else eval_outputs.get("summary_json"),
-                "readiness": None if not eval_outputs else eval_outputs.get("readiness"),
-            },
         )
     if pbar is not None:
         pbar.update(1)

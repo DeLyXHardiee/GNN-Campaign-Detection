@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from itertools import combinations
 from pathlib import Path
 from typing import Any
-import time
 
 import networkx as nx
 import numpy as np
@@ -16,27 +15,6 @@ from sklearn.metrics import completeness_score, homogeneity_score, v_measure_sco
 
 from analysis.utils import raw_gnn_notebook as rn
 from analysis.utils.anchor_seed_helpers import _b_cubed_precision
-
-
-# region agent log
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "23c729",
-            "runId": str(run_id),
-            "hypothesisId": str(hypothesis_id),
-            "location": str(location),
-            "message": str(message),
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-23c729.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 
 def _pair(a: str, b: str) -> tuple[str, str]:
@@ -838,19 +816,6 @@ def run_candidate_evaluation_report(
         seed_dir=seed_dir,
     )
     gt_maps = _load_gt_maps(gt_paths)
-    _debug_log(
-        run_id=graph_id,
-        hypothesis_id="H1",
-        location="anchor_candidate_eval_helpers.py:gt_load",
-        message="candidate eval gt discovery",
-        data={
-            "configured_gt_paths_raw": (gt_cfg.get("paths") or []),
-            "resolved_gt_paths": [str(p) for p in gt_paths],
-            "n_gt_maps": int(len(gt_maps)),
-            "gt_resolution": gt_resolution,
-        },
-    )
-
     # Metadata
     metadata = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -1321,13 +1286,6 @@ def run_candidate_evaluation_report(
                 )
                 silver_eval = silver_pack.get("silver_hidden_link_eval") or {"enabled": False}
             except Exception as exc:  # pragma: no cover - defensive benchmark isolation
-                _debug_log(
-                    run_id=graph_id,
-                    hypothesis_id="H5",
-                    location="anchor_candidate_eval_helpers.py:silver_benchmark",
-                    message="silver hidden-link benchmark failed",
-                    data={"error": str(exc)},
-                )
                 silver_eval = {
                     "enabled": True,
                     "benchmark_invalid": True,
@@ -1494,20 +1452,6 @@ def run_candidate_evaluation_report(
         "key_positive_signals": key_positive_signals,
         "key_warnings": key_warnings,
     }
-    _debug_log(
-        run_id=graph_id,
-        hypothesis_id="H4",
-        location="anchor_candidate_eval_helpers.py:readiness",
-        message="candidate eval readiness computed",
-        data={
-            "candidate_to_seed_pair_ratio": float(seed_candidate_compatibility["candidate_to_seed_pair_ratio"]),
-            "n_non_seed_candidate_pairs": int(seed_candidate_compatibility["n_non_seed_candidate_pairs"]),
-            "n_seed_pairs_total": int(seed_candidate_compatibility["n_seed_pairs_total"]),
-            "blocking_reasons": list(blocking_reason_if_not_ready),
-            "ready_for_next_stage": bool(ready_for_next_stage),
-        },
-    )
-
     # manual review sample
     sample_df = union_df.copy()
     if sample_df.empty:

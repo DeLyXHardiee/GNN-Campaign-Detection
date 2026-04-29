@@ -19,6 +19,7 @@ from analysis.utils.pair_graph_contract import (
     validate_score_mode_target_compatibility,
 )
 from analysis.utils import graph_structure_helpers as gh
+from analysis.utils.scorer_diagnostics_core import basic_score_diagnostics
 
 ScorerFn = Callable[..., pd.DataFrame]
 
@@ -250,7 +251,7 @@ def score_seed_candidate_pu(
         scfg = dict(scoring_cfg or {})
         pu_cfg = dict(scfg.get("pu_run") or {})
         _ensure_gnn_on_path()
-        from analysis.utils.pair_score_separation import (
+        from analysis.utils.pair_model_inference import (
             load_pair_supervision_for_inference,
             score_pair_rows,
         )
@@ -534,6 +535,7 @@ def apply_scorer(
     graph_kind: str,
     score_params: dict[str, Any],
     payload: dict[str, Any],
+    diagnostics_cfg: dict[str, Any] | None = None,
 ) -> ScorerResult:
     validate_scorer_target(score_mode=score_mode, graph_kind=graph_kind)
     if score_mode not in SCORER_REGISTRY:
@@ -549,17 +551,51 @@ def apply_scorer(
             seed_edges_df=payload["seed_edges_df"],
             scoring_cfg=score_params,
         )
-        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata={"score_mode": score_mode})
+        metadata: dict[str, Any] = {"score_mode": score_mode}
+        if diagnostics_cfg and diagnostics_cfg.get("enabled"):
+            dr = basic_score_diagnostics(
+                score_mode=score_mode,
+                graph_kind=graph_kind,
+                scored_df=scored_all,
+                score_col="edge_weight",
+            )
+            metadata["diagnostics"] = {
+                "enabled": True,
+                "summary": {
+                    "input_stats": dr.input_stats,
+                    "output_stats": dr.output_stats,
+                    "provenance_stats": dr.provenance_stats,
+                    "scorer_specific": dr.scorer_specific,
+                },
+            }
+        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata=metadata)
     if score_mode == "seed_candidate_pu_v1":
         scored_all, scored_filtered = fn(
             candidate_union_df=payload["candidate_union_df"],
             scoring_cfg=score_params,
             score_mode=score_mode,
         )
+        metadata = {"score_mode": score_mode}
+        if diagnostics_cfg and diagnostics_cfg.get("enabled"):
+            dr = basic_score_diagnostics(
+                score_mode=score_mode,
+                graph_kind=graph_kind,
+                scored_df=scored_all,
+                score_col="edge_weight",
+            )
+            metadata["diagnostics"] = {
+                "enabled": True,
+                "summary": {
+                    "input_stats": dr.input_stats,
+                    "output_stats": dr.output_stats,
+                    "provenance_stats": dr.provenance_stats,
+                    "scorer_specific": dr.scorer_specific,
+                },
+            }
         return ScorerResult(
             scored_all=scored_all,
             scored_filtered=scored_filtered,
-            metadata={"score_mode": score_mode},
+            metadata=metadata,
         )
     if score_mode in {"semantic_shard_handcrafted_v1", "semantic_shard_affine_v1"}:
         scored_all = fn(
@@ -567,5 +603,22 @@ def apply_scorer(
             scoring_cfg=score_params,
             score_mode=score_mode,
         )
-        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata={"score_mode": score_mode})
+        metadata = {"score_mode": score_mode}
+        if diagnostics_cfg and diagnostics_cfg.get("enabled"):
+            dr = basic_score_diagnostics(
+                score_mode=score_mode,
+                graph_kind=graph_kind,
+                scored_df=scored_all,
+                score_col="edge_weight",
+            )
+            metadata["diagnostics"] = {
+                "enabled": True,
+                "summary": {
+                    "input_stats": dr.input_stats,
+                    "output_stats": dr.output_stats,
+                    "provenance_stats": dr.provenance_stats,
+                    "scorer_specific": dr.scorer_specific,
+                },
+            }
+        return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata=metadata)
     raise ValueError(f"Unsupported score_mode envelope: {score_mode!r}")

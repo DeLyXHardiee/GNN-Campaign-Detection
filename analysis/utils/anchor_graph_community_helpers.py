@@ -15,7 +15,7 @@ from analysis.utils import community_sweep_driver as csd
 from analysis.utils import graph_structure_helpers as gh
 from analysis.utils.config_run_fields import resolve_graph_id
 from analysis.utils import raw_gnn_notebook as rn
-from analysis.utils.graph_scorer_registry import SCORER_REGISTRY
+from analysis.utils.graph_scorer_registry import apply_scorer
 from analysis.utils.anchor_candidate_rare_artifact_helpers import _resolve_latest_seed_dir
 from analysis.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 
@@ -436,6 +436,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
     use_scoring = bool(score_mode_raw)
     use_pre_scored_edges = score_mode_raw in {"pre_scored", "weighted_pre_scored"}
     score_params = dict(sweep_cfg.get("score_params") or {})
+    diagnostics_cfg = dict(sweep_cfg.get("diagnostics") or {})
 
     custom_edges_csv_raw = str(run_cfg.get("custom_edges_csv") or "").strip()
     custom_edges_resolved: str | None = None
@@ -483,10 +484,6 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                 raise ValueError("Anchor edge table must contain email_i/email_j.")
 
     if use_scoring:
-        if not use_pre_scored_edges and score_mode_raw not in SCORER_REGISTRY:
-            raise ValueError(
-                f"Unknown sweep.score_mode {score_mode_raw!r}. Available: {sorted(SCORER_REGISTRY)}"
-            )
         if use_pre_scored_edges:
             if "edge_weight" not in edges_df.columns:
                 raise ValueError(
@@ -526,18 +523,23 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             if not p_seed.is_file():
                 raise FileNotFoundError(f"seed edges CSV not found for handcrafted scoring: {p_seed}")
             seed_edges_df = pd.read_csv(p_seed, low_memory=False)
-            scored_df = SCORER_REGISTRY[score_mode_raw](
-                candidate_union_df=edges_df,
-                seed_edges_df=seed_edges_df,
-                scoring_cfg=score_params,
+            sr = apply_scorer(
+                score_mode=score_mode_raw,
+                graph_kind="seed_candidate",
+                score_params=score_params,
+                payload={"candidate_union_df": edges_df, "seed_edges_df": seed_edges_df},
+                diagnostics_cfg=diagnostics_cfg,
             )
+            scored_df = sr.scored_all
         elif score_mode_raw == "seed_candidate_pu_v1":
-            scored_all_df, _scored_thr_df = SCORER_REGISTRY[score_mode_raw](
-                candidate_union_df=edges_df,
-                scoring_cfg=score_params,
-                score_mode="seed_candidate_pu_v1",
+            sr = apply_scorer(
+                score_mode=score_mode_raw,
+                graph_kind="seed_candidate",
+                score_params=score_params,
+                payload={"candidate_union_df": edges_df},
+                diagnostics_cfg=diagnostics_cfg,
             )
-            scored_df = scored_all_df
+            scored_df = sr.scored_all
         else:
             raise ValueError(f"Unsupported score_mode for community sweep: {score_mode_raw}")
         edges_df = scored_df.copy()
@@ -694,6 +696,15 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         "per_ground_truth_outputs": per_gt_outputs,
         "best_rows_by_gt": best_rows,
     }
+    if diagnostics_cfg.get("enabled") and use_scoring:
+        diag_payload = {
+            "enabled": True,
+            "score_mode": score_mode_raw,
+            "diagnostics_cfg": diagnostics_cfg,
+        }
+        p_diag = out_dir / "scorer_diagnostics.json"
+        p_diag.write_text(json.dumps(diag_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        summary["scorer_diagnostics_json"] = str(p_diag)
     p_summary = out_dir / "anchor_community_multi_gt_summary.json"
     p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return {

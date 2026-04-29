@@ -36,6 +36,11 @@ Top-level keys:
 - `scoring`
 - `community`
 
+Optional scorer diagnostics block:
+
+- `scoring.diagnostics.enabled` (default false)
+- when enabled, scorer-level diagnostics are emitted as `scorer_diagnostics.json` under each target community output directory and linked from `run_manifest.json`.
+
 Stage JSON under `analysis/configs/` may include `run.graph_id` (e.g. `local_default`) for **direct** Python calls to stage helpers with those files. **`run_experiment`** always injects `run.graph_id` from **`experiment.graph_id`** via `run_graph_setup` before any stage runs.
 
 ## Artifact boundaries
