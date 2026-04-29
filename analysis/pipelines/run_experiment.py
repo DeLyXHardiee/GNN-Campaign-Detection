@@ -21,9 +21,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from analysis.utils.graph_scorer_registry import SCORER_REGISTRY, apply_scorer, validate_scorer_target
-from analysis.pipelines import runner_config as rcfg
-from analysis.pipelines import runner_manifest as rman
-from analysis.pipelines import runner_targets as rtgt
+from analysis.pipelines.pipeline_helpers import runner_config as rcfg
+from analysis.pipelines.pipeline_helpers import runner_manifest as rman
+from analysis.pipelines.pipeline_helpers import runner_targets as rtgt
 
 
 DEFAULT_EXPERIMENT_CONFIG_PATH = (
@@ -126,6 +126,7 @@ def _run_semantic_shard_multi_gt_community_sweep(
     target_root: Path,
     score_mode: str,
     score_params: dict[str, Any],
+    diagnostics_cfg: dict[str, Any],
     gt_paths: list[str],
     sweep_cfg: dict[str, Any],
 ) -> dict[str, Any]:
@@ -159,6 +160,7 @@ def _run_semantic_shard_multi_gt_community_sweep(
             graph_kind="semantic_shard",
             score_params=score_params,
             payload={"shard_edges_df": edges_df},
+            diagnostics_cfg=diagnostics_cfg,
         )
         edges_df = sr.scored_all
         if "shard_a" not in edges_df.columns or "shard_b" not in edges_df.columns:
@@ -271,6 +273,10 @@ def _run_semantic_shard_multi_gt_community_sweep(
         "per_ground_truth_outputs": per_gt_outputs,
         "best_rows_by_gt": best_rows_by_gt,
     }
+    if diagnostics_cfg.get("enabled") and score_mode:
+        p_diag = out_dir / "scorer_diagnostics.json"
+        p_diag.write_text(json.dumps(sr.metadata.get("diagnostics") or {}, indent=2, ensure_ascii=False), encoding="utf-8")
+        summary["scorer_diagnostics_json"] = str(p_diag)
     p_summary = out_dir / "semantic_shard_community_multi_gt_summary.json"
     p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     return {
@@ -279,7 +285,12 @@ def _run_semantic_shard_multi_gt_community_sweep(
         "per_ground_truth_outputs": per_gt_outputs,
         "target": "semantic_shard",
         "metrics": {"sort_by": sort_by},
-        "artifacts": {"summary_json": str(p_summary), "output_dir": str(out_dir)},
+        "artifacts": {
+            "summary_json": str(p_summary),
+            "output_dir": str(out_dir),
+            "scorer_diagnostics_json": summary.get("scorer_diagnostics_json"),
+        },
+        "scorer_diagnostics_json": summary.get("scorer_diagnostics_json"),
     }
 
 
@@ -325,6 +336,7 @@ def _execute_anchor_like_target(
     community_cfg: dict[str, Any],
     score_mode: str,
     score_params: dict[str, Any],
+    diagnostics_cfg: dict[str, Any],
 ) -> dict[str, Any]:
     base_community_cfg_path = _resolve_path(str(community_cfg.get("base_config") or DEFAULT_ANCHOR_COMMUNITY_CONFIG_PATH))
     comm_cfg = _read_json(base_community_cfg_path)
@@ -342,6 +354,7 @@ def _execute_anchor_like_target(
         comm_cfg["run"]["seed_stage_dir"] = sdir
     comm_cfg["sweep"]["score_mode"] = score_mode
     comm_cfg["sweep"]["score_params"] = score_params
+    comm_cfg["sweep"]["diagnostics"] = diagnostics_cfg
     comm_cfg["ground_truth"]["paths"] = gt_paths
     comm_cfg["output"]["output_root"] = str((target_root / "community_root").resolve())
     comm_cfg["output"]["stage_name"] = "community_sweep"
@@ -357,6 +370,7 @@ def _execute_anchor_like_target(
         "per_ground_truth_outputs": out.get("per_ground_truth_outputs") or [],
         "artifacts": {"summary_json": out.get("summary_json"), "output_dir": out.get("output_dir")},
         "metrics": {"sort_by": (comm_cfg.get("sweep") or {}).get("sort_by")},
+        "scorer_diagnostics_json": out.get("scorer_diagnostics_json"),
     }
 
 
@@ -399,10 +413,11 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
     score_targets = ctx.score_targets
     score_mode = ctx.score_mode
     score_params = dict(ctx.score_params)
+    diagnostics_cfg = dict(ctx.diagnostics_cfg)
 
     setup_result = None
     if mode in {"setup_only", "setup_and_score"} and not dry_run:
-        from analysis.pipelines.graph_setup_pipeline import run_graph_setup
+        from analysis.pipelines.pipeline_helpers.graph_setup_pipeline import run_graph_setup
 
         setup_result = run_graph_setup(
             project_root=PROJECT_ROOT,
@@ -442,6 +457,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
         "gt_sets_path": str(gt_sets_path),
         "gt_paths": gt_paths,
         "score_mode": score_mode or None,
+        "diagnostics": diagnostics_cfg or None,
         "score_targets": score_targets,
         "manifest_version": "2.0",
     }
@@ -481,6 +497,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
                     target_root=target_root,
                     score_mode=score_mode,
                     score_params=score_params,
+                    diagnostics_cfg=diagnostics_cfg,
                     gt_paths=gt_paths,
                     sweep_cfg=dict(community.get("sweep") or {}),
                 )
@@ -496,6 +513,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
                 community_cfg=community,
                 score_mode=score_mode,
                 score_params=score_params,
+                diagnostics_cfg=diagnostics_cfg,
             )
         target_results.append(
             {
@@ -507,6 +525,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
                 "artifacts": {
                     "output_dir": comm_res.get("output_dir"),
                     "summary_json": comm_res.get("summary_json"),
+                    "scorer_diagnostics_json": comm_res.get("scorer_diagnostics_json"),
                 },
                 "metrics": comm_res.get("metrics") or {},
                 "community_result": comm_res,

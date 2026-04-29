@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from analysis.pipelines.graph_setup_pipeline import run_graph_setup
+from analysis.pipelines.pipeline_helpers.graph_setup_pipeline import run_graph_setup
 from analysis.utils.community_eval_contract import evaluate_external_metrics
 from analysis.utils.semantic_shard_step3_helpers import best_sweep_metric_row
 
@@ -46,7 +46,7 @@ def test_run_graph_setup_shard_only_creates_only_shard_dirs(tmp_path: Path, monk
         return {"pairgraph_unscored_csv": str(p_pair)}
 
     monkeypatch.setattr(
-        "analysis.pipelines.graph_setup_pipeline._build_semantic_shard_pairgraph",
+        "analysis.pipelines.pipeline_helpers.graph_setup_pipeline._build_semantic_shard_pairgraph",
         _fake_build,
     )
 

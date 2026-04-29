@@ -4,33 +4,9 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
-import json
-import time
 
 import numpy as np
 import pandas as pd
-
-
-# region agent log
-def _debug_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict[str, Any]) -> None:
-    try:
-        payload = {
-            "sessionId": "23c729",
-            "runId": str(run_id),
-            "hypothesisId": str(hypothesis_id),
-            "location": str(location),
-            "message": str(message),
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open("debug-23c729.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
-
 
 def _to_set_cell(x: Any) -> set[str]:
     if isinstance(x, set):
@@ -531,7 +507,6 @@ def generate_component_expansion_v1(
         ]
 
     members_df, _comps_df = _extract_component_members(seed_dir)
-    run_id = str(seed_dir.parent.name) if seed_dir.parent else "unknown"
     signatures, node_sets, ts_map = _component_signatures(
         nodes_df=nodes_df,
         id_to_vec=id_to_vec,
@@ -569,21 +544,6 @@ def generate_component_expansion_v1(
     pairs_path = out_dir / "candidates_component_expanded.csv"
     links_df.to_csv(links_path, index=False)
     pairs_df.to_csv(pairs_path, index=False)
-    _debug_log(
-        run_id=run_id,
-        hypothesis_id="H2",
-        location="anchor_candidate_component_expansion_helpers.py:generate_component_expansion_v1",
-        message="component generator diagnostics",
-        data={
-            "n_non_singleton_components": int(sum(1 for s in signatures.values() if int(s.get("size", 0)) >= 2)),
-            "n_singleton_components": int(sum(1 for s in signatures.values() if int(s.get("size", 0)) == 1)),
-            "n_component_links": int(len(links_df)),
-            "n_emitted_pairs_rows": int(len(pairs_df)),
-            "component_links_csv": str(links_path),
-            "expanded_csv": str(pairs_path),
-        },
-    )
-
     pairs_set = set()
     if not pairs_df.empty:
         pairs_set = set(zip(pairs_df["email_i"].astype(str).tolist(), pairs_df["email_j"].astype(str).tolist(), strict=False))

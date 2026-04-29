@@ -23,6 +23,7 @@ class RunContext:
     score_targets: list[str]
     score_mode: str
     score_params: dict[str, Any]
+    diagnostics_cfg: dict[str, Any]
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -64,6 +65,9 @@ def validate_experiment_config(cfg: dict[str, Any]) -> None:
     score_mode = "" if score_mode_raw.lower() == "none" else score_mode_raw
     if score_mode and score_mode not in SCORER_REGISTRY:
         raise ValueError(f"Unknown scoring.score_mode {score_mode!r}. Available: {sorted(SCORER_REGISTRY)}")
+    diagnostics_cfg = scoring.get("diagnostics")
+    if diagnostics_cfg is not None and not isinstance(diagnostics_cfg, dict):
+        raise ValueError("scoring.diagnostics must be an object when provided")
 
 
 def build_run_context(
@@ -92,6 +96,7 @@ def build_run_context(
     score_mode_raw = str(scoring.get("score_mode") or "").strip()
     score_mode = "" if score_mode_raw.lower() == "none" else score_mode_raw
     score_params = resolve_score_params(score_mode, dict(scoring.get("params") or {})) if score_mode else {}
+    diagnostics_cfg = dict(scoring.get("diagnostics") or {})
     return RunContext(
         graph_id=graph_id,
         scoring_run_id=scoring_run_id,
@@ -105,4 +110,5 @@ def build_run_context(
         score_targets=score_targets,
         score_mode=score_mode,
         score_params=score_params,
+        diagnostics_cfg=diagnostics_cfg,
     )

@@ -39,10 +39,13 @@ def print_experiment_cli_summary(out: dict[str, Any]) -> None:
             continue
         od = str(cr.get("output_dir") or "").strip()
         sj = str(cr.get("summary_json") or "").strip()
+        sd = str(cr.get("scorer_diagnostics_json") or "").strip()
         if od:
             print(f"  [{tgt}] community_dir: {od}", flush=True)
         if sj:
             print(f"  [{tgt}] community_summary: {sj}", flush=True)
+        if sd:
+            print(f"  [{tgt}] scorer_diagnostics: {sd}", flush=True)
 
 
 def build_target_result(*, target: str, edges_csv: str, community_result: dict[str, Any]) -> dict[str, Any]:

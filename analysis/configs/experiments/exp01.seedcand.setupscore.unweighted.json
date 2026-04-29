@@ -1,7 +1,7 @@
 {
   "experiment": {
-    "scoring_run_id": "run_seedcand_unweighted_base",
-    "graph_id": "bundle_seedcand_base",
+    "scoring_run_id": "run_seedcand_unweighted_setupscore",
+    "graph_id": "bundle_seedcand",
     "mode": "setup_and_score",
     "graph_family": "seed_candidate"
   },
