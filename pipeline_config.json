@@ -103,7 +103,7 @@
     "supervised_edge_types": []
   },
   "pair_training": {
-    "pair_dataset_csv": "analysis/output/graph_bundles/seed_candidate_pu_default/pair_training/seed_candidate_pu_default/pair_training_dataset.csv",
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/seed_candidate_pu_default/pair_training/seed_candidate_pu_default/pair_training_dataset.csv",
     "pair_batch_size": 64,
     "pair_fanout": [25, 15],
     "pair_split_seed": 42,

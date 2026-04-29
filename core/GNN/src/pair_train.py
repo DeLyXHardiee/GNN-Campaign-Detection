@@ -1461,7 +1461,7 @@ def run_pair_training(
             },
             "note": (
                 "Reliable-negative rows come from pair_training_dataset.csv (pair_status=reliable_negative). "
-                "Rebuild that CSV with analysis/scripts/build_pair_training_dataset.py --pipeline-json pointing "
+                "Rebuild that CSV with seed_candidate_workflow/scripts/build_pair_training_dataset.py --pipeline-json pointing "
                 "to pipeline_config.json so pair_training.reliable_negative_pool is applied."
             ),
         },
