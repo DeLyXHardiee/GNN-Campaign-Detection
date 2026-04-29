@@ -23,6 +23,9 @@ core/utils/embeddings/output
 core/GNN/outputs/*
 core/feature_set_extraction/output/*
 seed_candidate_workflow/output/*
+*.parquet
+*.pkl
+*.npy
 
 # Ignore Python cache files
 __pycache__/
