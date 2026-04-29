@@ -651,7 +651,7 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
     out_dir = os.path.join("results")
     os.makedirs(out_dir, exist_ok=True)
     base = os.path.splitext(os.path.basename(meta_path))[0] or "graph"
-    out_path = os.path.join(out_dir, f"{base}_analysis.md")
+    out_path = os.path.join(out_dir, f"{base}_seed_candidate_workflow.md")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n\n".join(sections))
 

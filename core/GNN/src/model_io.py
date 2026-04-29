@@ -61,6 +61,8 @@ def save_model_checkpoint(
     best_model_state=None,
     best_predictor_state=None,
     training_params=None,
+    projector=None,
+    training_objective="link_prediction",
 ):
     """
     Save a checkpoint containing model/predictor weights and run metadata.
@@ -70,29 +72,30 @@ def save_model_checkpoint(
     base_dir = Path(save_dir) if save_dir is not None else get_models_dir()
     base_dir.mkdir(parents=True, exist_ok=True)
     save_path = base_dir / filename
-    torch.save(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
-        {
-            "epoch": epoch,
-            "val_loss": val_loss,
-            "model_state_dict": model.state_dict(),
-            "predictor_state_dict": predictor.state_dict(),
-            "sup_edge_types": sup_edge_types,
-            "config": config,
-            "data_metadata": data_metadata,
-            "train_pos": train_pos,
-            "val_pos": val_pos,
-            "test_pos": test_pos,
-            "loader_params": loader_params,
-            "torch_seed": torch_seed,
-            "optimizer_state": optimizer_state,
-            "patience_counter": patience_counter,
-            "best_val": best_val,
-            "best_model_state_dict": best_model_state,
-            "best_predictor_state_dict": best_predictor_state,
-            "training_params": training_params,
-        },
-        save_path,
-    )
+    payload = {
+        "epoch": epoch,
+        "val_loss": val_loss,
+        "model_state_dict": model.state_dict(),
+        "predictor_state_dict": predictor.state_dict(),
+        "sup_edge_types": sup_edge_types,
+        "config": config,
+        "data_metadata": data_metadata,
+        "train_pos": train_pos,
+        "val_pos": val_pos,
+        "test_pos": test_pos,
+        "loader_params": loader_params,
+        "torch_seed": torch_seed,
+        "optimizer_state": optimizer_state,
+        "patience_counter": patience_counter,
+        "best_val": best_val,
+        "best_model_state_dict": best_model_state,
+        "best_predictor_state_dict": best_predictor_state,
+        "training_params": training_params,
+        "training_objective": training_objective,
+    }
+    if projector is not None:
+        payload["projector_state_dict"] = projector.state_dict()
+    torch.save(payload, save_path)  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
     return save_path
 
 
@@ -154,7 +157,11 @@ def load_full_run(data, device=None, filename="best_model.pt"):
     """
     data_cpu = data.to('cpu')
     device = select_device(device)
-    model, predictor, checkpoint = load_model_checkpoint(device=device, metadata=None, filename=filename)
+    load_path = _validated_checkpoint_path(filename)
+    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+        load_path, map_location=device, weights_only=True
+    )
+    model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 
     train_pos = checkpoint.get("train_pos")
     val_pos = checkpoint.get("val_pos")
@@ -207,7 +214,6 @@ def load_training_state(data, device=None, filename="best_model.pt"):
     checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
         load_path, map_location=device, weights_only=True
     )
-
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
 
     train_pos = checkpoint.get("train_pos")
