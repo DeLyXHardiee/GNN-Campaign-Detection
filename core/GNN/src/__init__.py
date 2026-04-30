@@ -9,7 +9,12 @@ def __getattr__(name):
     if name == "run_training":
         from .train import run_training
         return run_training
-    if name in ("load_model_checkpoint", "load_full_run", "load_training_state", "save_model_checkpoint"):
+    if name in (
+        "load_model_checkpoint",
+        "load_full_run",
+        "load_training_state",
+        "save_model_checkpoint",
+    ):
         from . import model_io
         return getattr(model_io, name)
     if name in ("export_embeddings", "get_primary_embeddings", "embed_with_graph"):
