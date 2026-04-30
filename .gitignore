@@ -4,6 +4,7 @@ output/runs/
 # Ignore data files
 *.csv
 *misp.json
+*misp-large.json
 *clusters.json
 core/GNN/data
 core/GNN/notebooks/data
