@@ -27,6 +27,11 @@ from src.clustering.clustering_helpers import (
     run_locked_param_across_checkpoints,
     sweep_clustering_for_embedding_map,
 )
+from config.pipeline_config import (  # noqa: E402
+    GnnPathLayout,
+    gnn_path_layout_from_pipeline,
+    load_pipeline_config,
+)
 from src.load_graph_data import load_hetero_pt
 from src.model_io import load_model_checkpoint, select_device
 
@@ -360,13 +365,19 @@ def run_clustering_stage(
     checkpoint_path: str | Path,
     output_dir: str | Path,
     clustering_cfg: dict[str, Any],
+    cluster_only_ground_truth: bool = False,
     min_coverage_ground_truth: float = 0.5,
     min_coverage_all: float | None = None,
+    hybrid_embeddings: bool = False,
+    hybrid_raw_weight: float = 1.0,
+    hybrid_gnn_weight: float = 1.0,
     model_save_name: str,
     device_pref: str | None,
     to_undirected: bool,
     baselines_cfg: dict[str, Any] | None = None,
     path_layout: GnnPathLayout | None = None,
+    transformer_baseline_enabled: bool = False,
+    transformer_embeddings_json_path: str | Path | None = None,
 ) -> dict[str, Any]:
     graph_path = str(graph_path)
     ground_truth_path = str(ground_truth_path)
@@ -378,6 +389,11 @@ def run_clustering_stage(
         raise ValueError("GROUND_TRUTH_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
     if not checkpoint_path:
         raise ValueError("CHECKPOINT_PATH is empty in core/GNN/run_pipeline.py (required for clustering).")
+
+    print(
+        "[clustering diag] run_clustering_stage: starting (before graph load)",
+        flush=True,
+    )
 
     layout = path_layout or gnn_path_layout_from_pipeline(load_pipeline_config())
 
@@ -407,7 +423,112 @@ def run_clustering_stage(
             f"Metadata at {meta_path} has no email_attrs.external_id. "
             "Clustering requires external_id per email node."
         )
+    print(
+        f"[clustering diag] loading ground truth JSON: {ground_truth_path!r}",
+        flush=True,
+    )
     ground_truth = extract_ground_truth_labels(ground_truth_path)
+    print(
+        f"[clustering diag] ground truth labels loaded: {len(ground_truth)} ids",
+        flush=True,
+    )
+
+    # --- Diagnostic prints (ground truth vs graph identity overlap) ---
+    _graph_id_list = [str(x) for x in email_external_ids]
+    _graph_ids = set(_graph_id_list)
+    _gt_ids = set(map(str, ground_truth.keys()))
+    _overlap = _graph_ids & _gt_ids
+    try:
+        _n_email_tensor = int(data["email"].num_nodes)
+    except Exception:
+        _n_email_tensor = -1
+    _enabled_algos = [
+        str(k)
+        for k, v in (clustering_cfg or {}).items()
+        if isinstance(v, dict) and v.get("enabled", False)
+    ]
+    print("\n[clustering diag] ==========", flush=True)
+    print(f"[clustering diag] graph_path:\n    {graph_path}", flush=True)
+    print(f"[clustering diag] ground_truth_path:\n    {ground_truth_path}", flush=True)
+    print(f"[clustering diag] checkpoint_path:\n    {checkpoint_path}", flush=True)
+    print(
+        f"[clustering diag] checkpoint exists: {Path(checkpoint_path).expanduser().exists()}",
+        flush=True,
+    )
+    print(f"[clustering diag] clustering output dir:\n    {clustering_out}", flush=True)
+    print(
+        f"[clustering diag] cluster_only_ground_truth: {cluster_only_ground_truth}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] min_coverage_ground_truth={min_coverage_ground_truth}, "
+        f"min_coverage_all={min_coverage_all}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] graph email num_nodes: {_n_email_tensor}, "
+        f"meta external_id list length: {len(_graph_id_list)}, "
+        f"unique meta external_id: {len(_graph_ids)}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] ground_truth labeled emails (unique): {len(_gt_ids)}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] overlap (graph ∩ ground_truth external_id): {len(_overlap)}",
+        flush=True,
+    )
+    if not _overlap and _gt_ids and _graph_ids:
+        print(
+            "[clustering diag] ZERO overlap — clustering will fail when "
+            "cluster_only_ground_truth=True (no embeddings after restriction).",
+            flush=True,
+        )
+        _sgt = sorted(_gt_ids, key=str)[:5]
+        _sgr = sorted(_graph_ids, key=str)[:5]
+        print(
+            f"[clustering diag] sample ground_truth external_ids: {_sgt}",
+            flush=True,
+        )
+        print(
+            f"[clustering diag] sample graph external_ids: {_sgr}",
+            flush=True,
+        )
+    _only_gt = sorted(_gt_ids - _graph_ids, key=str)
+    _only_graph = sorted(_graph_ids - _gt_ids, key=str)
+    print(
+        f"[clustering diag] only_in_ground_truth (not on graph): {len(_only_gt)}",
+        flush=True,
+    )
+    if _only_gt and len(_only_gt) <= 8:
+        print(f"[clustering diag] only_in_ground_truth ids: {_only_gt}", flush=True)
+    elif _only_gt:
+        print(
+            f"[clustering diag] only_in_ground_truth (first 5): {_only_gt[:5]}",
+            flush=True,
+        )
+    print(
+        f"[clustering diag] only_on_graph (not in ground_truth): {len(_only_graph)}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] enabled clustering algorithms: "
+        f"{_enabled_algos if _enabled_algos else '(none — no sweeps will run)'}",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] hybrid_embeddings={hybrid_embeddings} "
+        f"(raw_w={hybrid_raw_weight}, gnn_w={hybrid_gnn_weight})",
+        flush=True,
+    )
+    print(
+        f"[clustering diag] transformer_text_baseline={transformer_baseline_enabled} "
+        f"(embeddings_json={transformer_embeddings_json_path})",
+        flush=True,
+    )
+    print("[clustering diag] ==========\n", flush=True)
+    # --- end diagnostic prints ---
 
     model, predictor, checkpoint = load_model_checkpoint(
         device=device, metadata=data.metadata(), filename=checkpoint_path
@@ -420,6 +541,8 @@ def run_clustering_stage(
     # Model name comes from training.model_save_name (stem) so it stays consistent when not running training.
     outputs: dict[str, dict[str, str]] = {}
     model_stem = Path(model_save_name).stem
+    raw_model_stem = "raw_email_embeddings"
+    transformer_model_stem = "transformer_text_embeddings"
 
     # Default `min_coverage_all` to the same threshold as ground truth coverage.
     if min_coverage_all is None:
@@ -465,11 +588,11 @@ def run_clustering_stage(
                 continue
 
             if algo_name == "dbscan":
-                locked_param_value = best["epsilon"]
+                locked_param_value = float(best["epsilon"])
             elif algo_name == "meanshift":
-                locked_param_value = best["quantile"]
+                locked_param_value = float(best["quantile"])
             elif algo_name == "hdbscan":
-                locked_param_value = best["min_cluster_size"]
+                locked_param_value = float(best["min_cluster_size"])
             else:
                 continue
 
@@ -486,6 +609,10 @@ def run_clustering_stage(
                 locked_param_value=locked_param_value,
                 output_dir=algo_out,
                 email_external_ids=email_external_ids,
+                cluster_only_ground_truth=bool(cluster_only_ground_truth),
+                use_hybrid_embeddings=bool(hybrid_embeddings),
+                hybrid_raw_weight=float(hybrid_raw_weight),
+                hybrid_gnn_weight=float(hybrid_gnn_weight),
             )
 
     campaigns_gnn_path = _write_campaigns_for_best_algorithm(
@@ -594,7 +721,17 @@ def run_clustering_stage(
 
     result = {
         "output_dir": str(clustering_out),
-        "model_column_name": model_stem,
+        "model_column_name": f"{model_stem}_hybrid" if hybrid_embeddings else model_stem,
+        "hybrid_embeddings": bool(hybrid_embeddings),
+        "hybrid_raw_weight": float(hybrid_raw_weight),
+        "hybrid_gnn_weight": float(hybrid_gnn_weight),
+        "cluster_only_ground_truth": bool(cluster_only_ground_truth),
+        "transformer_baseline_enabled": bool(transformer_baseline_enabled),
+        "transformer_embeddings_json_path": (
+            str(Path(transformer_embeddings_json_path).expanduser().resolve())
+            if transformer_embeddings_json_path
+            else None
+        ),
         "algorithms": outputs,
         "best_locked_params": best_locked_params,
         "locked_param_min_coverage_ground_truth": float(min_coverage_ground_truth),

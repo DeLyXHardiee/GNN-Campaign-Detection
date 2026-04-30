@@ -44,20 +44,144 @@ SHORTENER_DOMAINS = {
 IP_PATTERN = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 
 
-def extract_domain_info(url):
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
+def _denoise_url_string(url: str) -> str:
+    """Strip noise so ``urlparse`` / heuristics see a single URL token where possible."""
+    if url is None:
+        return ""
+    s = str(url).strip()
+    if not s:
+        return ""
+    s = s.replace("\x00", "")
+    s = "".join(c for c in s if c == "\t" or ord(c) >= 32)
+    parts = s.split()
+    s = parts[0] if parts else ""
+    return s.strip("<>\"'")
 
+
+def _urlparse_safe(url: str):
+    if not url:
+        return None
+    try:
+        return urlparse(url)
+    except ValueError:
+        return None
+
+
+def _fallback_hostname(url: str) -> str:
+    """
+    Hostname when ``urlparse`` fails (e.g. ``Invalid IPv6 URL`` on broken ``[``/``:``).
+
+    Does not validate IPv6; returns empty for unclosed ``[``.
+    """
+    s = (url or "").strip()
+    if not s:
+        return ""
+    if "://" in s:
+        authority = s.split("://", 1)[1]
+    else:
+        authority = s
+    authority = authority.split("/")[0].split("?")[0].split("#")[0]
+    if "@" in authority:
+        authority = authority.rsplit("@", 1)[-1]
+    authority = authority.strip()
+    if not authority:
+        return ""
+    if authority.startswith("["):
+        end = authority.find("]")
+        if end == -1:
+            return ""
+        return authority[1:end].strip().lower()
+    if authority.count(":") == 1:
+        host, _, port = authority.partition(":")
+        if port.isdigit():
+            authority = host.strip().lower()
+        else:
+            authority = authority.lower()
+    else:
+        authority = authority.lower()
+    return authority
+
+
+def parse_url_host_and_registrable_domain(url: str) -> tuple[str, str, bool]:
+    """
+    Robust host + eTLD+1 for cache / policy matching.
+
+    Returns:
+        ``(hostname_lower, registrable_domain_lower, host_ok)``
+        ``host_ok`` is False only if no hostname could be recovered after denoise + fallbacks.
+    """
+    raw = _denoise_url_string(url)
+    if not raw:
+        return "", "", False
+    norm = _normalize_url_for_hostname_extraction(raw)
+    host = ""
+    p = _urlparse_safe(norm)
+    if p is not None:
+        try:
+            h = p.hostname
+            host = (h or "").strip().lower() if h else ""
+        except ValueError:
+            host = ""
+    if not host:
+        host = _fallback_hostname(norm) or _fallback_hostname(raw)
+    if not host:
+        return "", "", False
     ext = tldextract.extract(host)
+    reg = ".".join(p for p in [ext.domain, ext.suffix] if p).lower()
+    return host, reg, True
 
-    domain = ".".join(p for p in [ext.domain, ext.suffix] if p)
+
+def shard_url_infra_classify(url: str, popular_domains: frozenset[str]) -> tuple[str, str]:
+    """
+    Returns ``(kind, registrable_domain)`` where ``kind`` is
+    ``"malformed"`` (no host), ``"benign"`` (reg domain in list), or ``"kept"``.
+    """
+    _, reg, ok = parse_url_host_and_registrable_domain(url)
+    if not ok:
+        return "malformed", ""
+    if reg and reg in popular_domains:
+        return "benign", reg
+    return "kept", reg or ""
+
+
+def _normalize_url_for_hostname_extraction(url: str) -> str:
+    """
+    Ensure ``urlparse`` can see a network location.
+
+    Graph and email URLs are often stored **without** a scheme (e.g. ``www.example.com/a``).
+    Bare ``urlparse`` puts that in ``path`` and leaves ``hostname`` empty. Prepending
+    ``http://`` matches ``url_extractor.parse_url_components`` and yields a real host for
+    tldextract / popular-domain lists (which contain registrable domains only, no scheme).
+    """
+    s = (url or "").strip()
+    if not s:
+        return s
+    low = s.lower()
+    if low.startswith(("http://", "https://")):
+        return s
+    if s.startswith("//"):
+        return "http:" + s
+    return "http://" + s
+
+
+def extract_domain_info(url):
+    raw = "" if url is None else str(url)
+    host, domain, host_ok = parse_url_host_and_registrable_domain(raw)
+    if not host_ok:
+        host = ""
+        domain = ""
+        ext = tldextract.extract("")
+    else:
+        ext = tldextract.extract(host)
+
+    domain = domain or ".".join(p for p in [ext.domain, ext.suffix] if p)
     subdomain = ext.subdomain
 
     subdomain_count = 0 if not subdomain else len(subdomain.split("."))
 
     hyphen_count = host.count("-")
-    has_at_symbol = "@" in url
-    has_extra_http = url.lower().count("http") > 1
+    has_at_symbol = "@" in raw
+    has_extra_http = raw.lower().count("http") > 1
 
     try:
         host.encode("ascii")
@@ -91,7 +215,8 @@ def is_typo_of_popular(domain, popular_domains, max_distance=2):
 
 
 def contains_popular_in_subdomain(url, popular_domains):
-    host = urlparse(url).hostname or ""
+    host, _, ok_h = parse_url_host_and_registrable_domain("" if url is None else str(url))
+    host = host if ok_h else ""
     for pop in popular_domains:
         if pop in host and not host.endswith(pop):
             return True

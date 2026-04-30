@@ -43,7 +43,7 @@ def run_clustering_plot_stage(
     path_layout: GnnPathLayout | None = None,
 ) -> dict[str, Any]:
     """
-    Read clustering sweep CSVs and generate plots for analysis.
+    Read clustering sweep CSVs and generate plots for seed_candidate_workflow.
 
     Expected clustering output (written by `run_clustering_stage`); subdirs match
     ``pipeline_config.json`` ``gnn.clustering_subdir`` and ``gnn.clustering_plots_subdir``.

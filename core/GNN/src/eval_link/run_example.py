@@ -28,7 +28,7 @@ from src.eval_link import run_auroc_ap_from_run, run_recall_at_k_from_run
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run AUROC/AP and Recall@K analysis.")
+    parser = argparse.ArgumentParser(description="Run AUROC/AP and Recall@K seed_candidate_workflow.")
     parser.add_argument(
         "data_path",
         nargs="?",
@@ -54,7 +54,7 @@ def main() -> None:
         print("Pass a valid data_path as first argument or edit DATA_PATH in the script.")
         sys.exit(1)
 
-    print("Running AUROC/AP analysis...")
+    print("Running AUROC/AP seed_candidate_workflow...")
     result_auroc = run_auroc_ap_from_run(
         data_path=data_path,
         filename=checkpoint,
@@ -64,7 +64,7 @@ def main() -> None:
     print(f"  Plots:  {result_auroc['plot_paths']}")
     print(f"  JSON:   {result_auroc['metrics_path']}")
 
-    print("\nRunning Recall@K analysis...")
+    print("\nRunning Recall@K seed_candidate_workflow...")
     result_recall = run_recall_at_k_from_run(
         data_path=data_path,
         filename=checkpoint,

@@ -1,8 +1,0 @@
-GNN
-clustering
-config
-feature_set_extraction
-graph
-preprocessing
-results
-tests
