@@ -344,7 +344,13 @@ def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     Path to the hetero .pt file produced by build_graph for the current pipeline config
     (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
     """
-    cfg = get_pipeline_config(project_root=project_root)
+    cfg = load_pipeline_config(project_root=project_root)
+    graph_cfg = cfg.get("graph") or {}
+    raw_override = graph_cfg.get("graph_pt_path_override")
+    if raw_override is not None and str(raw_override).strip():
+        resolved = resolve_project_path(str(raw_override), project_root=project_root)
+        if resolved:
+            return resolved
     s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
     base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
     return os.path.join(s.output_dir, f"{base}_hetero.pt")
@@ -360,6 +366,7 @@ class FeaturesetClusteringSettings:
 
     dataset_base: str
     ground_truth_json: str | None
+    feature_sets: list[str]
     # DBSCAN
     eps_values: list[float]
     min_samples: int
@@ -396,11 +403,21 @@ def featureset_clustering_settings_from_pipeline(
     gnn_sel = (cfg.get("gnn_clustering") or {}).get("selection") or {}
 
     min_cov_gt = float(gnn_sel.get("min_coverage_ground_truth", 0.5))
+    feature_sets = [str(v) for v in (fs_cfg.get("feature_sets") or [
+        "FS1",
+        "FS2",
+        "FS3",
+        "FS4",
+        "FS5",
+        "FS6",
+        "FS7",
+    ])]
     return FeaturesetClusteringSettings(
         dataset_base=str(datasets_cfg.get("featureset_base_name") or "synthetic_email_dataset_50"),
         ground_truth_json=resolve_project_path(
             datasets_cfg.get("ground_truth_json"), project_root=project_root
         ),
+        feature_sets=feature_sets,
         eps_values=[float(v) for v in (dbscan_cfg.get("eps_values") or [])],
         min_samples=int(dbscan_cfg.get("min_samples", 5)),
         quantile_values=[float(v) for v in (meanshift_cfg.get("quantile_values") or [])],

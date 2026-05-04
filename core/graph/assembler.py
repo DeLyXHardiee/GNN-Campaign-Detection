@@ -28,6 +28,7 @@ from .common import (
     is_freemail_domain,
     to_str,
     auth_triple_to_onehot,
+    is_sha256_hex,
 )
 
 # Authentication-Results header components (spf, dkim, dmarc) stored as string attributes on email nodes
@@ -183,7 +184,14 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
     if node_key == "receiver":
         return _as_email_list(email.get("receivers"))
     if node_key == "attachment":
-        return _as_email_list(email.get("attachments"))
+        vals = _as_email_list(email.get("attachments"))
+        return [v for v in vals if is_sha256_hex(v)]
+    if node_key == "html_structure_fingerprint":
+        html = email.get("html") or {}
+        if not isinstance(html, dict):
+            return []
+        v = to_str(html.get("structure_fingerprint", "")).strip().lower()
+        return [v] if v else []
     if node_key == "url":
         return _as_email_list(email.get("urls"))
     if node_key == "origin_ip":
@@ -200,6 +208,13 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
                 if v:
                     vals.append(v)
         return vals
+    if node_key == "helo_host":
+        hops = email.get("received_hops") or []
+        return [
+            str(h.get("helo_host", "")).strip()
+            for h in hops
+            if isinstance(h, dict) and str(h.get("helo_host", "")).strip()
+        ]
     if node_key == "return_path_email":
         rp = email.get("return_path") or {}
         if not isinstance(rp, dict):
@@ -268,7 +283,13 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
     def attachment(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
-            vals.extend(_as_email_list(em.get("attachments")))
+            vals.extend(_field_values_for_node(em, "attachment"))
+        return _dedup_index(vals)
+
+    def html_structure_fingerprint(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_field_values_for_node(em, "html_structure_fingerprint"))
         return _dedup_index(vals)
 
     def origin_ip(emails: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -292,6 +313,12 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
                             vals.append(v)
         return _dedup_index(vals)
 
+    def helo_host(emails: List[Dict[str, Any]]) -> Dict[str, int]:
+        vals: List[str] = []
+        for em in emails:
+            vals.extend(_field_values_for_node(em, "helo_host"))
+        return _dedup_index(vals)
+
     def return_path_email(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
@@ -312,8 +339,10 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
         "stem": stem,
         "email_domain": email_domain,
         "attachment": attachment,
+        "html_structure_fingerprint": html_structure_fingerprint,
         "origin_ip": origin_ip,
         "received_host": received_host,
+        "helo_host": helo_host,
         "return_path_email": return_path_email,
         "return_path_domain": return_path_domain,
     }
@@ -343,10 +372,14 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
                     docfreq_maps["url_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "attachment":
                     docfreq_maps["attachment_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "html_structure_fingerprint":
+                    docfreq_maps["html_structure_fingerprint_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "origin_ip":
                     docfreq_maps["origin_ip_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "received_host":
                     docfreq_maps["received_host_email_sets"].setdefault(value, set()).add(email_idx)
+                elif dst_key == "helo_host":
+                    docfreq_maps["helo_host_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "return_path_email":
                     docfreq_maps["return_path_email_email_sets"].setdefault(value, set()).add(email_idx)
                 elif dst_key == "return_path_domain":
@@ -471,8 +504,10 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
         "stem": stem,
         "email_domain": email_domain,
         "attachment": attachment,
+        "html_structure_fingerprint": _str_len_docfreq("html_structure_fingerprint_email_sets"),
         "origin_ip": _str_len_docfreq("origin_ip_email_sets"),
         "received_host": _str_len_docfreq("received_host_email_sets"),
+        "helo_host": _str_len_docfreq("helo_host_email_sets"),
         "return_path_email": _str_len_docfreq("return_path_email_email_sets"),
         "return_path_domain": _str_len_docfreq("return_path_domain_email_sets"),
     }
@@ -540,10 +575,12 @@ def materialize_edges(
         "email_domain_receiver_sets": {},
         "url_email_sets": {},
         "attachment_email_sets": {},
+        "html_structure_fingerprint_email_sets": {},
         "sender_email_sets": {},
         "receiver_email_sets": {},
         "origin_ip_email_sets": {},
         "received_host_email_sets": {},
+        "helo_host_email_sets": {},
         "return_path_email_email_sets": {},
         "return_path_domain_email_sets": {},
     }
