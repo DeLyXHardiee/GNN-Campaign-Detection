@@ -1,0 +1,18 @@
+{
+  "run": {
+    "graph_id": "local_default"
+  },
+  "sweep": {
+    "score_mode": "",
+    "score_params": {},
+    "methods": ["louvain", "leiden"],
+    "weight_thresholds": [0, 0.1, 0.2, 0.3, 0.4],
+    "resolutions": [1, 1.5, 2.0, 2.5, 3.0],
+    "weight_col": "edge_weight",
+    "use_edge_weights_in_partitioning": true,
+    "seed": 0,
+    "sort_by": "v-measure"
+  },
+  "ground_truth": {},
+  "output": {}
+}
