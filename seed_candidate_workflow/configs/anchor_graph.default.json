@@ -3,8 +3,8 @@
     "graph_id": "local_default"
   },
   "inputs": {
-    "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
-    "meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json",
+    "graph_pt": "core/graph/output/incidents-lake-misp_hetero.pt",
+    "meta_json": "core/graph/output/incidents-lake-misp_hetero.meta.json",
     "to_undirected": true,
     "embeddings_json": "core/utils/embeddings/output/embeddings.json",
     "embedding_source": "cache_or_compute",
