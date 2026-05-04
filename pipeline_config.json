@@ -26,7 +26,7 @@
     "featureset_base_name": "incidents-lake-misp-large"
   },
   "graph": {
-    "misp_json_path": "data/misp/incidents-lake-misp.json",
+    "misp_json_path": "data/misp/incidents-lake-misp-large.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
     "graph_pt_path_override": "core/graph/output/incidents-lake-misp_hetero.pt",
@@ -95,9 +95,9 @@
       "metric": "cosine"
     }
   },
-  "device": "cuda",
+  "device": "cpu",
   "to_undirected": true,
-  "run_id": "second_pu_run_128_32_dim",
+  "run_id": "pair_pu_02",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",

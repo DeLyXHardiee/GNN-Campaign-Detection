@@ -498,7 +498,11 @@ def run_graph_creation(
 
     cfg = PIPELINE_CONFIG
     settings = graph_build_settings_from_pipeline(cfg)
-    path = misp_json_path or settings.misp_json_path
+    path = (
+        resolve_project_path(misp_json_path)
+        if misp_json_path
+        else settings.misp_json_path
+    )
     limit = (
         max_misp_events
         if max_misp_events is not None
@@ -718,8 +722,9 @@ if __name__ == "__main__":
     #create_feature_sets()
     #run_featureset_clustering()
     
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
-    #run_graph_creation(misp_path, to_memgraph=False)
+    # Use None so paths come from pipeline_config (graph.misp_json_path, else datasets.misp_json_path).
+    # To point at a specific file, pass a repo-relative path, e.g. preprocessing output from run_preprocessing_lake().
+    #run_graph_creation(misp_json_path=None, to_memgraph=False)
     run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()
