@@ -535,7 +535,6 @@ def create_feature_sets():
     cfg = PIPELINE_CONFIG
     misp_path = resolve_project_path(cfg.get("datasets", {}).get("misp_json_path"))
     max_workers = cfg.get("featureset-creation", {}).get("max_workers", 2)
-    print(max_workers)
     run_featureset_extraction(misp_path=misp_path, max_workers=max_workers)
 
 def visualize_clusters(
