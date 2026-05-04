@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -9,9 +10,12 @@ import tldextract
 _MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 RDAP_CACHE_DIR = os.path.normpath(os.path.join(_MODULE_DIR, "..", "feature_set_extraction", "caches"))
 RDAP_CACHE_FILE = os.path.join(RDAP_CACHE_DIR, "rdap_cache.json")
+RDAP_CACHE_LOCK_FILE = f"{RDAP_CACHE_FILE}.lock"
 LEGACY_RDAP_CACHE_FILE = os.path.normpath(os.path.join(_MODULE_DIR, "..", "rdap_cache.json"))
 RDAP_BOOTSTRAP_DNS_URL = "https://data.iana.org/rdap/dns.json"
 RDAP_TIMEOUT_SECONDS = 12
+RDAP_LOCK_TIMEOUT_SECONDS = 3
+RDAP_LOCK_POLL_INTERVAL_SECONDS = 0.1
 _RDAP_BOOTSTRAP_CACHE: Optional[Dict[str, List[str]]] = None
 _REQUEST_HEADERS = {
     "User-Agent": "GNN-Campaign-Detection/1.0 (+https://github.com)",
@@ -170,7 +174,35 @@ def fetch_rdap(domain):
 # -----------------------------
 # Cache handling
 # -----------------------------
-def load_cache():
+def _acquire_cache_lock(timeout_seconds: int = RDAP_LOCK_TIMEOUT_SECONDS):
+    os.makedirs(RDAP_CACHE_DIR, exist_ok=True)
+    deadline = time.time() + timeout_seconds
+
+    while True:
+        try:
+            # O_EXCL makes lock creation atomic across processes.
+            fd = os.open(RDAP_CACHE_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
+            finally:
+                os.close(fd)
+            return
+        except FileExistsError:
+            if time.time() >= deadline:
+                raise TimeoutError(
+                    f"Timed out acquiring RDAP cache lock after {timeout_seconds} seconds"
+                )
+            time.sleep(RDAP_LOCK_POLL_INTERVAL_SECONDS)
+
+
+def _release_cache_lock():
+    try:
+        os.remove(RDAP_CACHE_LOCK_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def _load_cache_unlocked():
     if os.path.exists(RDAP_CACHE_FILE):
         with open(RDAP_CACHE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -183,10 +215,31 @@ def load_cache():
     return {}
 
 
-def save_cache(cache):
+def load_cache():
+    _acquire_cache_lock()
+    try:
+        return _load_cache_unlocked()
+    finally:
+        _release_cache_lock()
+
+
+def _save_cache_unlocked(cache):
     os.makedirs(RDAP_CACHE_DIR, exist_ok=True)
-    with open(RDAP_CACHE_FILE, "w", encoding="utf-8") as f:
+    tmp_path = f"{RDAP_CACHE_FILE}.tmp.{os.getpid()}"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(cache, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    # Atomic replace prevents partially written cache files.
+    os.replace(tmp_path, RDAP_CACHE_FILE)
+
+
+def save_cache(cache):
+    _acquire_cache_lock()
+    try:
+        _save_cache_unlocked(cache)
+    finally:
+        _release_cache_lock()
 
 
 def _is_retryable_cached_error(entry):
@@ -205,21 +258,25 @@ def _is_retryable_cached_error(entry):
 # Ensure cache exists / populate
 # -----------------------------
 def ensure_rdap_cache(domains):
-    cache = load_cache()
-    updated = False
+    _acquire_cache_lock()
+    try:
+        cache = _load_cache_unlocked()
+        updated = False
 
-    for domain in domains:
-        cached_entry = cache.get(domain)
-        should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
-        if should_fetch:
-            print(f"Fetching RDAP for {domain}...")
-            cache[domain] = fetch_rdap(domain)
-            updated = True
+        for domain in domains:
+            cached_entry = cache.get(domain)
+            should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
+            if should_fetch:
+                print(f"Fetching RDAP for {domain}...")
+                cache[domain] = fetch_rdap(domain)
+                updated = True
 
-    if updated:
-        save_cache(cache)
+        if updated:
+            _save_cache_unlocked(cache)
 
-    return cache
+        return cache
+    finally:
+        _release_cache_lock()
 
 
 # -----------------------------
