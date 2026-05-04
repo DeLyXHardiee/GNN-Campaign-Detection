@@ -955,8 +955,8 @@
   },
   "landbrugsmaeglerne.dk": {
     "domain": "landbrugsmaeglerne.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/landbrugsmaeglerne.dk",
-    "fetched_at": "2026-05-04T13:38:26.892383"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/landbrugsmaeglerne.dk",
+    "fetched_at": "2026-05-04T14:23:20.379601"
   },
   "weplus.se": {
     "domain": "weplus.se",
@@ -1857,8 +1857,8 @@
   },
   "postnord.dk": {
     "domain": "postnord.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/postnord.dk",
-    "fetched_at": "2026-05-04T13:38:33.556799"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/postnord.dk",
+    "fetched_at": "2026-05-04T14:23:20.412906"
   },
   "dr.dk": {
     "domain": "dr.dk",
@@ -2667,8 +2667,8 @@
   },
   "handball-france.eu": {
     "domain": "handball-france.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/handball-france.eu",
-    "fetched_at": "2026-05-04T13:38:19.865973"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/handball-france.eu",
+    "fetched_at": "2026-05-04T14:25:35.993317"
   },
   "grupotraxion.com.mx": {
     "domain": "grupotraxion.com.mx",
@@ -4574,8 +4574,11 @@
   },
   "audika.com.au": {
     "domain": "audika.com.au",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/audika.com.au",
-    "fetched_at": "2026-05-04T13:38:31.057551"
+    "registrar": "Tucows (Australia) Pty Ltd trading as OpenSRS",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:26:28.035560",
+    "rdap_url": "https://rdap.org/domain/audika.com.au"
   },
   "comunicaciones.santanderconsumer.es": {
     "domain": "comunicaciones.santanderconsumer.es",
@@ -4965,8 +4968,8 @@
   },
   "e-gepard.eu": {
     "domain": "e-gepard.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/e-gepard.eu",
-    "fetched_at": "2026-05-04T13:38:23.195125"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/e-gepard.eu",
+    "fetched_at": "2026-05-04T14:24:05.070040"
   },
   "infowatch.dk": {
     "domain": "infowatch.dk",
@@ -5098,8 +5101,8 @@
   },
   "weddingvideosrilanka.lk": {
     "domain": "weddingvideosrilanka.lk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/weddingvideosrilanka.lk",
-    "fetched_at": "2026-05-04T13:38:33.603615"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/weddingvideosrilanka.lk",
+    "fetched_at": "2026-05-04T14:23:43.040426"
   },
   "vhpaper.com.br": {
     "domain": "vhpaper.com.br",
@@ -11834,8 +11837,8 @@
   },
   "greenpanda.de": {
     "domain": "greenpanda.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/greenpanda.de",
-    "fetched_at": "2026-05-04T13:38:23.511882"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/greenpanda.de",
+    "fetched_at": "2026-05-04T14:23:32.666268"
   },
   "les-balcons.com": {
     "domain": "les-balcons.com",
@@ -12001,8 +12004,8 @@
   },
   "sinhalavoiceover.lk": {
     "domain": "sinhalavoiceover.lk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sinhalavoiceover.lk",
-    "fetched_at": "2026-05-04T13:38:21.547877"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sinhalavoiceover.lk",
+    "fetched_at": "2026-05-04T14:26:49.383287"
   },
   "mail.activeinsight.org": {
     "domain": "mail.activeinsight.org",
@@ -13167,8 +13170,8 @@
   },
   "avs-verkehrssicherung.de": {
     "domain": "avs-verkehrssicherung.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/avs-verkehrssicherung.de",
-    "fetched_at": "2026-05-04T13:38:27.415102"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/avs-verkehrssicherung.de",
+    "fetched_at": "2026-05-04T14:24:06.492919"
   },
   "substack.com": {
     "domain": "substack.com",
@@ -13778,8 +13781,8 @@
   },
   "omijushi.co.jp": {
     "domain": "omijushi.co.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/omijushi.co.jp",
-    "fetched_at": "2026-05-04T13:38:28.108723"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/omijushi.co.jp",
+    "fetched_at": "2026-05-04T14:25:36.249187"
   },
   "miriego.gob.bo": {
     "domain": "miriego.gob.bo",
@@ -14952,8 +14955,11 @@
   },
   "thrapstontowncouncil.gov.uk": {
     "domain": "thrapstontowncouncil.gov.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/thrapstontowncouncil.gov.uk",
-    "fetched_at": "2026-05-04T13:38:36.217347"
+    "registrar": "Cuttlefish Multimedia Ltd",
+    "registration_date": "2012-03-15T12:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:25:14.818362",
+    "rdap_url": "https://rdap.org/domain/thrapstontowncouncil.gov.uk"
   },
   "apsec.de": {
     "domain": "apsec.de",
@@ -16256,8 +16262,11 @@
   },
   "liquidline.co.uk": {
     "domain": "liquidline.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/liquidline.co.uk",
-    "fetched_at": "2026-05-04T13:38:36.383137"
+    "registrar": "Heart Internet Limited t/a Heart Internet",
+    "registration_date": "2006-10-30T11:57:47Z",
+    "registrar_location": "Unit 4-5 Tristram Centre, Brown Lane West, Leeds",
+    "fetched_at": "2026-05-04T14:24:49.241040",
+    "rdap_url": "https://rdap.org/domain/liquidline.co.uk"
   },
   "missionaware.com.au": {
     "domain": "missionaware.com.au",
@@ -17798,8 +17807,11 @@
   },
   "cyfronika.com.pl": {
     "domain": "cyfronika.com.pl",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cyfronika.com.pl",
-    "fetched_at": "2026-05-04T13:38:34.123604"
+    "registrar": "HOSTIDO.PL GA\u0141\u0104ZKA SP\u00d3\u0141KA JAWNA",
+    "registration_date": "1998-01-14T11:00:00Z",
+    "registrar_location": "ul. Kartuska 5 Gda\u0144sk 80-103",
+    "fetched_at": "2026-05-04T14:25:25.458701",
+    "rdap_url": "https://rdap.org/domain/cyfronika.com.pl"
   },
   "riotinto.com": {
     "domain": "riotinto.com",
@@ -18465,8 +18477,8 @@
   },
   "baikugo.com": {
     "domain": "baikugo.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/baikugo.com",
-    "fetched_at": "2026-05-04T13:38:35.017128"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/baikugo.com",
+    "fetched_at": "2026-05-04T14:24:48.782206"
   },
   "email.bebe3dplaisir.be": {
     "domain": "email.bebe3dplaisir.be",
@@ -18790,8 +18802,8 @@
   },
   "relement.se": {
     "domain": "relement.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/relement.se",
-    "fetched_at": "2026-05-04T13:38:21.033588"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/relement.se",
+    "fetched_at": "2026-05-04T14:23:31.322061"
   },
   "gencat.cat": {
     "domain": "gencat.cat",
@@ -18924,8 +18936,8 @@
   },
   "sanshiqd.com": {
     "domain": "sanshiqd.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sanshiqd.com",
-    "fetched_at": "2026-05-04T13:38:20.880760"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/sanshiqd.com",
+    "fetched_at": "2026-05-04T14:26:09.499583"
   },
   "39214d7591.nxcli.io": {
     "domain": "39214d7591.nxcli.io",
@@ -19058,8 +19070,8 @@
   },
   "sapsc.mx": {
     "domain": "sapsc.mx",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sapsc.mx",
-    "fetched_at": "2026-05-04T13:38:34.526197"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sapsc.mx",
+    "fetched_at": "2026-05-04T14:24:26.910995"
   },
   "audexperts.com": {
     "domain": "audexperts.com",
@@ -34982,8 +34994,8 @@
   },
   "martygroup.se": {
     "domain": "martygroup.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/martygroup.se",
-    "fetched_at": "2026-05-04T13:38:35.703936"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/martygroup.se",
+    "fetched_at": "2026-05-04T14:23:42.956570"
   },
   "geopoliticalsummary.com": {
     "domain": "geopoliticalsummary.com",
@@ -34995,8 +35007,8 @@
   },
   "gk-notare.de": {
     "domain": "gk-notare.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gk-notare.de",
-    "fetched_at": "2026-05-04T13:38:20.591027"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gk-notare.de",
+    "fetched_at": "2026-05-04T14:22:35.167897"
   },
   "renater.fr": {
     "domain": "renater.fr",
@@ -35008,8 +35020,8 @@
   },
   "rsvgpf.vc": {
     "domain": "rsvgpf.vc",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rsvgpf.vc",
-    "fetched_at": "2026-05-04T13:38:32.775934"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rsvgpf.vc",
+    "fetched_at": "2026-05-04T14:24:37.782805"
   },
   "strategicrecruits.online": {
     "domain": "strategicrecruits.online",
@@ -35045,8 +35057,8 @@
   },
   "kontax.ba": {
     "domain": "kontax.ba",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kontax.ba",
-    "fetched_at": "2026-05-04T13:38:34.783908"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kontax.ba",
+    "fetched_at": "2026-05-04T14:25:58.097879"
   },
   "jzxgdled.com": {
     "domain": "jzxgdled.com",
@@ -35066,13 +35078,13 @@
   },
   "kaufentabletten.de": {
     "domain": "kaufentabletten.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kaufentabletten.de",
-    "fetched_at": "2026-05-04T13:38:22.979565"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kaufentabletten.de",
+    "fetched_at": "2026-05-04T14:24:48.614112"
   },
   "raaven.se": {
     "domain": "raaven.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/raaven.se",
-    "fetched_at": "2026-05-04T13:38:36.550211"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/raaven.se",
+    "fetched_at": "2026-05-04T14:24:27.281596"
   },
   "shengheys.com": {
     "domain": "shengheys.com",
@@ -35190,8 +35202,8 @@
   },
   "gn-server.de": {
     "domain": "gn-server.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gn-server.de",
-    "fetched_at": "2026-05-04T13:38:19.519075"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gn-server.de",
+    "fetched_at": "2026-05-04T14:25:14.891122"
   },
   "shoppingarena.fi": {
     "domain": "shoppingarena.fi",
@@ -35203,13 +35215,13 @@
   },
   "kossenlux.city": {
     "domain": "kossenlux.city",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kossenlux.city",
-    "fetched_at": "2026-05-04T13:38:20.285611"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.identitydigital.services/rdap/domain/kossenlux.city",
+    "fetched_at": "2026-05-04T14:26:38.977998"
   },
   "cdmx.gob.mx": {
     "domain": "cdmx.gob.mx",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cdmx.gob.mx",
-    "fetched_at": "2026-05-04T13:38:28.366554"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/cdmx.gob.mx",
+    "fetched_at": "2026-05-04T14:24:06.253080"
   },
   "DH.com": {
     "domain": "DH.com",
@@ -35237,8 +35249,8 @@
   },
   "emailfilter.io": {
     "domain": "emailfilter.io",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/emailfilter.io",
-    "fetched_at": "2026-05-04T13:38:23.561811"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/emailfilter.io",
+    "fetched_at": "2026-05-04T14:26:49.598280"
   },
   "esplanade.com": {
     "domain": "esplanade.com",
@@ -35255,8 +35267,8 @@
   },
   "hime.ne.jp": {
     "domain": "hime.ne.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hime.ne.jp",
-    "fetched_at": "2026-05-04T13:38:37.172922"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hime.ne.jp",
+    "fetched_at": "2026-05-04T14:24:48.880069"
   },
   "digmefitness.com": {
     "domain": "digmefitness.com",
@@ -35284,8 +35296,8 @@
   },
   "hbisu.cn": {
     "domain": "hbisu.cn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hbisu.cn",
-    "fetched_at": "2026-05-04T13:38:18.899141"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hbisu.cn",
+    "fetched_at": "2026-05-04T14:23:43.673998"
   },
   "awin1.com": {
     "domain": "awin1.com",
@@ -35321,18 +35333,21 @@
   },
   "kundenserver.de": {
     "domain": "kundenserver.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kundenserver.de",
-    "fetched_at": "2026-05-04T13:38:22.243221"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kundenserver.de",
+    "fetched_at": "2026-05-04T14:27:00.905660"
   },
   "alus.co.id": {
     "domain": "alus.co.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/alus.co.id",
-    "fetched_at": "2026-05-04T13:38:36.420814"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:23:20.177524"
   },
   "buildington.co.uk": {
     "domain": "buildington.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/buildington.co.uk",
-    "fetched_at": "2026-05-04T13:38:26.545236"
+    "registrar": "123-Reg Limited t/a 123-reg",
+    "registration_date": "2011-01-11T23:34:02Z",
+    "registrar_location": "5th Floor, The Shipping Building, Old Vinyl Factory, 252-254 Blyth Road, Hayes, Middlesex, UB3 1HA ",
+    "fetched_at": "2026-05-04T14:24:38.380347",
+    "rdap_url": "https://rdap.org/domain/buildington.co.uk"
   },
   "bayosystem.com": {
     "domain": "bayosystem.com",
@@ -35344,13 +35359,13 @@
   },
   "rshausmeisterservice.de": {
     "domain": "rshausmeisterservice.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rshausmeisterservice.de",
-    "fetched_at": "2026-05-04T13:38:25.160193"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rshausmeisterservice.de",
+    "fetched_at": "2026-05-04T14:25:57.893162"
   },
   "66cc74.org": {
     "domain": "66cc74.org",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/66cc74.org",
-    "fetched_at": "2026-05-04T13:38:22.166389"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.publicinterestregistry.org/rdap/domain/66cc74.org",
+    "fetched_at": "2026-05-04T14:24:04.951246"
   },
   "asknfind.in": {
     "domain": "asknfind.in",
@@ -35362,18 +35377,21 @@
   },
   "dmo1626.com": {
     "domain": "dmo1626.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dmo1626.com",
-    "fetched_at": "2026-05-04T13:38:21.647132"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/dmo1626.com",
+    "fetched_at": "2026-05-04T14:23:42.940936"
   },
   "clplegal.com.au": {
     "domain": "clplegal.com.au",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/clplegal.com.au",
-    "fetched_at": "2026-05-04T13:38:23.133063"
+    "registrar": "Domain Directors Pty Ltd trading as Instra",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:23:43.484339",
+    "rdap_url": "https://rdap.org/domain/clplegal.com.au"
   },
   "belgacom.be": {
     "domain": "belgacom.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/belgacom.be",
-    "fetched_at": "2026-05-04T13:38:27.358066"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/belgacom.be",
+    "fetched_at": "2026-05-04T14:23:31.202328"
   },
   "jwinsurance.com": {
     "domain": "jwinsurance.com",
@@ -35441,8 +35459,8 @@
   },
   "schnellverschickt.de": {
     "domain": "schnellverschickt.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/schnellverschickt.de",
-    "fetched_at": "2026-05-04T13:38:34.088316"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/schnellverschickt.de",
+    "fetched_at": "2026-05-04T14:25:36.684494"
   },
   "mtasv.net": {
     "domain": "mtasv.net",
@@ -35478,8 +35496,8 @@
   },
   "donotspam.de": {
     "domain": "donotspam.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/donotspam.de",
-    "fetched_at": "2026-05-04T13:38:21.198149"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/donotspam.de",
+    "fetched_at": "2026-05-04T14:25:36.068723"
   },
   "omcigars.com": {
     "domain": "omcigars.com",
@@ -35491,8 +35509,8 @@
   },
   "guaymallen.gob.ar": {
     "domain": "guaymallen.gob.ar",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/guaymallen.gob.ar",
-    "fetched_at": "2026-05-04T13:38:20.948261"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.nic.ar', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:25:02.929786"
   },
   "transact.bm": {
     "domain": "transact.bm",
@@ -35504,8 +35522,8 @@
   },
   "famhp.be": {
     "domain": "famhp.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/famhp.be",
-    "fetched_at": "2026-05-04T13:38:18.774885"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/famhp.be",
+    "fetched_at": "2026-05-04T14:23:20.611968"
   },
   "yazing.com": {
     "domain": "yazing.com",
@@ -35533,8 +35551,8 @@
   },
   "wirtschaftswissen.de": {
     "domain": "wirtschaftswissen.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/wirtschaftswissen.de",
-    "fetched_at": "2026-05-04T13:38:28.007146"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/wirtschaftswissen.de",
+    "fetched_at": "2026-05-04T14:23:20.110625"
   },
   "paypalobjects.com": {
     "domain": "paypalobjects.com",
@@ -35554,8 +35572,11 @@
   },
   "clearbooks.co.uk": {
     "domain": "clearbooks.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/clearbooks.co.uk",
-    "fetched_at": "2026-05-04T13:38:34.823259"
+    "registrar": "Gandi",
+    "registration_date": "2008-06-30T16:27:54Z",
+    "registrar_location": "63-65 boulevard Massena, 75013 Paris, France",
+    "fetched_at": "2026-05-04T14:26:27.503444",
+    "rdap_url": "https://rdap.org/domain/clearbooks.co.uk"
   },
   "doubleservice.com": {
     "domain": "doubleservice.com",
@@ -35567,18 +35588,18 @@
   },
   "dns.com.cn": {
     "domain": "dns.com.cn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dns.com.cn",
-    "fetched_at": "2026-05-04T13:38:36.353274"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/dns.com.cn",
+    "fetched_at": "2026-05-04T14:24:06.155327"
   },
   "oekop.de": {
     "domain": "oekop.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/oekop.de",
-    "fetched_at": "2026-05-04T13:38:34.057881"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/oekop.de",
+    "fetched_at": "2026-05-04T14:25:58.251915"
   },
   "genugplatz.de": {
     "domain": "genugplatz.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/genugplatz.de",
-    "fetched_at": "2026-05-04T13:38:21.065166"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/genugplatz.de",
+    "fetched_at": "2026-05-04T14:23:44.092709"
   },
   "gstatic.com": {
     "domain": "gstatic.com",
@@ -35598,18 +35619,18 @@
   },
   "stepnet.de": {
     "domain": "stepnet.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/stepnet.de",
-    "fetched_at": "2026-05-04T13:38:26.709826"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/stepnet.de",
+    "fetched_at": "2026-05-04T14:26:24.505925"
   },
   "kolding-egnsteater.dk": {
     "domain": "kolding-egnsteater.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kolding-egnsteater.dk",
-    "fetched_at": "2026-05-04T13:38:20.744276"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kolding-egnsteater.dk",
+    "fetched_at": "2026-05-04T14:24:38.054726"
   },
   "so-net.ne.jp": {
     "domain": "so-net.ne.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/so-net.ne.jp",
-    "fetched_at": "2026-05-04T13:38:23.216443"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/so-net.ne.jp",
+    "fetched_at": "2026-05-04T14:23:30.841771"
   },
   "freshecosteam.com": {
     "domain": "freshecosteam.com",
@@ -35637,13 +35658,13 @@
   },
   "estpak.ee": {
     "domain": "estpak.ee",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/estpak.ee",
-    "fetched_at": "2026-05-04T13:38:22.463608"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/estpak.ee",
+    "fetched_at": "2026-05-04T14:24:59.447802"
   },
   "alka.dk": {
     "domain": "alka.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/alka.dk",
-    "fetched_at": "2026-05-04T13:38:31.470584"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/alka.dk",
+    "fetched_at": "2026-05-04T14:22:45.534253"
   },
   "mse-as.dk": {
     "domain": "mse-as.dk",
@@ -35652,8 +35673,8 @@
   },
   "kanzlei-warncke.de": {
     "domain": "kanzlei-warncke.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kanzlei-warncke.de",
-    "fetched_at": "2026-05-04T13:38:36.117480"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kanzlei-warncke.de",
+    "fetched_at": "2026-05-04T14:23:32.456653"
   },
   "rocketseed.cloud": {
     "domain": "rocketseed.cloud",
@@ -36020,8 +36041,8 @@
   },
   "verlindenboombeheer.be": {
     "domain": "verlindenboombeheer.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/verlindenboombeheer.be",
-    "fetched_at": "2026-05-04T13:38:19.366620"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/verlindenboombeheer.be",
+    "fetched_at": "2026-05-04T14:22:56.961262"
   },
   "odoo.com": {
     "domain": "odoo.com",
@@ -36033,8 +36054,8 @@
   },
   "artelierfranzke.de": {
     "domain": "artelierfranzke.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/artelierfranzke.de",
-    "fetched_at": "2026-05-04T13:38:31.960551"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/artelierfranzke.de",
+    "fetched_at": "2026-05-04T14:22:35.001049"
   },
   "alinto.net": {
     "domain": "alinto.net",
@@ -36054,8 +36075,8 @@
   },
   "machinestation.us": {
     "domain": "machinestation.us",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/machinestation.us",
-    "fetched_at": "2026-05-04T13:38:23.057427"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/machinestation.us",
+    "fetched_at": "2026-05-04T14:22:35.105393"
   },
   "hornetsecurity.com": {
     "domain": "hornetsecurity.com",
@@ -36083,13 +36104,16 @@
   },
   "trio.dk": {
     "domain": "trio.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/trio.dk",
-    "fetched_at": "2026-05-04T13:38:36.504435"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/trio.dk",
+    "fetched_at": "2026-05-04T14:24:26.702651"
   },
   "mate4tech.com.au": {
     "domain": "mate4tech.com.au",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/mate4tech.com.au",
-    "fetched_at": "2026-05-04T13:38:28.208820"
+    "registrar": "GoDaddy.com LLC trading as GoDaddy.com",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:25:58.966695",
+    "rdap_url": "https://rdap.org/domain/mate4tech.com.au"
   },
   "sparkpostmail.com": {
     "domain": "sparkpostmail.com",
@@ -36101,8 +36125,11 @@
   },
   "hostgator.com.br": {
     "domain": "hostgator.com.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostgator.com.br",
-    "fetched_at": "2026-05-04T13:38:34.170161"
+    "registrar": null,
+    "registration_date": "2005-09-12T19:05:09Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:24:27.863908",
+    "rdap_url": "https://rdap.org/domain/hostgator.com.br"
   },
   "transmail.net": {
     "domain": "transmail.net",
@@ -36138,8 +36165,8 @@
   },
   "heteml.jp": {
     "domain": "heteml.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/heteml.jp",
-    "fetched_at": "2026-05-04T13:38:23.695249"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/heteml.jp",
+    "fetched_at": "2026-05-04T14:25:59.082996"
   },
   "conferenceforge.com": {
     "domain": "conferenceforge.com",
@@ -36159,8 +36186,8 @@
   },
   "xn--hygiene-schrder-ktb.de": {
     "domain": "xn--hygiene-schrder-ktb.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/xn--hygiene-schrder-ktb.de",
-    "fetched_at": "2026-05-04T13:38:22.580136"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/xn--hygiene-schrder-ktb.de",
+    "fetched_at": "2026-05-04T14:26:49.466576"
   },
   "hosted-by-worldstream.net": {
     "domain": "hosted-by-worldstream.net",
@@ -36196,23 +36223,26 @@
   },
   "metamask.io": {
     "domain": "metamask.io",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/metamask.io",
-    "fetched_at": "2026-05-04T13:38:18.434461"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/metamask.io",
+    "fetched_at": "2026-05-04T14:25:15.005265"
   },
   "hdi.com.br": {
     "domain": "hdi.com.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hdi.com.br",
-    "fetched_at": "2026-05-04T13:38:27.059083"
+    "registrar": null,
+    "registration_date": "1999-04-15T19:17:07Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:25:48.740678",
+    "rdap_url": "https://rdap.org/domain/hdi.com.br"
   },
   "galaktischapotheke.de": {
     "domain": "galaktischapotheke.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/galaktischapotheke.de",
-    "fetched_at": "2026-05-04T13:38:21.236589"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/galaktischapotheke.de",
+    "fetched_at": "2026-05-04T14:23:17.699895"
   },
   "orthopaeden-hemsbach.de": {
     "domain": "orthopaeden-hemsbach.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/orthopaeden-hemsbach.de",
-    "fetched_at": "2026-05-04T13:38:32.070008"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/orthopaeden-hemsbach.de",
+    "fetched_at": "2026-05-04T14:24:26.662863"
   },
   "abchk.net": {
     "domain": "abchk.net",
@@ -36232,18 +36262,18 @@
   },
   "musin.de": {
     "domain": "musin.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/musin.de",
-    "fetched_at": "2026-05-04T13:38:19.711963"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/musin.de",
+    "fetched_at": "2026-05-04T14:26:24.220253"
   },
   "etkqq.gov.cn": {
     "domain": "etkqq.gov.cn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/etkqq.gov.cn",
-    "fetched_at": "2026-05-04T13:38:23.262864"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/etkqq.gov.cn",
+    "fetched_at": "2026-05-04T14:27:00.493716"
   },
   "aarsleff-gmbh.de": {
     "domain": "aarsleff-gmbh.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/aarsleff-gmbh.de",
-    "fetched_at": "2026-05-04T13:38:19.949262"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/aarsleff-gmbh.de",
+    "fetched_at": "2026-05-04T14:24:59.319000"
   },
   "quooker.nl": {
     "domain": "quooker.nl",
@@ -36255,13 +36285,13 @@
   },
   "primechservice.com": {
     "domain": "primechservice.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/primechservice.com",
-    "fetched_at": "2026-05-04T13:38:27.258164"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/primechservice.com",
+    "fetched_at": "2026-05-04T14:26:09.741621"
   },
   "fediap.be": {
     "domain": "fediap.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/fediap.be",
-    "fetched_at": "2026-05-04T13:38:33.902753"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/fediap.be",
+    "fetched_at": "2026-05-04T14:22:35.205357"
   },
   "rbccm.com": {
     "domain": "rbccm.com",
@@ -36297,8 +36327,8 @@
   },
   "federal-sport.ro": {
     "domain": "federal-sport.ro",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/federal-sport.ro",
-    "fetched_at": "2026-05-04T13:38:37.318151"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/federal-sport.ro",
+    "fetched_at": "2026-05-04T14:25:03.869747"
   },
   "exklusivahemsidor.com": {
     "domain": "exklusivahemsidor.com",
@@ -36374,8 +36404,8 @@
   },
   "sygeforsikring.dk": {
     "domain": "sygeforsikring.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sygeforsikring.dk",
-    "fetched_at": "2026-05-04T13:38:20.686520"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sygeforsikring.dk",
+    "fetched_at": "2026-05-04T14:25:47.841654"
   },
   "pembrokerealty.com": {
     "domain": "pembrokerealty.com",
@@ -36400,8 +36430,8 @@
   },
   "pepperfinance.es": {
     "domain": "pepperfinance.es",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/pepperfinance.es",
-    "fetched_at": "2026-05-04T13:38:25.244510"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pepperfinance.es",
+    "fetched_at": "2026-05-04T14:25:47.813888"
   },
   "nationalgrid.com": {
     "domain": "nationalgrid.com",
@@ -36429,8 +36459,8 @@
   },
   "telekom.de": {
     "domain": "telekom.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/telekom.de",
-    "fetched_at": "2026-05-04T13:38:36.783403"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/telekom.de",
+    "fetched_at": "2026-05-04T14:26:39.087806"
   },
   "tawk.to": {
     "domain": "tawk.to",
@@ -36442,8 +36472,8 @@
   },
   "autoophugdk.dk": {
     "domain": "autoophugdk.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/autoophugdk.dk",
-    "fetched_at": "2026-05-04T13:38:28.030261"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/autoophugdk.dk",
+    "fetched_at": "2026-05-04T14:22:35.321984"
   },
   "traveloneinc.com": {
     "domain": "traveloneinc.com",
@@ -36455,8 +36485,8 @@
   },
   "elverdam.dk": {
     "domain": "elverdam.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/elverdam.dk",
-    "fetched_at": "2026-05-04T13:38:25.194345"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/elverdam.dk",
+    "fetched_at": "2026-05-04T14:25:14.594609"
   },
   "proprofs.com": {
     "domain": "proprofs.com",
@@ -36484,23 +36514,26 @@
   },
   "pinheirense.com.br": {
     "domain": "pinheirense.com.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/pinheirense.com.br",
-    "fetched_at": "2026-05-04T13:38:33.436524"
+    "registrar": null,
+    "registration_date": "1997-12-01T11:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:23:43.873361",
+    "rdap_url": "https://rdap.org/domain/pinheirense.com.br"
   },
   "strato.de": {
     "domain": "strato.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/strato.de",
-    "fetched_at": "2026-05-04T13:38:37.050178"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/strato.de",
+    "fetched_at": "2026-05-04T14:24:27.021820"
   },
   "scander.dk": {
     "domain": "scander.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/scander.dk",
-    "fetched_at": "2026-05-04T13:38:37.249675"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/scander.dk",
+    "fetched_at": "2026-05-04T14:22:56.502068"
   },
   "calserver.eu": {
     "domain": "calserver.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/calserver.eu",
-    "fetched_at": "2026-05-04T13:38:19.098942"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/calserver.eu",
+    "fetched_at": "2026-05-04T14:23:31.072700"
   },
   "wohnbau-giessen.de": {
     "domain": "wohnbau-giessen.de",
@@ -36530,13 +36563,13 @@
   },
   "kaufbeiapotheke.de": {
     "domain": "kaufbeiapotheke.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kaufbeiapotheke.de",
-    "fetched_at": "2026-05-04T13:38:32.139937"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kaufbeiapotheke.de",
+    "fetched_at": "2026-05-04T14:22:55.976321"
   },
   "rocketeed.cloud": {
     "domain": "rocketeed.cloud",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rocketeed.cloud",
-    "fetched_at": "2026-05-04T13:38:33.318696"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.registry.cloud/rdap/domain/rocketeed.cloud",
+    "fetched_at": "2026-05-04T14:22:56.637420"
   },
   "aktia.fi": {
     "domain": "aktia.fi",
@@ -36548,8 +36581,8 @@
   },
   "alfahosting-server.de": {
     "domain": "alfahosting-server.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/alfahosting-server.de",
-    "fetched_at": "2026-05-04T13:38:31.704148"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/alfahosting-server.de",
+    "fetched_at": "2026-05-04T14:26:49.693951"
   },
   "feiertage.net": {
     "domain": "feiertage.net",
@@ -36561,8 +36594,8 @@
   },
   "finanzreichtum.de": {
     "domain": "finanzreichtum.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/finanzreichtum.de",
-    "fetched_at": "2026-05-04T13:38:27.514220"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/finanzreichtum.de",
+    "fetched_at": "2026-05-04T14:24:48.301451"
   },
   "lixorbisplc.shop": {
     "domain": "lixorbisplc.shop",
@@ -36840,8 +36873,11 @@
   },
   "thrive.com.tw": {
     "domain": "thrive.com.tw",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/thrive.com.tw",
-    "fetched_at": "2026-05-04T13:38:27.691326"
+    "registrar": "TWNIC",
+    "registration_date": "1999-10-29T07:02:19Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:26:40.152383",
+    "rdap_url": "https://rdap.org/domain/thrive.com.tw"
   },
   "netvigator.com": {
     "domain": "netvigator.com",
@@ -36901,8 +36937,8 @@
   },
   "hphcom.eu": {
     "domain": "hphcom.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hphcom.eu",
-    "fetched_at": "2026-05-04T13:38:30.914361"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hphcom.eu",
+    "fetched_at": "2026-05-04T14:25:14.098393"
   },
   "die-volksapotheker.nl": {
     "domain": "die-volksapotheker.nl",
@@ -36914,8 +36950,11 @@
   },
   "stv.com.br": {
     "domain": "stv.com.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/stv.com.br",
-    "fetched_at": "2026-05-04T13:38:35.888592"
+    "registrar": null,
+    "registration_date": "1998-06-22T20:22:30Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:24:37.789958",
+    "rdap_url": "https://rdap.org/domain/stv.com.br"
   },
   "serveranonym.com": {
     "domain": "serveranonym.com",
@@ -36927,8 +36966,8 @@
   },
   "sktst.dk": {
     "domain": "sktst.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sktst.dk",
-    "fetched_at": "2026-05-04T13:38:27.009281"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sktst.dk",
+    "fetched_at": "2026-05-04T14:25:03.065828"
   },
   "startselect.com": {
     "domain": "startselect.com",
@@ -36940,8 +36979,8 @@
   },
   "ykpbni.or.id": {
     "domain": "ykpbni.or.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ykpbni.or.id",
-    "fetched_at": "2026-05-04T13:38:36.587328"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:26:26.901205"
   },
   "logile.com": {
     "domain": "logile.com",
@@ -36961,13 +37000,13 @@
   },
   "kddi.ne.jp": {
     "domain": "kddi.ne.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kddi.ne.jp",
-    "fetched_at": "2026-05-04T13:38:37.216479"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kddi.ne.jp",
+    "fetched_at": "2026-05-04T14:22:56.601809"
   },
   "finanzkanzlei-adamietz.de": {
     "domain": "finanzkanzlei-adamietz.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/finanzkanzlei-adamietz.de",
-    "fetched_at": "2026-05-04T13:38:19.794534"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/finanzkanzlei-adamietz.de",
+    "fetched_at": "2026-05-04T14:25:47.998375"
   },
   "witgu.com": {
     "domain": "witgu.com",
@@ -36979,8 +37018,8 @@
   },
   "hygiene-schr\u00f6der.de": {
     "domain": "hygiene-schr\u00f6der.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hygiene-schr%C3%B6der.de",
-    "fetched_at": "2026-05-04T13:38:19.987279"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hygiene-schr%C3%B6der.de",
+    "fetched_at": "2026-05-04T14:23:30.935169"
   },
   "ccn.net": {
     "domain": "ccn.net",
@@ -36992,8 +37031,8 @@
   },
   "bpbatam.go.id": {
     "domain": "bpbatam.go.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bpbatam.go.id",
-    "fetched_at": "2026-05-04T13:38:33.752502"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:25:27.982827"
   },
   "addevent.com": {
     "domain": "addevent.com",
@@ -37005,8 +37044,8 @@
   },
   "vinspecialisten.dk": {
     "domain": "vinspecialisten.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/vinspecialisten.dk",
-    "fetched_at": "2026-05-04T13:38:22.321378"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vinspecialisten.dk",
+    "fetched_at": "2026-05-04T14:26:27.781492"
   },
   "MichaelBernardMcKeon.com": {
     "domain": "MichaelBernardMcKeon.com",
@@ -37026,8 +37065,8 @@
   },
   "protonmail.ch": {
     "domain": "protonmail.ch",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/protonmail.ch",
-    "fetched_at": "2026-05-04T13:38:32.200754"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/protonmail.ch",
+    "fetched_at": "2026-05-04T14:25:47.724594"
   },
   "elverdam.com": {
     "domain": "elverdam.com",
@@ -37071,8 +37110,8 @@
   },
   "spillemyndigheden.dk": {
     "domain": "spillemyndigheden.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/spillemyndigheden.dk",
-    "fetched_at": "2026-05-04T13:38:21.147522"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/spillemyndigheden.dk",
+    "fetched_at": "2026-05-04T14:22:57.050797"
   },
   "websitewelcome.com": {
     "domain": "websitewelcome.com",
@@ -37108,8 +37147,8 @@
   },
   "dents.de": {
     "domain": "dents.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dents.de",
-    "fetched_at": "2026-05-04T13:38:31.421767"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/dents.de",
+    "fetched_at": "2026-05-04T14:24:59.766247"
   },
   "dxram.com": {
     "domain": "dxram.com",
@@ -37185,8 +37224,8 @@
   },
   "rbgroot.de": {
     "domain": "rbgroot.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rbgroot.de",
-    "fetched_at": "2026-05-04T13:38:18.696429"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rbgroot.de",
+    "fetched_at": "2026-05-04T14:23:08.090893"
   },
   "tmddedicated.com": {
     "domain": "tmddedicated.com",
@@ -37256,13 +37295,13 @@
   },
   "cubo.ac.uk": {
     "domain": "cubo.ac.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cubo.ac.uk",
-    "fetched_at": "2026-05-04T13:38:26.263296"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.nominet.uk/uk/domain/cubo.ac.uk",
+    "fetched_at": "2026-05-04T14:25:25.762641"
   },
   "energy.de": {
     "domain": "energy.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/energy.de",
-    "fetched_at": "2026-05-04T13:38:36.737579"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/energy.de",
+    "fetched_at": "2026-05-04T14:23:32.548223"
   },
   "wondersurf.com": {
     "domain": "wondersurf.com",
@@ -37274,8 +37313,11 @@
   },
   "businessexpert.co.uk": {
     "domain": "businessexpert.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/businessexpert.co.uk",
-    "fetched_at": "2026-05-04T13:38:26.926101"
+    "registrar": "GoDaddy.com, LLC.",
+    "registration_date": "2000-03-11T14:11:52Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:27:01.084731",
+    "rdap_url": "https://rdap.org/domain/businessexpert.co.uk"
   },
   "grupoicsolutions.com": {
     "domain": "grupoicsolutions.com",
@@ -37311,8 +37353,8 @@
   },
   "autotorvet.dk": {
     "domain": "autotorvet.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/autotorvet.dk",
-    "fetched_at": "2026-05-04T13:38:27.479985"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/autotorvet.dk",
+    "fetched_at": "2026-05-04T14:23:20.213445"
   },
   "momatt.com": {
     "domain": "momatt.com",
@@ -37332,8 +37374,8 @@
   },
   "andelenergi.dk": {
     "domain": "andelenergi.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/andelenergi.dk",
-    "fetched_at": "2026-05-04T13:38:22.420886"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/andelenergi.dk",
+    "fetched_at": "2026-05-04T14:24:06.351968"
   },
   "servidoresdns.net": {
     "domain": "servidoresdns.net",
@@ -37361,8 +37403,8 @@
   },
   "it-sec.de": {
     "domain": "it-sec.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/it-sec.de",
-    "fetched_at": "2026-05-04T13:38:34.385707"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/it-sec.de",
+    "fetched_at": "2026-05-04T14:25:14.420487"
   },
   "ghpnews.digital": {
     "domain": "ghpnews.digital",
@@ -37430,8 +37472,8 @@
   },
   "wiva.de": {
     "domain": "wiva.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/wiva.de",
-    "fetched_at": "2026-05-04T13:38:21.312672"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/wiva.de",
+    "fetched_at": "2026-05-04T14:26:38.492500"
   },
   "hostns.io": {
     "domain": "hostns.io",
@@ -37480,8 +37522,8 @@
   },
   "ip-151-80-20.eu": {
     "domain": "ip-151-80-20.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ip-151-80-20.eu",
-    "fetched_at": "2026-05-04T13:38:34.202663"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ip-151-80-20.eu",
+    "fetched_at": "2026-05-04T14:26:27.692235"
   },
   "firecots.com": {
     "domain": "firecots.com",
@@ -37517,18 +37559,18 @@
   },
   "virlan.co": {
     "domain": "virlan.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/virlan.co",
-    "fetched_at": "2026-05-04T13:38:33.340277"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/virlan.co",
+    "fetched_at": "2026-05-04T14:25:47.681989"
   },
   "eurocamp-spreewaldtor.de": {
     "domain": "eurocamp-spreewaldtor.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/eurocamp-spreewaldtor.de",
-    "fetched_at": "2026-05-04T13:38:33.951578"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/eurocamp-spreewaldtor.de",
+    "fetched_at": "2026-05-04T14:26:11.768341"
   },
   "skatteverket.se": {
     "domain": "skatteverket.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/skatteverket.se",
-    "fetched_at": "2026-05-04T13:38:26.428935"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/skatteverket.se",
+    "fetched_at": "2026-05-04T14:25:58.496496"
   },
   "nazwa.pl": {
     "domain": "nazwa.pl",
@@ -37564,8 +37606,8 @@
   },
   "ilait.se": {
     "domain": "ilait.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ilait.se",
-    "fetched_at": "2026-05-04T13:38:31.271743"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ilait.se",
+    "fetched_at": "2026-05-04T14:23:43.158415"
   },
   "smockumzarnett.com": {
     "domain": "smockumzarnett.com",
@@ -37577,23 +37619,26 @@
   },
   "zaq.ne.jp": {
     "domain": "zaq.ne.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/zaq.ne.jp",
-    "fetched_at": "2026-05-04T13:38:26.315930"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/zaq.ne.jp",
+    "fetched_at": "2026-05-04T14:25:25.843846"
   },
   "dolotw.com.tw": {
     "domain": "dolotw.com.tw",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dolotw.com.tw",
-    "fetched_at": "2026-05-04T13:38:31.926826"
+    "registrar": "Name.com",
+    "registration_date": "2018-06-21T09:42:19Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:24:06.410481",
+    "rdap_url": "https://rdap.org/domain/dolotw.com.tw"
   },
   "united-domains.de": {
     "domain": "united-domains.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/united-domains.de",
-    "fetched_at": "2026-05-04T13:38:35.115003"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/united-domains.de",
+    "fetched_at": "2026-05-04T14:25:14.315819"
   },
   "zcpublic.eu": {
     "domain": "zcpublic.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/zcpublic.eu",
-    "fetched_at": "2026-05-04T13:38:31.021377"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/zcpublic.eu",
+    "fetched_at": "2026-05-04T14:26:10.312891"
   },
   "rmspay.com": {
     "domain": "rmspay.com",
@@ -37621,8 +37666,8 @@
   },
   "startdedicated.de": {
     "domain": "startdedicated.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/startdedicated.de",
-    "fetched_at": "2026-05-04T13:38:20.631925"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/startdedicated.de",
+    "fetched_at": "2026-05-04T14:22:56.750337"
   },
   "paladinocasting.com": {
     "domain": "paladinocasting.com",
@@ -37671,8 +37716,8 @@
   },
   "riedelshop.dk": {
     "domain": "riedelshop.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/riedelshop.dk",
-    "fetched_at": "2026-05-04T13:38:23.362255"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/riedelshop.dk",
+    "fetched_at": "2026-05-04T14:26:09.920259"
   },
   "tele2.se": {
     "domain": "tele2.se",
@@ -37975,8 +38020,8 @@
   },
   "seo-systeme.de": {
     "domain": "seo-systeme.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/seo-systeme.de",
-    "fetched_at": "2026-05-04T13:38:31.621520"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/seo-systeme.de",
+    "fetched_at": "2026-05-04T14:24:48.745618"
   },
   "frandroid.com": {
     "domain": "frandroid.com",
@@ -38012,8 +38057,8 @@
   },
   "ph-el.dk": {
     "domain": "ph-el.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ph-el.dk",
-    "fetched_at": "2026-05-04T13:38:27.641938"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ph-el.dk",
+    "fetched_at": "2026-05-04T14:26:24.424900"
   },
   "exonhost.com": {
     "domain": "exonhost.com",
@@ -38094,13 +38139,13 @@
   },
   "wemme-events.de": {
     "domain": "wemme-events.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/wemme-events.de",
-    "fetched_at": "2026-05-04T13:38:28.576741"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/wemme-events.de",
+    "fetched_at": "2026-05-04T14:26:38.384784"
   },
   "bares.com.ph": {
     "domain": "bares.com.ph",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bares.com.ph",
-    "fetched_at": "2026-05-04T13:38:22.779766"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bares.com.ph",
+    "fetched_at": "2026-05-04T14:22:34.172305"
   },
   "wavenetuk.net": {
     "domain": "wavenetuk.net",
@@ -38112,13 +38157,13 @@
   },
   "rz-bot.de": {
     "domain": "rz-bot.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rz-bot.de",
-    "fetched_at": "2026-05-04T13:38:19.567755"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rz-bot.de",
+    "fetched_at": "2026-05-04T14:26:50.320689"
   },
   "dkb.de": {
     "domain": "dkb.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dkb.de",
-    "fetched_at": "2026-05-04T13:38:26.217656"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/dkb.de",
+    "fetched_at": "2026-05-04T14:23:43.976290"
   },
   "pd25.com": {
     "domain": "pd25.com",
@@ -38154,28 +38199,28 @@
   },
   "sebrochure.dk": {
     "domain": "sebrochure.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sebrochure.dk",
-    "fetched_at": "2026-05-04T13:38:23.464894"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sebrochure.dk",
+    "fetched_at": "2026-05-04T14:26:49.289155"
   },
   "fpsindonesia.co.id": {
     "domain": "fpsindonesia.co.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/fpsindonesia.co.id",
-    "fetched_at": "2026-05-04T13:38:31.664641"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:26:26.825814"
   },
   "meistente.de": {
     "domain": "meistente.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/meistente.de",
-    "fetched_at": "2026-05-04T13:38:36.000614"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/meistente.de",
+    "fetched_at": "2026-05-04T14:22:56.750337"
   },
   "ptncs.co.id": {
     "domain": "ptncs.co.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ptncs.co.id",
-    "fetched_at": "2026-05-04T13:38:34.742079"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:23:10.566050"
   },
   "odc.edu.om": {
     "domain": "odc.edu.om",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/odc.edu.om",
-    "fetched_at": "2026-05-04T13:38:33.720843"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/odc.edu.om",
+    "fetched_at": "2026-05-04T14:26:49.782537"
   },
   "sharefile.com": {
     "domain": "sharefile.com",
@@ -38200,13 +38245,13 @@
   },
   "danskebank.dk": {
     "domain": "danskebank.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/danskebank.dk",
-    "fetched_at": "2026-05-04T13:38:22.662233"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/danskebank.dk",
+    "fetched_at": "2026-05-04T14:24:26.889745"
   },
   "sec-provider.de": {
     "domain": "sec-provider.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sec-provider.de",
-    "fetched_at": "2026-05-04T13:38:34.868699"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sec-provider.de",
+    "fetched_at": "2026-05-04T14:24:59.472422"
   },
   "correio.biz": {
     "domain": "correio.biz",
@@ -38226,8 +38271,8 @@
   },
   "civitec.de": {
     "domain": "civitec.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/civitec.de",
-    "fetched_at": "2026-05-04T13:38:22.496680"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/civitec.de",
+    "fetched_at": "2026-05-04T14:26:38.384784"
   },
   "rdiffusion.com": {
     "domain": "rdiffusion.com",
@@ -38255,8 +38300,8 @@
   },
   "freemediaserver.com": {
     "domain": "freemediaserver.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/freemediaserver.com",
-    "fetched_at": "2026-05-04T13:38:19.329334"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/freemediaserver.com",
+    "fetched_at": "2026-05-04T14:25:58.515480"
   },
   "printablnkdeburg.nl": {
     "domain": "printablnkdeburg.nl",
@@ -38268,38 +38313,41 @@
   },
   "jansenejendomme.dk": {
     "domain": "jansenejendomme.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/jansenejendomme.dk",
-    "fetched_at": "2026-05-04T13:38:23.429301"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/jansenejendomme.dk",
+    "fetched_at": "2026-05-04T14:26:50.015066"
   },
   "planetacloud.es": {
     "domain": "planetacloud.es",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/planetacloud.es",
-    "fetched_at": "2026-05-04T13:38:25.426437"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/planetacloud.es",
+    "fetched_at": "2026-05-04T14:24:37.945651"
   },
   "code2an.my.id": {
     "domain": "code2an.my.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/code2an.my.id",
-    "fetched_at": "2026-05-04T13:38:22.363653"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:26:11.476264"
   },
   "ceiexhibitions.co.uk": {
     "domain": "ceiexhibitions.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ceiexhibitions.co.uk",
-    "fetched_at": "2026-05-04T13:38:32.091948"
+    "registrar": "Elite Limited t/a Elite",
+    "registration_date": "2012-09-07T09:44:35Z",
+    "registrar_location": "Unit 8 Acorn Business Park, North Harbour Park, Portsmouth, PO6 3TH",
+    "fetched_at": "2026-05-04T14:22:34.565904",
+    "rdap_url": "https://rdap.org/domain/ceiexhibitions.co.uk"
   },
   "foetex.dk": {
     "domain": "foetex.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/foetex.dk",
-    "fetched_at": "2026-05-04T13:38:31.587882"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/foetex.dk",
+    "fetched_at": "2026-05-04T14:25:36.401809"
   },
   "rzone.de": {
     "domain": "rzone.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rzone.de",
-    "fetched_at": "2026-05-04T13:38:20.914847"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rzone.de",
+    "fetched_at": "2026-05-04T14:22:45.587786"
   },
   "temo-elektro.de": {
     "domain": "temo-elektro.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/temo-elektro.de",
-    "fetched_at": "2026-05-04T13:38:31.354072"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/temo-elektro.de",
+    "fetched_at": "2026-05-04T14:23:43.558116"
   },
   "sporteed.fr": {
     "domain": "sporteed.fr",
@@ -38311,8 +38359,11 @@
   },
   "ozonline.com.au": {
     "domain": "ozonline.com.au",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ozonline.com.au",
-    "fetched_at": "2026-05-04T13:38:37.101121"
+    "registrar": "Web Address Registration Pty Ltd",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:23:20.986915",
+    "rdap_url": "https://rdap.org/domain/ozonline.com.au"
   },
   "rideaf.net": {
     "domain": "rideaf.net",
@@ -38324,8 +38375,8 @@
   },
   "taigongwz.com": {
     "domain": "taigongwz.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/taigongwz.com",
-    "fetched_at": "2026-05-04T13:38:19.664861"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/taigongwz.com",
+    "fetched_at": "2026-05-04T14:24:59.683211"
   },
   "iqor.com": {
     "domain": "iqor.com",
@@ -38353,8 +38404,8 @@
   },
   "or.mg": {
     "domain": "or.mg",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/or.mg",
-    "fetched_at": "2026-05-04T13:38:25.087180"
+    "error": "SSLError: HTTPSConnectionPool(host='rdap.nic.mg', port=443): Max retries exceeded with url: /domain/or.mg (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: certificate has expired (_ssl.c:992)')))",
+    "fetched_at": "2026-05-04T14:26:24.089968"
   },
   "chezpierre.org": {
     "domain": "chezpierre.org",
@@ -38366,13 +38417,13 @@
   },
   "struergrandhotel.dk": {
     "domain": "struergrandhotel.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/struergrandhotel.dk",
-    "fetched_at": "2026-05-04T13:38:32.470646"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/struergrandhotel.dk",
+    "fetched_at": "2026-05-04T14:24:27.154163"
   },
   "stp-ast.ru": {
     "domain": "stp-ast.ru",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/stp-ast.ru",
-    "fetched_at": "2026-05-04T13:38:36.617386"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/stp-ast.ru",
+    "fetched_at": "2026-05-04T14:23:17.871249"
   },
   "crsend.com": {
     "domain": "crsend.com",
@@ -38400,13 +38451,13 @@
   },
   "ced.hu": {
     "domain": "ced.hu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ced.hu",
-    "fetched_at": "2026-05-04T13:38:18.590847"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ced.hu",
+    "fetched_at": "2026-05-04T14:26:10.051103"
   },
   "aok.de": {
     "domain": "aok.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/aok.de",
-    "fetched_at": "2026-05-04T13:38:35.975712"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/aok.de",
+    "fetched_at": "2026-05-04T14:23:44.063622"
   },
   "cnregistry.org": {
     "domain": "cnregistry.org",
@@ -38673,18 +38724,21 @@
   },
   "btc-net.bg": {
     "domain": "btc-net.bg",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/btc-net.bg",
-    "fetched_at": "2026-05-04T13:38:27.875714"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/btc-net.bg",
+    "fetched_at": "2026-05-04T14:25:36.587125"
   },
   "concordtheatricals.co.uk": {
     "domain": "concordtheatricals.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/concordtheatricals.co.uk",
-    "fetched_at": "2026-05-04T13:38:21.098074"
+    "registrar": "GoDaddy Corporate Domains LLC",
+    "registration_date": "2019-04-05T14:16:14Z",
+    "registrar_location": "100 S. Mill Ave, Suite 1600, Tempe, AZ 85281, USA",
+    "fetched_at": "2026-05-04T14:25:59.062963",
+    "rdap_url": "https://rdap.org/domain/concordtheatricals.co.uk"
   },
   "google.at": {
     "domain": "google.at",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/google.at",
-    "fetched_at": "2026-05-04T13:38:31.894010"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/google.at",
+    "fetched_at": "2026-05-04T14:23:07.989490"
   },
   "insurancelicensingeducation.com": {
     "domain": "insurancelicensingeducation.com",
@@ -38704,18 +38758,18 @@
   },
   "vietnix.vn": {
     "domain": "vietnix.vn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/vietnix.vn",
-    "fetched_at": "2026-05-04T13:38:34.935218"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vietnix.vn",
+    "fetched_at": "2026-05-04T14:23:07.344319"
   },
   "kupplung.de": {
     "domain": "kupplung.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kupplung.de",
-    "fetched_at": "2026-05-04T13:38:30.956097"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kupplung.de",
+    "fetched_at": "2026-05-04T14:24:26.821378"
   },
   "sspo.gob.mx": {
     "domain": "sspo.gob.mx",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sspo.gob.mx",
-    "fetched_at": "2026-05-04T13:38:28.142247"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sspo.gob.mx",
+    "fetched_at": "2026-05-04T14:22:34.081170"
   },
   "attacheonline.com": {
     "domain": "attacheonline.com",
@@ -38783,8 +38837,8 @@
   },
   "webdata.de": {
     "domain": "webdata.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/webdata.de",
-    "fetched_at": "2026-05-04T13:38:25.377681"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/webdata.de",
+    "fetched_at": "2026-05-04T14:25:25.287472"
   },
   "mey-agentur.de": {
     "domain": "mey-agentur.de",
@@ -38793,23 +38847,26 @@
   },
   "greatnet.de": {
     "domain": "greatnet.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/greatnet.de",
-    "fetched_at": "2026-05-04T13:38:27.592631"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/greatnet.de",
+    "fetched_at": "2026-05-04T14:25:03.948927"
   },
   "mpg.de": {
     "domain": "mpg.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/mpg.de",
-    "fetched_at": "2026-05-04T13:38:33.836335"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/mpg.de",
+    "fetched_at": "2026-05-04T14:25:25.173949"
   },
   "icu.de": {
     "domain": "icu.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/icu.de",
-    "fetched_at": "2026-05-04T13:38:20.317594"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/icu.de",
+    "fetched_at": "2026-05-04T14:23:31.533831"
   },
   "advanse.co.uk": {
     "domain": "advanse.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/advanse.co.uk",
-    "fetched_at": "2026-05-04T13:38:28.063709"
+    "registrar": "Glide Business Ltd t/a Glide Business",
+    "registration_date": "2000-04-08T13:43:36Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:26:50.198342",
+    "rdap_url": "https://rdap.org/domain/advanse.co.uk"
   },
   "omcigars.cc": {
     "domain": "omcigars.cc",
@@ -38821,13 +38878,13 @@
   },
   "vit.com.co": {
     "domain": "vit.com.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/vit.com.co",
-    "fetched_at": "2026-05-04T13:38:25.348634"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vit.com.co",
+    "fetched_at": "2026-05-04T14:24:05.485707"
   },
   "stecktte.de": {
     "domain": "stecktte.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/stecktte.de",
-    "fetched_at": "2026-05-04T13:38:28.258073"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/stecktte.de",
+    "fetched_at": "2026-05-04T14:26:10.220086"
   },
   "kohyoung.com": {
     "domain": "kohyoung.com",
@@ -38847,13 +38904,13 @@
   },
   "co-operativebank.co.nz": {
     "domain": "co-operativebank.co.nz",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/co-operativebank.co.nz",
-    "fetched_at": "2026-05-04T13:38:20.532476"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/co-operativebank.co.nz",
+    "fetched_at": "2026-05-04T14:24:48.524933"
   },
   "skifahren-lernen.eu": {
     "domain": "skifahren-lernen.eu",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/skifahren-lernen.eu",
-    "fetched_at": "2026-05-04T13:38:27.791723"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/skifahren-lernen.eu",
+    "fetched_at": "2026-05-04T14:25:14.518133"
   },
   "iphmx.com": {
     "domain": "iphmx.com",
@@ -38905,13 +38962,13 @@
   },
   "ebiz-webhosting.de": {
     "domain": "ebiz-webhosting.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ebiz-webhosting.de",
-    "fetched_at": "2026-05-04T13:38:19.914646"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ebiz-webhosting.de",
+    "fetched_at": "2026-05-04T14:25:36.168525"
   },
   "infomaniak.ch": {
     "domain": "infomaniak.ch",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/infomaniak.ch",
-    "fetched_at": "2026-05-04T13:38:36.465903"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/infomaniak.ch",
+    "fetched_at": "2026-05-04T14:23:20.535115"
   },
   "turbo-smtp.com": {
     "domain": "turbo-smtp.com",
@@ -38947,8 +39004,8 @@
   },
   "metallkultur.de": {
     "domain": "metallkultur.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/metallkultur.de",
-    "fetched_at": "2026-05-04T13:38:28.425051"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/metallkultur.de",
+    "fetched_at": "2026-05-04T14:24:27.004420"
   },
   "theguardian.com": {
     "domain": "theguardian.com",
@@ -38960,8 +39017,8 @@
   },
   "bon.at": {
     "domain": "bon.at",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bon.at",
-    "fetched_at": "2026-05-04T13:38:36.300383"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bon.at",
+    "fetched_at": "2026-05-04T14:26:50.315566"
   },
   "avg.com": {
     "domain": "avg.com",
@@ -38973,13 +39030,13 @@
   },
   "onemail.vn": {
     "domain": "onemail.vn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/onemail.vn",
-    "fetched_at": "2026-05-04T13:38:37.016147"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/onemail.vn",
+    "fetched_at": "2026-05-04T14:25:36.483680"
   },
   "gravgaardsmalerfirma.dk": {
     "domain": "gravgaardsmalerfirma.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gravgaardsmalerfirma.dk",
-    "fetched_at": "2026-05-04T13:38:20.499058"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gravgaardsmalerfirma.dk",
+    "fetched_at": "2026-05-04T14:24:48.188024"
   },
   "xmdyun.com": {
     "domain": "xmdyun.com",
@@ -38991,8 +39048,8 @@
   },
   "ing.be": {
     "domain": "ing.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/ing.be",
-    "fetched_at": "2026-05-04T13:38:23.837881"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ing.be",
+    "fetched_at": "2026-05-04T14:24:49.061202"
   },
   "upwork.com": {
     "domain": "upwork.com",
@@ -39020,18 +39077,18 @@
   },
   "emb.dz": {
     "domain": "emb.dz",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/emb.dz",
-    "fetched_at": "2026-05-04T13:38:31.506543"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/emb.dz",
+    "fetched_at": "2026-05-04T14:24:15.964896"
   },
   "sdt.nz": {
     "domain": "sdt.nz",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sdt.nz",
-    "fetched_at": "2026-05-04T13:38:22.741144"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sdt.nz",
+    "fetched_at": "2026-05-04T14:22:34.704746"
   },
   "datam-services.de": {
     "domain": "datam-services.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/datam-services.de",
-    "fetched_at": "2026-05-04T13:38:18.961991"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/datam-services.de",
+    "fetched_at": "2026-05-04T14:24:05.174121"
   },
   "vikingbus.dk": {
     "domain": "vikingbus.dk",
@@ -39072,8 +39129,8 @@
   },
   "gla-wel.de": {
     "domain": "gla-wel.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gla-wel.de",
-    "fetched_at": "2026-05-04T13:38:33.669578"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gla-wel.de",
+    "fetched_at": "2026-05-04T14:24:37.548704"
   },
   "apotheke-des-volkes.nl": {
     "domain": "apotheke-des-volkes.nl",
@@ -39117,8 +39174,8 @@
   },
   "dao.dk": {
     "domain": "dao.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dao.dk",
-    "fetched_at": "2026-05-04T13:38:28.394850"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/dao.dk",
+    "fetched_at": "2026-05-04T14:26:27.586921"
   },
   "kowalkowski.org": {
     "domain": "kowalkowski.org",
@@ -39138,13 +39195,13 @@
   },
   "moncervin.it": {
     "domain": "moncervin.it",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/moncervin.it",
-    "fetched_at": "2026-05-04T13:38:18.552213"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/moncervin.it",
+    "fetched_at": "2026-05-04T14:23:07.456420"
   },
   "vitalguenstig.de": {
     "domain": "vitalguenstig.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/vitalguenstig.de",
-    "fetched_at": "2026-05-04T13:38:20.349092"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vitalguenstig.de",
+    "fetched_at": "2026-05-04T14:22:56.268142"
   },
   "oxcs.net": {
     "domain": "oxcs.net",
@@ -39156,8 +39213,8 @@
   },
   "unlimited.rs": {
     "domain": "unlimited.rs",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/unlimited.rs",
-    "fetched_at": "2026-05-04T13:38:34.293924"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/unlimited.rs",
+    "fetched_at": "2026-05-04T14:27:00.822434"
   },
   "wesendit.com": {
     "domain": "wesendit.com",
@@ -39169,13 +39226,13 @@
   },
   "feishu.cn": {
     "domain": "feishu.cn",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/feishu.cn",
-    "fetched_at": "2026-05-04T13:38:34.568764"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/feishu.cn",
+    "fetched_at": "2026-05-04T14:26:28.136871"
   },
   "decornatur.es": {
     "domain": "decornatur.es",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/decornatur.es",
-    "fetched_at": "2026-05-04T13:38:35.068197"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/decornatur.es",
+    "fetched_at": "2026-05-04T14:26:10.138459"
   },
   "kasserver.com": {
     "domain": "kasserver.com",
@@ -39187,13 +39244,13 @@
   },
   "screamer.co.za": {
     "domain": "screamer.co.za",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/screamer.co.za",
-    "fetched_at": "2026-05-04T13:38:33.472038"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/screamer.co.za",
+    "fetched_at": "2026-05-04T14:23:43.894239"
   },
   "erouteshop.de": {
     "domain": "erouteshop.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/erouteshop.de",
-    "fetched_at": "2026-05-04T13:38:23.331447"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/erouteshop.de",
+    "fetched_at": "2026-05-04T14:24:37.863171"
   },
   "jxlvlesp.com": {
     "domain": "jxlvlesp.com",
@@ -39213,18 +39270,18 @@
   },
   "smtpclient.apple": {
     "domain": "smtpclient.apple",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/smtpclient.apple",
-    "fetched_at": "2026-05-04T13:38:32.719445"
+    "error": "HTTPError: 404 Client Error:  for url: https://rdap.nic.apple/domain/smtpclient.apple",
+    "fetched_at": "2026-05-04T14:24:06.035079"
   },
   "sichereversandapotheke24.de": {
     "domain": "sichereversandapotheke24.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sichereversandapotheke24.de",
-    "fetched_at": "2026-05-04T13:38:23.612955"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sichereversandapotheke24.de",
+    "fetched_at": "2026-05-04T14:22:56.840032"
   },
   "goneo.de": {
     "domain": "goneo.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/goneo.de",
-    "fetched_at": "2026-05-04T13:38:32.289637"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/goneo.de",
+    "fetched_at": "2026-05-04T14:25:03.749094"
   },
   "phplist.com": {
     "domain": "phplist.com",
@@ -39244,8 +39301,8 @@
   },
   "srt.gov.ar": {
     "domain": "srt.gov.ar",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/srt.gov.ar",
-    "fetched_at": "2026-05-04T13:38:21.720301"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.nic.ar', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:25:02.945558"
   },
   "sleep2perform.com": {
     "domain": "sleep2perform.com",
@@ -39257,8 +39314,8 @@
   },
   "xspmail.jp": {
     "domain": "xspmail.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/xspmail.jp",
-    "fetched_at": "2026-05-04T13:38:34.419179"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/xspmail.jp",
+    "fetched_at": "2026-05-04T14:24:26.794997"
   },
   "clrp.au": {
     "domain": "clrp.au",
@@ -39278,8 +39335,8 @@
   },
   "alpha-prm.jp": {
     "domain": "alpha-prm.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/alpha-prm.jp",
-    "fetched_at": "2026-05-04T13:38:23.733327"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/alpha-prm.jp",
+    "fetched_at": "2026-05-04T14:23:07.574112"
   },
   "standardh2.com": {
     "domain": "standardh2.com",
@@ -39315,8 +39372,8 @@
   },
   "der-metronom.de": {
     "domain": "der-metronom.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/der-metronom.de",
-    "fetched_at": "2026-05-04T13:38:35.820118"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/der-metronom.de",
+    "fetched_at": "2026-05-04T14:26:09.228607"
   },
   "zoner.fi": {
     "domain": "zoner.fi",
@@ -39344,8 +39401,11 @@
   },
   "creativekids.co.uk": {
     "domain": "creativekids.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/creativekids.co.uk",
-    "fetched_at": "2026-05-04T13:38:36.899989"
+    "registrar": "123-Reg Limited t/a 123-reg",
+    "registration_date": "1999-12-14T12:27:19Z",
+    "registrar_location": "5th Floor, The Shipping Building, Old Vinyl Factory, 252-254 Blyth Road, Hayes, Middlesex, UB3 1HA ",
+    "fetched_at": "2026-05-04T14:22:34.755661",
+    "rdap_url": "https://rdap.org/domain/creativekids.co.uk"
   },
   "mailinblack.com": {
     "domain": "mailinblack.com",
@@ -39397,8 +39457,8 @@
   },
   "security-gate.de": {
     "domain": "security-gate.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/security-gate.de",
-    "fetched_at": "2026-05-04T13:38:20.782106"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/security-gate.de",
+    "fetched_at": "2026-05-04T14:26:28.084233"
   },
   "read.ai": {
     "domain": "read.ai",
@@ -39450,13 +39510,13 @@
   },
   "macademia.es": {
     "domain": "macademia.es",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/macademia.es",
-    "fetched_at": "2026-05-04T13:38:27.758616"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/macademia.es",
+    "fetched_at": "2026-05-04T14:23:42.849756"
   },
   "aiec.be": {
     "domain": "aiec.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/aiec.be",
-    "fetched_at": "2026-05-04T13:38:31.376777"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/aiec.be",
+    "fetched_at": "2026-05-04T14:22:34.941905"
   },
   "coxcpaservices.com": {
     "domain": "coxcpaservices.com",
@@ -39468,8 +39528,8 @@
   },
   "uis.edu.co": {
     "domain": "uis.edu.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/uis.edu.co",
-    "fetched_at": "2026-05-04T13:38:36.933251"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/uis.edu.co",
+    "fetched_at": "2026-05-04T14:27:00.549887"
   },
   "pikpng.com": {
     "domain": "pikpng.com",
@@ -39481,13 +39541,13 @@
   },
   "stopspillet.dk": {
     "domain": "stopspillet.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/stopspillet.dk",
-    "fetched_at": "2026-05-04T13:38:34.602058"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/stopspillet.dk",
+    "fetched_at": "2026-05-04T14:25:58.213436"
   },
   "hosei.jp": {
     "domain": "hosei.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hosei.jp",
-    "fetched_at": "2026-05-04T13:38:36.254705"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hosei.jp",
+    "fetched_at": "2026-05-04T14:23:20.246759"
   },
   "ikea.com": {
     "domain": "ikea.com",
@@ -39499,13 +39559,13 @@
   },
   "fae-elektrotechnik.de": {
     "domain": "fae-elektrotechnik.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/fae-elektrotechnik.de",
-    "fetched_at": "2026-05-04T13:38:26.842416"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/fae-elektrotechnik.de",
+    "fetched_at": "2026-05-04T14:26:28.159209"
   },
   "fax.de": {
     "domain": "fax.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/fax.de",
-    "fetched_at": "2026-05-04T13:38:34.901509"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/fax.de",
+    "fetched_at": "2026-05-04T14:24:05.253993"
   },
   "redswitches.com": {
     "domain": "redswitches.com",
@@ -39776,8 +39836,8 @@
   },
   "hostcreators.sk": {
     "domain": "hostcreators.sk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostcreators.sk",
-    "fetched_at": "2026-05-04T13:38:18.999940"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hostcreators.sk",
+    "fetched_at": "2026-05-04T14:26:49.911225"
   },
   "renenamadocreations.com": {
     "domain": "renenamadocreations.com",
@@ -39789,13 +39849,13 @@
   },
   "blickreif.de": {
     "domain": "blickreif.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/blickreif.de",
-    "fetched_at": "2026-05-04T13:38:23.082497"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/blickreif.de",
+    "fetched_at": "2026-05-04T14:25:14.855519"
   },
   "bestofbeers.dk": {
     "domain": "bestofbeers.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bestofbeers.dk",
-    "fetched_at": "2026-05-04T13:38:26.154443"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bestofbeers.dk",
+    "fetched_at": "2026-05-04T14:27:00.589314"
   },
   "anatividad.ca": {
     "domain": "anatividad.ca",
@@ -39807,8 +39867,8 @@
   },
   "vianova.it": {
     "domain": "vianova.it",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/vianova.it",
-    "fetched_at": "2026-05-04T13:38:26.509839"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/vianova.it",
+    "fetched_at": "2026-05-04T14:26:27.901893"
   },
   "e3diagnostics.com": {
     "domain": "e3diagnostics.com",
@@ -39820,8 +39880,8 @@
   },
   "drkoncerthuset.dk": {
     "domain": "drkoncerthuset.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/drkoncerthuset.dk",
-    "fetched_at": "2026-05-04T13:38:33.789936"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/drkoncerthuset.dk",
+    "fetched_at": "2026-05-04T14:25:48.113095"
   },
   "fastbase.com": {
     "domain": "fastbase.com",
@@ -39833,8 +39893,11 @@
   },
   "home13.co.uk": {
     "domain": "home13.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/home13.co.uk",
-    "fetched_at": "2026-05-04T13:38:19.057654"
+    "registrar": "123-Reg Limited t/a 123-reg",
+    "registration_date": "2012-07-30T19:08:22Z",
+    "registrar_location": "5th Floor, The Shipping Building, Old Vinyl Factory, 252-254 Blyth Road, Hayes, Middlesex, UB3 1HA ",
+    "fetched_at": "2026-05-04T14:26:38.997461",
+    "rdap_url": "https://rdap.org/domain/home13.co.uk"
   },
   "jotform.com": {
     "domain": "jotform.com",
@@ -39846,8 +39909,8 @@
   },
   "gitzl.it": {
     "domain": "gitzl.it",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gitzl.it",
-    "fetched_at": "2026-05-04T13:38:22.202538"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gitzl.it",
+    "fetched_at": "2026-05-04T14:23:54.258387"
   },
   "camdvr.org": {
     "domain": "camdvr.org",
@@ -39875,8 +39938,8 @@
   },
   "betabrain.de": {
     "domain": "betabrain.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/betabrain.de",
-    "fetched_at": "2026-05-04T13:38:21.685556"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/betabrain.de",
+    "fetched_at": "2026-05-04T14:24:59.561337"
   },
   "skanorfalsterbo.com": {
     "domain": "skanorfalsterbo.com",
@@ -39896,8 +39959,8 @@
   },
   "gametec.com.py": {
     "domain": "gametec.com.py",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/gametec.com.py",
-    "fetched_at": "2026-05-04T13:38:26.758337"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/gametec.com.py",
+    "fetched_at": "2026-05-04T14:25:14.672030"
   },
   "colaboras.cloud": {
     "domain": "colaboras.cloud",
@@ -39933,28 +39996,28 @@
   },
   "tjc-aps.dk": {
     "domain": "tjc-aps.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/tjc-aps.dk",
-    "fetched_at": "2026-05-04T13:38:22.546585"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/tjc-aps.dk",
+    "fetched_at": "2026-05-04T14:25:58.011257"
   },
   "rheinbahn.de": {
     "domain": "rheinbahn.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rheinbahn.de",
-    "fetched_at": "2026-05-04T13:38:32.428950"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rheinbahn.de",
+    "fetched_at": "2026-05-04T14:23:20.337742"
   },
   "roosendaal-keyzer.be": {
     "domain": "roosendaal-keyzer.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/roosendaal-keyzer.be",
-    "fetched_at": "2026-05-04T13:38:36.821746"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/roosendaal-keyzer.be",
+    "fetched_at": "2026-05-04T14:22:35.067890"
   },
   "liebestabletten.de": {
     "domain": "liebestabletten.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/liebestabletten.de",
-    "fetched_at": "2026-05-04T13:38:35.733532"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/liebestabletten.de",
+    "fetched_at": "2026-05-04T14:23:32.666268"
   },
   "oberer-rechtsanwaelte.de": {
     "domain": "oberer-rechtsanwaelte.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/oberer-rechtsanwaelte.de",
-    "fetched_at": "2026-05-04T13:38:34.685340"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/oberer-rechtsanwaelte.de",
+    "fetched_at": "2026-05-04T14:26:50.114953"
   },
   "nespresso.com": {
     "domain": "nespresso.com",
@@ -39974,8 +40037,8 @@
   },
   "youdomain.hk": {
     "domain": "youdomain.hk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/youdomain.hk",
-    "fetched_at": "2026-05-04T13:38:31.860258"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/youdomain.hk",
+    "fetched_at": "2026-05-04T14:24:59.266537"
   },
   "surecallcc.com": {
     "domain": "surecallcc.com",
@@ -39987,13 +40050,13 @@
   },
   "sun-dr.com": {
     "domain": "sun-dr.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sun-dr.com",
-    "fetched_at": "2026-05-04T13:38:27.159010"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/sun-dr.com",
+    "fetched_at": "2026-05-04T14:22:45.826794"
   },
   "mariuspedersen.dk": {
     "domain": "mariuspedersen.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/mariuspedersen.dk",
-    "fetched_at": "2026-05-04T13:38:27.958407"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/mariuspedersen.dk",
+    "fetched_at": "2026-05-04T14:25:58.405727"
   },
   "simply.com": {
     "domain": "simply.com",
@@ -40034,8 +40097,11 @@
   },
   "movetech.co.ke": {
     "domain": "movetech.co.ke",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/movetech.co.ke",
-    "fetched_at": "2026-05-04T13:38:26.393519"
+    "registrar": null,
+    "registration_date": "2013-04-25T10:20:34Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:23:19.963394",
+    "rdap_url": "https://rdap.org/domain/movetech.co.ke"
   },
   "grupobentrani.com": {
     "domain": "grupobentrani.com",
@@ -40047,13 +40113,16 @@
   },
   "comproom.co.uk": {
     "domain": "comproom.co.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/comproom.co.uk",
-    "fetched_at": "2026-05-04T13:38:20.419839"
+    "registrar": "Unlimited Web Hosting UK Ltd",
+    "registration_date": "1997-04-04T08:49:07Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:23:07.871235",
+    "rdap_url": "https://rdap.org/domain/comproom.co.uk"
   },
   "eyelove.de": {
     "domain": "eyelove.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/eyelove.de",
-    "fetched_at": "2026-05-04T13:38:37.284882"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/eyelove.de",
+    "fetched_at": "2026-05-04T14:23:43.959351"
   },
   "ontariocourts.ca": {
     "domain": "ontariocourts.ca",
@@ -40089,13 +40158,13 @@
   },
   "dmu.ac.uk": {
     "domain": "dmu.ac.uk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/dmu.ac.uk",
-    "fetched_at": "2026-05-04T13:38:26.975511"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.nominet.uk/uk/domain/dmu.ac.uk",
+    "fetched_at": "2026-05-04T14:24:06.802646"
   },
   "cybermail.jp": {
     "domain": "cybermail.jp",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cybermail.jp",
-    "fetched_at": "2026-05-04T13:38:23.395891"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/cybermail.jp",
+    "fetched_at": "2026-05-04T14:27:00.734902"
   },
   "itchotels.com": {
     "domain": "itchotels.com",
@@ -40107,13 +40176,13 @@
   },
   "regruhosting.ru": {
     "domain": "regruhosting.ru",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/regruhosting.ru",
-    "fetched_at": "2026-05-04T13:38:36.700200"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/regruhosting.ru",
+    "fetched_at": "2026-05-04T14:23:07.215440"
   },
   "onnet.my": {
     "domain": "onnet.my",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/onnet.my",
-    "fetched_at": "2026-05-04T13:38:34.474492"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/onnet.my",
+    "fetched_at": "2026-05-04T14:23:43.773059"
   },
   "ds.network": {
     "domain": "ds.network",
@@ -40125,8 +40194,8 @@
   },
   "nce.de": {
     "domain": "nce.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/nce.de",
-    "fetched_at": "2026-05-04T13:38:19.832581"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/nce.de",
+    "fetched_at": "2026-05-04T14:25:48.026596"
   },
   "eudisa.com": {
     "domain": "eudisa.com",
@@ -40138,8 +40207,8 @@
   },
   "elster.de": {
     "domain": "elster.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/elster.de",
-    "fetched_at": "2026-05-04T13:38:18.817447"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/elster.de",
+    "fetched_at": "2026-05-04T14:24:59.390750"
   },
   "ekonekta.com": {
     "domain": "ekonekta.com",
@@ -40151,13 +40220,13 @@
   },
   "activos.com.co": {
     "domain": "activos.com.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/activos.com.co",
-    "fetched_at": "2026-05-04T13:38:36.084458"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/activos.com.co",
+    "fetched_at": "2026-05-04T14:22:35.377232"
   },
   "netgiganten.dk": {
     "domain": "netgiganten.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/netgiganten.dk",
-    "fetched_at": "2026-05-04T13:38:32.004576"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/netgiganten.dk",
+    "fetched_at": "2026-05-04T14:22:35.254837"
   },
   "oxa.host": {
     "domain": "oxa.host",
@@ -40185,13 +40254,13 @@
   },
   "maison-formation-wapi.be": {
     "domain": "maison-formation-wapi.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/maison-formation-wapi.be",
-    "fetched_at": "2026-05-04T13:38:25.276915"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/maison-formation-wapi.be",
+    "fetched_at": "2026-05-04T14:23:31.104998"
   },
   "bestellensiejetzt.online": {
     "domain": "bestellensiejetzt.online",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bestellensiejetzt.online",
-    "fetched_at": "2026-05-04T13:38:35.666709"
+    "error": "HTTPError: 403 Client Error: Forbidden for url: https://rdap.centralnic.com/online/domain/bestellensiejetzt.online",
+    "fetched_at": "2026-05-04T14:23:32.343612"
   },
   "itc.as": {
     "domain": "itc.as",
@@ -40219,8 +40288,8 @@
   },
   "schluske.de": {
     "domain": "schluske.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/schluske.de",
-    "fetched_at": "2026-05-04T13:38:26.795859"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/schluske.de",
+    "fetched_at": "2026-05-04T14:25:47.643717"
   },
   "aznicheta.org": {
     "domain": "aznicheta.org",
@@ -40232,8 +40301,8 @@
   },
   "equipark.com.co": {
     "domain": "equipark.com.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/equipark.com.co",
-    "fetched_at": "2026-05-04T13:38:22.613393"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/equipark.com.co",
+    "fetched_at": "2026-05-04T14:23:54.241970"
   },
   "serverdata.net": {
     "domain": "serverdata.net",
@@ -40245,13 +40314,13 @@
   },
   "hostedsepo.dk": {
     "domain": "hostedsepo.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostedsepo.dk",
-    "fetched_at": "2026-05-04T13:38:34.347482"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hostedsepo.dk",
+    "fetched_at": "2026-05-04T14:22:34.873010"
   },
   "hostgator.mx": {
     "domain": "hostgator.mx",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostgator.mx",
-    "fetched_at": "2026-05-04T13:38:36.966584"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hostgator.mx",
+    "fetched_at": "2026-05-04T14:24:27.109530"
   },
   "profuomo.com": {
     "domain": "profuomo.com",
@@ -40271,8 +40340,8 @@
   },
   "prd.int": {
     "domain": "prd.int",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/prd.int",
-    "fetched_at": "2026-05-04T13:38:26.101658"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.iana.org/domain/prd.int",
+    "fetched_at": "2026-05-04T14:23:32.435121"
   },
   "zbs-server.com": {
     "domain": "zbs-server.com",
@@ -46082,8 +46151,6 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T13:44:27.647900",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/americabonus.com"
-    "fetched_at": "2026-05-04T12:59:48.851865",
-    "rdap_url": "https://rdap.verisign.com/com/v1/domain/cisco.com"
   },
   "snsbank.nl": {
     "domain": "snsbank.nl",
@@ -46434,13 +46501,13 @@
   },
   "cokina.com.tr": {
     "domain": "cokina.com.tr",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cokina.com.tr",
-    "fetched_at": "2026-05-04T13:38:34.643999"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/cokina.com.tr",
+    "fetched_at": "2026-05-04T14:26:11.884362"
   },
   "hyldegaard.dk": {
     "domain": "hyldegaard.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hyldegaard.dk",
-    "fetched_at": "2026-05-04T13:38:23.644882"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hyldegaard.dk",
+    "fetched_at": "2026-05-04T14:23:32.551743"
   },
   "o2.cz": {
     "domain": "o2.cz",
@@ -46452,8 +46519,8 @@
   },
   "cnet.co.id": {
     "domain": "cnet.co.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/cnet.co.id",
-    "fetched_at": "2026-05-04T13:38:33.986055"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:25:38.555771"
   },
   "cabootergroup.com": {
     "domain": "cabootergroup.com",
@@ -46489,13 +46556,16 @@
   },
   "anpsh.com.au": {
     "domain": "anpsh.com.au",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/anpsh.com.au",
-    "fetched_at": "2026-05-04T13:38:25.126631"
+    "registrar": "GoDaddy.com LLC trading as GoDaddy.com",
+    "registration_date": null,
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:24:04.792049",
+    "rdap_url": "https://rdap.org/domain/anpsh.com.au"
   },
   "az-granit.ro": {
     "domain": "az-granit.ro",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/az-granit.ro",
-    "fetched_at": "2026-05-04T13:38:19.482386"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/az-granit.ro",
+    "fetched_at": "2026-05-04T14:24:16.323405"
   },
   "serveradd.com": {
     "domain": "serveradd.com",
@@ -46523,13 +46593,13 @@
   },
   "emailn.de": {
     "domain": "emailn.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/emailn.de",
-    "fetched_at": "2026-05-04T13:38:18.496317"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/emailn.de",
+    "fetched_at": "2026-05-04T14:26:50.237588"
   },
   "nachsendeauftrag-vergleich.de": {
     "domain": "nachsendeauftrag-vergleich.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/nachsendeauftrag-vergleich.de",
-    "fetched_at": "2026-05-04T13:38:33.869548"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/nachsendeauftrag-vergleich.de",
+    "fetched_at": "2026-05-04T14:22:56.900806"
   },
   "it.net": {
     "domain": "it.net",
@@ -46549,8 +46619,8 @@
   },
   "apobank.de": {
     "domain": "apobank.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/apobank.de",
-    "fetched_at": "2026-05-04T13:38:36.666903"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/apobank.de",
+    "fetched_at": "2026-05-04T14:25:25.157838"
   },
   "dhl-usa.com": {
     "domain": "dhl-usa.com",
@@ -46562,8 +46632,8 @@
   },
   "enmail.co": {
     "domain": "enmail.co",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/enmail.co",
-    "fetched_at": "2026-05-04T13:38:20.382124"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/enmail.co",
+    "fetched_at": "2026-05-04T14:24:48.400648"
   },
   "e-pages.dk": {
     "domain": "e-pages.dk",
@@ -46588,8 +46658,8 @@
   },
   "pvs-se.de": {
     "domain": "pvs-se.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/pvs-se.de",
-    "fetched_at": "2026-05-04T13:38:18.621798"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pvs-se.de",
+    "fetched_at": "2026-05-04T14:24:16.510056"
   },
   "RedwoodCompliance.com": {
     "domain": "RedwoodCompliance.com",
@@ -46601,13 +46671,13 @@
   },
   "pzd-svn.de": {
     "domain": "pzd-svn.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/pzd-svn.de",
-    "fetched_at": "2026-05-04T13:38:33.636333"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pzd-svn.de",
+    "fetched_at": "2026-05-04T14:26:39.425247"
   },
   "zentek.de": {
     "domain": "zentek.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/zentek.de",
-    "fetched_at": "2026-05-04T13:38:27.442119"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/zentek.de",
+    "fetched_at": "2026-05-04T14:26:09.836316"
   },
   "research.net": {
     "domain": "research.net",
@@ -46635,18 +46705,21 @@
   },
   "terraplena.com.br": {
     "domain": "terraplena.com.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/terraplena.com.br",
-    "fetched_at": "2026-05-04T13:38:36.172298"
+    "registrar": null,
+    "registration_date": "1999-01-11T20:27:21Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:25:37.393650",
+    "rdap_url": "https://rdap.org/domain/terraplena.com.br"
   },
   "khg-aachen.de": {
     "domain": "khg-aachen.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/khg-aachen.de",
-    "fetched_at": "2026-05-04T13:38:22.813848"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/khg-aachen.de",
+    "fetched_at": "2026-05-04T14:25:36.324084"
   },
   "energivejlederen.dk": {
     "domain": "energivejlederen.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/energivejlederen.dk",
-    "fetched_at": "2026-05-04T13:38:19.399153"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/energivejlederen.dk",
+    "fetched_at": "2026-05-04T14:27:00.646477"
   },
   "sophos.com": {
     "domain": "sophos.com",
@@ -46666,13 +46739,13 @@
   },
   "damlaferace.com": {
     "domain": "damlaferace.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/damlaferace.com",
-    "fetched_at": "2026-05-04T13:38:31.170692"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/damlaferace.com",
+    "fetched_at": "2026-05-04T14:23:07.276693"
   },
   "pro-medienmagazin.de": {
     "domain": "pro-medienmagazin.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/pro-medienmagazin.de",
-    "fetched_at": "2026-05-04T13:38:32.372069"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/pro-medienmagazin.de",
+    "fetched_at": "2026-05-04T14:26:49.583607"
   },
   "jibjab.com": {
     "domain": "jibjab.com",
@@ -46708,18 +46781,18 @@
   },
   "medswana.co.bw": {
     "domain": "medswana.co.bw",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/medswana.co.bw",
-    "fetched_at": "2026-05-04T13:38:31.553836"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/medswana.co.bw",
+    "fetched_at": "2026-05-04T14:25:14.985285"
   },
   "hts.net.id": {
     "domain": "hts.net.id",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hts.net.id",
-    "fetched_at": "2026-05-04T13:38:33.387086"
+    "error": "ReadTimeout: HTTPSConnectionPool(host='rdap.pandi.id', port=443): Read timed out. (read timeout=2)",
+    "fetched_at": "2026-05-04T14:26:24.420511"
   },
   "rAAVen.se": {
     "domain": "rAAVen.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rAAVen.se",
-    "fetched_at": "2026-05-04T13:38:26.626685"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rAAVen.se",
+    "fetched_at": "2026-05-04T14:26:11.683342"
   },
   "bobbyrahal.com": {
     "domain": "bobbyrahal.com",
@@ -46768,8 +46841,8 @@
   },
   "eblinger.at": {
     "domain": "eblinger.at",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/eblinger.at",
-    "fetched_at": "2026-05-04T13:38:26.464501"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/eblinger.at",
+    "fetched_at": "2026-05-04T14:22:45.472666"
   },
   "premierhb.com": {
     "domain": "premierhb.com",
@@ -46781,8 +46854,8 @@
   },
   "motionsberlin.de": {
     "domain": "motionsberlin.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/motionsberlin.de",
-    "fetched_at": "2026-05-04T13:38:26.179484"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/motionsberlin.de",
+    "fetched_at": "2026-05-04T14:24:05.369495"
   },
   "globiq.pl": {
     "domain": "globiq.pl",
@@ -46839,8 +46912,8 @@
   },
   "afmps.be": {
     "domain": "afmps.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/afmps.be",
-    "fetched_at": "2026-05-04T13:38:35.783803"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/afmps.be",
+    "fetched_at": "2026-05-04T14:24:37.031155"
   },
   "evite.com": {
     "domain": "evite.com",
@@ -46876,18 +46949,21 @@
   },
   "hostido.net.pl": {
     "domain": "hostido.net.pl",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostido.net.pl",
-    "fetched_at": "2026-05-04T13:38:27.310996"
+    "registrar": "HOSTIDO.PL GA\u0141\u0104ZKA SP\u00d3\u0141KA JAWNA",
+    "registration_date": "2020-07-30T13:42:28Z",
+    "registrar_location": "ul. Kartuska 5 Gda\u0144sk 80-103",
+    "fetched_at": "2026-05-04T14:26:39.322386",
+    "rdap_url": "https://rdap.org/domain/hostido.net.pl"
   },
   "clubmatas.dk": {
     "domain": "clubmatas.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/clubmatas.dk",
-    "fetched_at": "2026-05-04T13:38:28.311647"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/clubmatas.dk",
+    "fetched_at": "2026-05-04T14:24:48.962962"
   },
   "geb\u00fchrenfrei.de": {
     "domain": "geb\u00fchrenfrei.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/geb%C3%BChrenfrei.de",
-    "fetched_at": "2026-05-04T13:38:35.917070"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/geb%C3%BChrenfrei.de",
+    "fetched_at": "2026-05-04T14:22:56.383821"
   },
   "unstablemail.com": {
     "domain": "unstablemail.com",
@@ -46912,8 +46988,8 @@
   },
   "powerel.dk": {
     "domain": "powerel.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/powerel.dk",
-    "fetched_at": "2026-05-04T13:38:36.034972"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/powerel.dk",
+    "fetched_at": "2026-05-04T14:24:16.425628"
   },
   "thexboxhub.com": {
     "domain": "thexboxhub.com",
@@ -46933,28 +47009,28 @@
   },
   "commerzbank.de": {
     "domain": "commerzbank.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/commerzbank.de",
-    "fetched_at": "2026-05-04T13:38:31.221195"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/commerzbank.de",
+    "fetched_at": "2026-05-04T14:24:37.676894"
   },
   "welcomeitalia.it": {
     "domain": "welcomeitalia.it",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/welcomeitalia.it",
-    "fetched_at": "2026-05-04T13:38:26.592308"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/welcomeitalia.it",
+    "fetched_at": "2026-05-04T14:24:16.148405"
   },
   "domusbyg.dk": {
     "domain": "domusbyg.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/domusbyg.dk",
-    "fetched_at": "2026-05-04T13:38:20.997822"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/domusbyg.dk",
+    "fetched_at": "2026-05-04T14:25:03.165330"
   },
   "bahn.de": {
     "domain": "bahn.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/bahn.de",
-    "fetched_at": "2026-05-04T13:38:31.738508"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/bahn.de",
+    "fetched_at": "2026-05-04T14:23:31.414453"
   },
   "rzfr.de": {
     "domain": "rzfr.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rzfr.de",
-    "fetched_at": "2026-05-04T13:38:33.528999"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/rzfr.de",
+    "fetched_at": "2026-05-04T14:25:47.760220"
   },
   "turbo-smtp.net": {
     "domain": "turbo-smtp.net",
@@ -47003,8 +47079,8 @@
   },
   "hostserv.co.za": {
     "domain": "hostserv.co.za",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hostserv.co.za",
-    "fetched_at": "2026-05-04T13:38:28.175235"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hostserv.co.za",
+    "fetched_at": "2026-05-04T14:22:34.805161"
   },
   "mandrillapp.com": {
     "domain": "mandrillapp.com",
@@ -47016,8 +47092,8 @@
   },
   "advanzia-bank.de": {
     "domain": "advanzia-bank.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/advanzia-bank.de",
-    "fetched_at": "2026-05-04T13:38:31.788154"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/advanzia-bank.de",
+    "fetched_at": "2026-05-04T14:25:47.893070"
   },
   "passavant-ee.com": {
     "domain": "passavant-ee.com",
@@ -47037,18 +47113,18 @@
   },
   "norconsult.se": {
     "domain": "norconsult.se",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/norconsult.se",
-    "fetched_at": "2026-05-04T13:38:34.237804"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/norconsult.se",
+    "fetched_at": "2026-05-04T14:26:11.571776"
   },
   "hwlangballe.dk": {
     "domain": "hwlangballe.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hwlangballe.dk",
-    "fetched_at": "2026-05-04T13:38:27.558792"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hwlangballe.dk",
+    "fetched_at": "2026-05-04T14:25:14.755436"
   },
   "amna-corp.us": {
     "domain": "amna-corp.us",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/amna-corp.us",
-    "fetched_at": "2026-05-04T13:38:23.778632"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/amna-corp.us",
+    "fetched_at": "2026-05-04T14:24:48.521642"
   },
   "belgianpandi.com": {
     "domain": "belgianpandi.com",
@@ -47076,18 +47152,18 @@
   },
   "helevejen.dk": {
     "domain": "helevejen.dk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/helevejen.dk",
-    "fetched_at": "2026-05-04T13:38:19.433081"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/helevejen.dk",
+    "fetched_at": "2026-05-04T14:26:24.334647"
   },
   "kommunal-beratung-kurz.de": {
     "domain": "kommunal-beratung-kurz.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/kommunal-beratung-kurz.de",
-    "fetched_at": "2026-05-04T13:38:31.822043"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kommunal-beratung-kurz.de",
+    "fetched_at": "2026-05-04T14:24:05.617534"
   },
   "sobotta-it.de": {
     "domain": "sobotta-it.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sobotta-it.de",
-    "fetched_at": "2026-05-04T13:38:36.867089"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/sobotta-it.de",
+    "fetched_at": "2026-05-04T14:22:56.101101"
   },
   "orange.pl": {
     "domain": "orange.pl",
@@ -47099,8 +47175,8 @@
   },
   "soga-nv.be": {
     "domain": "soga-nv.be",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/soga-nv.be",
-    "fetched_at": "2026-05-04T13:38:34.019335"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/soga-nv.be",
+    "fetched_at": "2026-05-04T14:23:20.696578"
   },
   "professionaladviser.com": {
     "domain": "professionaladviser.com",
@@ -47112,8 +47188,8 @@
   },
   "hosteurope.de": {
     "domain": "hosteurope.de",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/hosteurope.de",
-    "fetched_at": "2026-05-04T13:38:28.611356"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/hosteurope.de",
+    "fetched_at": "2026-05-04T14:27:00.448923"
   },
   "clearcaptions.com": {
     "domain": "clearcaptions.com",
@@ -47125,8 +47201,11 @@
   },
   "sap.sp.gov.br": {
     "domain": "sap.sp.gov.br",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/sap.sp.gov.br",
-    "fetched_at": "2026-05-04T13:38:27.724711"
+    "registrar": null,
+    "registration_date": "1995-07-06T12:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T14:25:03.669360",
+    "rdap_url": "https://rdap.org/domain/sap.sp.gov.br"
   },
   "mammothbikes.com": {
     "domain": "mammothbikes.com",
