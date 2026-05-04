@@ -4,6 +4,7 @@ import json
 import ast
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 from config.pipeline_config import (
@@ -22,6 +23,13 @@ from preprocessing.misp_converter import incidents_to_misp_file
 _GNN_ROOT = Path(__file__).resolve().parent / "GNN"
 if str(_GNN_ROOT) not in sys.path:
     sys.path.insert(0, str(_GNN_ROOT))
+
+warnings.filterwarnings(
+    "ignore",
+    message=r".*NeighborSampler.*pyg-lib.*",
+    category=UserWarning,
+    module="torch_geometric.loader.neighbor_loader",
+)
 
 from steps.cluster_stage import run_clustering_stage  # noqa: E402
 from steps.eval_auroc_ap_stage import run_auroc_ap_stage  # noqa: E402
@@ -707,17 +715,16 @@ if __name__ == "__main__":
     
     # For individual stages of the pipeline, uncomment as needed:
     #misp_path = run_preprocessing_lake()
-    create_feature_sets()
+    #create_feature_sets()
     #run_featureset_clustering()
-    '''
-    misp_path = "preprocessing/output/incidents-lake-misp.json"
-    run_graph_creation(misp_path, to_memgraph=False)
+    
+    #misp_path = "preprocessing/output/incidents-lake-misp.json"
+    #run_graph_creation(misp_path, to_memgraph=False)
     run_gnn()
-    run_gnn_evaluation()
-    run_gnn_clustering()
-    run_metric_comparison()
+    #run_gnn_evaluation()
+    #run_gnn_clustering()
+    #run_metric_comparison()
     #visualize_clusters()
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()
-    '''

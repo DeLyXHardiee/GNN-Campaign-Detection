@@ -2,7 +2,7 @@
   "experiment": {
     "scoring_run_id": "run_seedcand_pu",
     "graph_id": "bundle_seedcand_pairtrain",
-    "mode": "setup_and_score",
+    "mode": "score_only",
     "graph_family": "seed_candidate"
   },
   "artifacts": {
@@ -26,7 +26,7 @@
       "seed_config": "seed_candidate_workflow/configs/anchor_seed.default.json",
       "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.default.json",
       "pair_training": {
-        "graph_meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json"
+        "graph_meta_json": "core/graph/output/incidents-lake-misp_hetero.meta.json"
       }
     }
   },
@@ -43,11 +43,11 @@
       "handcrafted": {},
       "pu": {
         "pu_run": {
-          "run_dir": "core/GNN/outputs/pair_pu_001",
-          "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
+          "run_dir": "output/runs/second_pu_run_128_32_dim",
+          "graph_pt": "core/graph/output/incidents-lake-misp_hetero.pt",
           "checkpoint": "best_model.pt",
           "pair_dataset_csv": "",
-          "device": "cpu",
+          "device": "cuda",
           "no_to_undirected": false
         },
         "seed_edge_weight": 1.0,
