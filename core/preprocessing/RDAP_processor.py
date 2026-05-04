@@ -2,6 +2,7 @@ import json
 import os
 import time
 from datetime import datetime
+from urllib.parse import urlsplit
 from typing import Dict, List, Optional
 
 import requests
@@ -13,7 +14,7 @@ RDAP_CACHE_FILE = os.path.join(RDAP_CACHE_DIR, "rdap_cache.json")
 RDAP_CACHE_LOCK_FILE = f"{RDAP_CACHE_FILE}.lock"
 LEGACY_RDAP_CACHE_FILE = os.path.normpath(os.path.join(_MODULE_DIR, "..", "rdap_cache.json"))
 RDAP_BOOTSTRAP_DNS_URL = "https://data.iana.org/rdap/dns.json"
-RDAP_TIMEOUT_SECONDS = 12
+RDAP_TIMEOUT_SECONDS = 2
 RDAP_LOCK_TIMEOUT_SECONDS = 3
 RDAP_LOCK_POLL_INTERVAL_SECONDS = 0.1
 _RDAP_BOOTSTRAP_CACHE: Optional[Dict[str, List[str]]] = None
@@ -32,6 +33,25 @@ def extract_domain(hostname: str) -> str:
     if ext.domain and ext.suffix:
         return f"{ext.domain}.{ext.suffix}"
     return None
+
+
+def normalize_domain_input(value: str) -> Optional[str]:
+    if not value:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    # If a full URL is passed in, keep only the hostname before domain extraction.
+    if "://" in text:
+        parsed = urlsplit(text)
+        text = parsed.netloc or parsed.path
+
+    text = text.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    text = text.split("@")[-1]
+    text = text.split(":", 1)[0]
+    return extract_domain(text)
 
 
 def _extract_tld(domain: str) -> str:
@@ -142,6 +162,59 @@ def extract_domains_from_received(value_list):
     return list(domains)
 
 
+def _extract_domains_from_urls(url_values):
+    domains = set()
+    if isinstance(url_values, str):
+        url_values = [url_values]
+
+    if not isinstance(url_values, list):
+        return domains
+
+    for value in url_values:
+        domain = normalize_domain_input(value)
+        if domain:
+            domains.add(domain)
+    return domains
+
+
+def extract_domains_from_records(records):
+    """Extract registrable domains from parsed events or received-hop records.
+
+    Supports:
+    - Parsed events with `urls` and `received_hops`
+    - Raw received hop dicts containing `helo_host`/`by_host`
+    """
+    if not isinstance(records, list):
+        return []
+
+    domains = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+
+        # Event-level URL extraction.
+        domains.update(_extract_domains_from_urls(record.get("urls", [])))
+
+        # Parsed events store hop data under received_hops.
+        received_hops = record.get("received_hops")
+        if isinstance(received_hops, list):
+            for hop in received_hops:
+                if not isinstance(hop, dict):
+                    continue
+                for key in ("helo_host", "by_host"):
+                    domain = normalize_domain_input(hop.get(key))
+                    if domain:
+                        domains.add(domain)
+
+        # Backward-compat: record itself may be a received hop.
+        for key in ("helo_host", "by_host"):
+            domain = normalize_domain_input(record.get(key))
+            if domain:
+                domains.add(domain)
+
+    return list(domains)
+
+
 # -----------------------------
 # RDAP Fetch
 # -----------------------------
@@ -216,11 +289,9 @@ def _load_cache_unlocked():
 
 
 def load_cache():
-    _acquire_cache_lock()
-    try:
-        return _load_cache_unlocked()
-    finally:
-        _release_cache_lock()
+    # Reads stay lock-free so feature extraction can proceed while cache updates happen.
+    # Writers use atomic replace, so readers observe either old or new complete JSON.
+    return _load_cache_unlocked()
 
 
 def _save_cache_unlocked(cache):
@@ -257,7 +328,8 @@ def _is_retryable_cached_error(entry):
 # -----------------------------
 # Ensure cache exists / populate
 # -----------------------------
-def ensure_rdap_cache(domains):
+def ensure_rdap_cache(records):
+    domains = extract_domains_from_records(records)
     _acquire_cache_lock()
     try:
         cache = _load_cache_unlocked()
@@ -283,8 +355,8 @@ def ensure_rdap_cache(domains):
 # Main function (your use case)
 # -----------------------------
 def process_received_headers(value_list):
-    domains = extract_domains_from_received(value_list)
-    cache = ensure_rdap_cache(domains)
+    domains = extract_domains_from_records(value_list)
+    cache = ensure_rdap_cache(value_list)
 
     results = []
     for domain in domains:
