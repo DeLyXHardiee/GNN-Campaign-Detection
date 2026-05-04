@@ -11,7 +11,7 @@ from feature_set_extraction.tfidf_utils import build_vectorizer, precompute_subj
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
-from preprocessing.RDAP_processor import ensure_rdap_cache
+from preprocessing.RDAP_processor import load_cache as load_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
@@ -655,7 +655,7 @@ def extract_origin_based_features(sender, auth_spf=None):
 
     if sender_domains:
         try:
-            cache = ensure_rdap_cache(sender_domains)
+            cache = load_rdap_cache()
             for domain in sender_domains:
                 item = cache.get(domain, {})
                 domain_registrars.append(item.get("registrar") or "")
@@ -903,7 +903,7 @@ def extract_features(misp_path, features, events=None):
                 f"Event at index {event_idx} has no external_id; required for feature rows"
             )
         feat = {"external_id": ext_s}
-        
+
         for feature_type in features:
             if feature_type == "time":
                 feat.update(extract_time_features(email_fields.get("date")))
@@ -950,10 +950,9 @@ def extract_features(misp_path, features, events=None):
                     extracted_urls.append(explicit_urls)
                 extracted_urls = list(dict.fromkeys(extracted_urls))
                 feat.update(extract_url_based_features(extracted_urls))
-        
+
         features_list.append(feat)
     return features_list
-
 
 def omit_feature_keys(features_list, omitted_keys):
     return [
@@ -1002,24 +1001,30 @@ def parse_misp_event_attributes(event):
         'domain_is_common_webprovided': parsed.get('domain_is_common_webprovided', ''),
     }
 
+
 def get_idf_path_for_misp(misp_path):
     base_name = os.path.splitext(os.path.basename(misp_path))[0]
     return os.path.join(get_helpers_output_dir(), f"{base_name}_subject_idf.json")
 
+
 def get_FS1(misp_path, events):
     return extract_features(misp_path, FS1_FEATURE_TYPES, events=events)
+
 
 def get_FS2(misp_path, events):
     features_list = extract_features(misp_path, FS2_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS2_OMIT_KEYS)
 
+
 def get_FS3(misp_path, events):
     features_list = extract_features(misp_path, FS3_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS3_OMIT_KEYS)
 
+
 def get_FS4(misp_path, events):
     features_list = extract_features(misp_path, FS4_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS4_OMIT_KEYS)
+
 
 def get_FS5(misp_path, events):
     features_list = extract_features(misp_path, FS5_FEATURE_TYPES, events=events)
@@ -1031,13 +1036,16 @@ def get_FS6(misp_path, events):
     features_list = extract_features(misp_path, FS6_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS6_OMIT_KEYS)
 
+
 def get_FS7(misp_path, events):
     features_list = extract_features(misp_path, FS7_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS7_OMIT_KEYS)
 
+
 def get_FSOLS(misp_path, events):
     """FSOLS uses direct event attributes for OLS-selected fields."""
     return extract_fsols_features(events, FSOLS_FEATURE_TYPES, FSOLS_OMIT_KEYS)
+
 
 def get_test_set(misp_path, events):
     features_list = extract_features(misp_path, TEST_SET_FEATURE_TYPES, events=events)
@@ -1046,7 +1054,7 @@ def get_test_set(misp_path, events):
 
 def _extract_and_save_featureset(args):
     fs_name, fs_function, misp_path, events, output_path = args
-    
+
     try:
         fs_features = fs_function(misp_path, events)
         # ensure output directory exists (worker processes may run before directory created)
@@ -1056,32 +1064,30 @@ def _extract_and_save_featureset(args):
 
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(sanitize_for_json(fs_features), f, indent=2, ensure_ascii=False)
-        
+
         sample_keys = list(fs_features[0].keys()) if fs_features else []
         return (fs_name, output_path, len(fs_features), sample_keys, True, None)
-    
+
     except Exception as e:
         return (fs_name, output_path, 0, [], False, str(e))
 
 
 def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
+
     if misp_path is None:
         misp_path = os.path.join(project_root, 'data', 'misp', 'TREC-07-misp.json')
 
-    # Ensure subject IDF CSV exists before any worker processes start.
-    # This avoids multiple processes attempting to write the same idf file
-    # concurrently on Windows which can cause Access Denied errors.
+    # Ensure expensive/cached artifacts are materialized before workers start.
     events_for_precompute = parse_misp_events(_load_raw_misp_events(misp_path))
 
     try:
         ensure_subject_idf(misp_path, events_for_precompute)
         ensure_lsa_features_for_misp(misp_path, events_for_precompute)
     except Exception:
-        # If ensure fails, workers will compute artifacts on demand.
+        # If ensure fails, workers will compute missing artifacts on demand.
         pass
-    
+
     fs_extractors = {
         'FS1': get_FS1,
         'FS2': get_FS2,
@@ -1094,70 +1100,70 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     }
 
     input_base = os.path.splitext(os.path.basename(misp_path))[0]
-    
+
     extraction_args = []
     package_dir = os.path.dirname(os.path.abspath(__file__))
     for fs_name, fs_function in fs_extractors.items():
         output_path = os.path.join(package_dir, 'output', 'featuresets', f"{input_base}-{fs_name}.json")
         extraction_args.append((fs_name, fs_function, misp_path, events_for_precompute, output_path))
-    
+
     if parallel:
         print(f"\n{'='*80}")
         print(f"Starting parallel feature extraction ({len(fs_extractors)} feature sets)...")
         print(f"Max workers: {max_workers or 'auto (CPU count)'}")
         print(f"{'='*80}")
-        
+
         results = []
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_fs = {executor.submit(_extract_and_save_featureset, args): args[0] 
+            future_to_fs = {executor.submit(_extract_and_save_featureset, args): args[0]
                            for args in extraction_args}
-            
+
             for future in as_completed(future_to_fs):
                 fs_name = future_to_fs[future]
                 try:
                     result = future.result()
                     results.append(result)
-                    
+
                     if result[4]:
                         print(f"✔ {result[0]} completed ({result[2]} emails)")
                     else:
                         print(f"✖ {result[0]} failed: {result[5]}")
-                
+
                 except Exception as e:
                     print(f"✖ {fs_name} raised exception: {e}")
                     results.append((fs_name, "", 0, [], False, str(e)))
-        
+
         print(f"\n{'='*80}")
         print("Parallel extraction complete!")
         print(f"{'='*80}")
-        
+
         successful = [r for r in results if r[4]]
         failed = [r for r in results if not r[4]]
-        
+
         if successful:
             print(f"\nSuccessful extractions ({len(successful)}):")
             for fs_name, output_path, num_emails, sample_keys, _, _ in successful:
                 print(f"  {fs_name}: {output_path}")
-                
+
         if failed:
             print(f"\nFailed extractions ({len(failed)}):")
             for fs_name, _, _, _, _, error_msg in failed:
                 print(f"  {fs_name}: {error_msg}")
-    
+
     else:
         print(f"\n{'='*80}")
         print(f"Starting sequential feature extraction ({len(fs_extractors)} feature sets)...")
         print(f"{'='*80}")
-        
+
         for args in extraction_args:
             fs_name, fs_function, misp_path, events_for_precompute, output_path = args
-            
+
             print(f"\n{'='*80}")
             print(f"Extracting {fs_name}...")
             print(f"{'='*80}")
-            
+
             result = _extract_and_save_featureset(args)
-            
+
             if result[4]:  # success
                 print(f"Saved {result[0]} features to: {result[1]}")
                 print(f"Total emails processed: {result[2]}")
@@ -1165,7 +1171,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
                     print(f"Sample feature keys: {result[3]}")
             else:
                 print(f"Error extracting {result[0]}: {result[5]}")
-        
+
         print(f"\n{'='*80}")
         print("All feature sets extracted successfully!")
         print(f"{'='*80}")
