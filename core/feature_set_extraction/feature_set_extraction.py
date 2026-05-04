@@ -1108,7 +1108,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         print(f"{'='*80}")
         
         results = []
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=2) as executor:
             future_to_fs = {executor.submit(_extract_and_save_featureset, args): args[0] 
                            for args in extraction_args}
             
