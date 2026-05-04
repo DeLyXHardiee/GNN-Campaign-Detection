@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import warnings
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -970,8 +971,20 @@ def _resolve_gt_paths(project_root: Path, gt_cfg: dict[str, Any]) -> list[Path]:
             p = project_root / p
         p = p.resolve()
         if not p.is_file():
-            raise FileNotFoundError(f"Ground truth file not found: {p}")
+            warnings.warn(
+                f"Ground truth file not found (skipping): {p}",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
         out.append(p)
+    if not out:
+        warnings.warn(
+            "No ground truth files from ground_truth.paths exist on disk; "
+            "gt_eval in the seed summary will be empty and manual review will have no GT labels.",
+            UserWarning,
+            stacklevel=2,
+        )
     return out
 
 
