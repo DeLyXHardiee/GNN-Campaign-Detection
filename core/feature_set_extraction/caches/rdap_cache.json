@@ -31761,5 +31761,235 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T10:35:53.886368",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/keriso.com"
+  },
+  "ruzyva.com": {
+    "domain": "ruzyva.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/ruzyva.com",
+    "fetched_at": "2026-05-04T11:49:04.239088"
+  },
+  "ifelro.com": {
+    "domain": "ifelro.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/ifelro.com",
+    "fetched_at": "2026-05-04T11:49:04.800305"
+  },
+  "eruno.hk": {
+    "domain": "eruno.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/eruno.hk",
+    "fetched_at": "2026-05-04T11:49:05.453483"
+  },
+  "berna.hk": {
+    "domain": "berna.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/berna.hk",
+    "fetched_at": "2026-05-04T11:49:09.549386"
+  },
+  "kibor.hk": {
+    "domain": "kibor.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/kibor.hk",
+    "fetched_at": "2026-05-04T11:49:09.966243"
+  },
+  "utibe.hk": {
+    "domain": "utibe.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/utibe.hk",
+    "fetched_at": "2026-05-04T11:49:10.863439"
+  },
+  "odlkehaasource.com": {
+    "domain": "odlkehaasource.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/odlkehaasource.com",
+    "fetched_at": "2026-05-04T11:49:12.317900"
+  },
+  "panil.hk": {
+    "domain": "panil.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/panil.hk",
+    "fetched_at": "2026-05-04T11:49:14.167030"
+  },
+  "casinoamericangrand.net": {
+    "domain": "casinoamericangrand.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/casinoamericangrand.net",
+    "fetched_at": "2026-05-04T11:49:15.548006"
+  },
+  "wekioop.com": {
+    "domain": "wekioop.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/wekioop.com",
+    "fetched_at": "2026-05-04T11:49:16.475156"
+  },
+  "octitron.com": {
+    "domain": "octitron.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/octitron.com",
+    "fetched_at": "2026-05-04T11:49:16.940295"
+  },
+  "gepira.com": {
+    "domain": "gepira.com",
+    "registrar": "Name.com, Inc.",
+    "registration_date": "2025-10-15T06:12:37Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:18.832284",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/gepira.com"
+  },
+  "calldoun.com": {
+    "domain": "calldoun.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/calldoun.com",
+    "fetched_at": "2026-05-04T11:49:20.811277"
+  },
+  "next-time.net": {
+    "domain": "next-time.net",
+    "registrar": "XServer, Inc.",
+    "registration_date": "2025-10-01T04:59:56Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:21.041159",
+    "rdap_url": "https://rdap.verisign.com/net/v1/domain/next-time.net"
+  },
+  "market-pro-leads.net": {
+    "domain": "market-pro-leads.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/market-pro-leads.net",
+    "fetched_at": "2026-05-04T11:49:21.248246"
+  },
+  "justsoftwares.info": {
+    "domain": "justsoftwares.info",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.identitydigital.services/rdap/domain/justsoftwares.info",
+    "fetched_at": "2026-05-04T11:49:23.483013"
+  },
+  "octitron.net": {
+    "domain": "octitron.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/octitron.net",
+    "fetched_at": "2026-05-04T11:49:25.362300"
+  },
+  "bid-job.com": {
+    "domain": "bid-job.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2020-03-03T19:40:36Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:27.736653",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/bid-job.com"
+  },
+  "uprented.com": {
+    "domain": "uprented.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2023-06-07T13:37:09Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:28.239929",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/uprented.com"
+  },
+  "tikac.hk": {
+    "domain": "tikac.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/tikac.hk",
+    "fetched_at": "2026-05-04T11:49:28.510058"
+  },
+  "uprented.net": {
+    "domain": "uprented.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/uprented.net",
+    "fetched_at": "2026-05-04T11:49:29.866474"
+  },
+  "chinamysql.com": {
+    "domain": "chinamysql.com",
+    "registrar": "Xiamen 35.com Information Co., Ltd.",
+    "registration_date": "2001-10-14T13:34:07Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:31.266761",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/chinamysql.com"
+  },
+  "stickvolleyball.com": {
+    "domain": "stickvolleyball.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/stickvolleyball.com",
+    "fetched_at": "2026-05-04T11:49:31.656718"
+  },
+  "winantivirus.com": {
+    "domain": "winantivirus.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2009-09-07T18:46:19Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:32.158039",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/winantivirus.com"
+  },
+  "casinoamericangrand.org": {
+    "domain": "casinoamericangrand.org",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.publicinterestregistry.org/rdap/domain/casinoamericangrand.org",
+    "fetched_at": "2026-05-04T11:49:35.068822"
+  },
+  "jo-24-bs.com": {
+    "domain": "jo-24-bs.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/jo-24-bs.com",
+    "fetched_at": "2026-05-04T11:49:35.604535"
+  },
+  "millenium-jo24bs.com": {
+    "domain": "millenium-jo24bs.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/millenium-jo24bs.com",
+    "fetched_at": "2026-05-04T11:49:35.978899"
+  },
+  "camikk.com": {
+    "domain": "camikk.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2022-03-31T14:00:46Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:36.957987",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/camikk.com"
+  },
+  "fesim.hk": {
+    "domain": "fesim.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/fesim.hk",
+    "fetched_at": "2026-05-04T11:49:37.991632"
+  },
+  "autloyn.hk": {
+    "domain": "autloyn.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/autloyn.hk",
+    "fetched_at": "2026-05-04T11:49:38.680998"
+  },
+  "rewardsmonster.com": {
+    "domain": "rewardsmonster.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2005-06-22T19:25:40Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:40.373756",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/rewardsmonster.com"
+  },
+  "plimpat.net": {
+    "domain": "plimpat.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/plimpat.net",
+    "fetched_at": "2026-05-04T11:49:43.324951"
+  },
+  "trebbiann.com": {
+    "domain": "trebbiann.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/trebbiann.com",
+    "fetched_at": "2026-05-04T11:49:43.734656"
+  },
+  "royal-circus.org": {
+    "domain": "royal-circus.org",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.publicinterestregistry.org/rdap/domain/royal-circus.org",
+    "fetched_at": "2026-05-04T11:49:46.072959"
+  },
+  "speedest-net.com": {
+    "domain": "speedest-net.com",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/speedest-net.com",
+    "fetched_at": "2026-05-04T11:49:46.750853"
+  },
+  "dantari.com": {
+    "domain": "dantari.com",
+    "registrar": "GoDaddy.com, LLC",
+    "registration_date": "2015-11-26T17:39:21Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:48.679336",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/dantari.com"
+  },
+  "ascarit.hk": {
+    "domain": "ascarit.hk",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/ascarit.hk",
+    "fetched_at": "2026-05-04T11:49:50.754105"
+  },
+  "minicdso.net": {
+    "domain": "minicdso.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/minicdso.net",
+    "fetched_at": "2026-05-04T11:49:52.626643"
+  },
+  "nordstrom.com": {
+    "domain": "nordstrom.com",
+    "registrar": "MarkMonitor Inc.",
+    "registration_date": "1994-07-14T04:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-04T11:49:54.367053",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/nordstrom.com"
+  },
+  "kristyre.net": {
+    "domain": "kristyre.net",
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/kristyre.net",
+    "fetched_at": "2026-05-04T11:49:59.945532"
   }
 }
