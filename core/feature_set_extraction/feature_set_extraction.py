@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
 from preprocessing.RDAP_processor import load_cache as load_rdap_cache
+from preprocessing.RDAP_processor import ensure_rdap_cache as ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
@@ -1082,7 +1083,19 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     events_for_precompute = parse_misp_events(_load_raw_misp_events(misp_path))
 
     try:
+        # Single upfront RDAP cache ensure from parsed events.
+        # This attempts all domains from event URLs and received hop hosts before workers start.
+        ensure_rdap_cache(events_for_precompute)
+    except Exception:
+        print("Warning: RDAP cache ensure failed")
+
+    try:
         ensure_subject_idf(misp_path, events_for_precompute)
+    except Exception:
+        # If ensure fails, workers will compute missing artifacts on demand.
+        pass
+
+    try:
         ensure_lsa_features_for_misp(misp_path, events_for_precompute)
     except Exception:
         # If ensure fails, workers will compute missing artifacts on demand.
