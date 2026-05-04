@@ -26,10 +26,10 @@
     "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
-    "misp_json_path": "data/misp/incidents-lake-misp-large.json",
+    "misp_json_path": "data/misp/incidents-lake-misp.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "graph_pt_path_override": "core/graph/output/incidents-lake-misp-large_pruned_hetero.pt",
+    "graph_pt_path_override": "core/graph/output/incidents-lake-misp_hetero.pt",
     "exclude_node_types": [],
     "degree_node_filter": {
       "enabled": false,
@@ -40,8 +40,8 @@
     "embeddings_output_dir": null,
     "email_feature_projection": {
       "seed": 42,
-      "bert_out_dim": 69,
-      "other_out_dim": 69
+      "bert_out_dim": 128,
+      "other_out_dim": 32
     },
     "memgraph": {
       "enabled": false,
@@ -89,7 +89,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "feature_set_ground_truth_merged_calc_all_ground_truth",
+  "run_id": "second_pu_run_128_32_dim",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -127,7 +127,7 @@
     "supervised_edge_types": []
   },
   "pair_training": {
-    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/seed_candidate_pu_default/pair_training/seed_candidate_pu_default/pair_training_dataset.csv",
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/bundle_seedcand_pairtrain/pair_training/bundle_seedcand_pairtrain/pair_training_dataset.csv",
     "pair_batch_size": 64,
     "pair_fanout": [25, 15],
     "pair_split_seed": 42,
@@ -247,7 +247,7 @@
         "min_samples": 5
       },
       "meanshift": {
-        "enabled": true,
+        "enabled": false,
         "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         "n_samples": 500
       },
