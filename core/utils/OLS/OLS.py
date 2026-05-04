@@ -58,10 +58,6 @@ def _flatten_numeric_dict(data, prefix="", out=None):
         key = _sanitize_feature_key(raw_key)
         feature_key = f"{prefix}_{key}" if prefix else key
 
-        if isinstance(value, dict):
-            _flatten_numeric_dict(value, prefix=feature_key, out=out)
-            continue
-
         if isinstance(value, bool):
             out[feature_key] = int(value)
             continue
@@ -428,7 +424,7 @@ def main(email_path, gt_path):
     print(f"Ground truth clusters: {len(clusters)}")
 
     hardcoded_email_path = resolve_project_path(
-        "core/feature_set_extraction/output/featuresets/incidents-lake-misp-FS1.json"
+        "core/feature_set_extraction/output/featuresets/TREC-07-only-phishing-6m-FS1.json"
     )
     print(f"Using hardcoded feature set input: {hardcoded_email_path}")
 
@@ -446,7 +442,7 @@ def main(email_path, gt_path):
     if not emails:
         raise ValueError("No emails available after joining ground truth with MISP data")
 
-    embeddings_path = Path(__file__).resolve().parents[1] / "embeddings" / "output" / "embeddings_large.json"
+    embeddings_path = Path(__file__).resolve().parents[1] / "embeddings" / "output" / "embeddings.json"
     print(f"Loading text embeddings: {embeddings_path}")
     embedding_by_id = load_text_embeddings(embeddings_path)
 
@@ -534,6 +530,7 @@ if __name__ == "__main__":
 
     email_path = cfg.get("misp_json_path")
     gt_path = cfg.get("ground_truth_json")
+    gt_path = "C:/Users/lukas/Desktop/GNN-Campaign-Detection/data/groundtruths/campaigns.csv"
 
     if not email_path or not gt_path:
         raise ValueError(
