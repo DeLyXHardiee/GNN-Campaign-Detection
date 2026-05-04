@@ -162,6 +162,59 @@ def extract_domains_from_received(value_list):
     return list(domains)
 
 
+def _extract_domains_from_urls(url_values):
+    domains = set()
+    if isinstance(url_values, str):
+        url_values = [url_values]
+
+    if not isinstance(url_values, list):
+        return domains
+
+    for value in url_values:
+        domain = normalize_domain_input(value)
+        if domain:
+            domains.add(domain)
+    return domains
+
+
+def extract_domains_from_records(records):
+    """Extract registrable domains from parsed events or received-hop records.
+
+    Supports:
+    - Parsed events with `urls` and `received_hops`
+    - Raw received hop dicts containing `helo_host`/`by_host`
+    """
+    if not isinstance(records, list):
+        return []
+
+    domains = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+
+        # Event-level URL extraction.
+        domains.update(_extract_domains_from_urls(record.get("urls", [])))
+
+        # Parsed events store hop data under received_hops.
+        received_hops = record.get("received_hops")
+        if isinstance(received_hops, list):
+            for hop in received_hops:
+                if not isinstance(hop, dict):
+                    continue
+                for key in ("helo_host", "by_host"):
+                    domain = normalize_domain_input(hop.get(key))
+                    if domain:
+                        domains.add(domain)
+
+        # Backward-compat: record itself may be a received hop.
+        for key in ("helo_host", "by_host"):
+            domain = normalize_domain_input(record.get(key))
+            if domain:
+                domains.add(domain)
+
+    return list(domains)
+
+
 # -----------------------------
 # RDAP Fetch
 # -----------------------------
@@ -275,16 +328,14 @@ def _is_retryable_cached_error(entry):
 # -----------------------------
 # Ensure cache exists / populate
 # -----------------------------
-def ensure_rdap_cache(domains):
+def ensure_rdap_cache(records):
+    domains = extract_domains_from_records(records)
     _acquire_cache_lock()
     try:
         cache = _load_cache_unlocked()
         updated = False
 
-        for raw_domain in domains:
-            domain = normalize_domain_input(raw_domain)
-            if not domain:
-                continue
+        for domain in domains:
             cached_entry = cache.get(domain)
             should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
             if should_fetch:
@@ -304,8 +355,8 @@ def ensure_rdap_cache(domains):
 # Main function (your use case)
 # -----------------------------
 def process_received_headers(value_list):
-    domains = extract_domains_from_received(value_list)
-    cache = ensure_rdap_cache(domains)
+    domains = extract_domains_from_records(value_list)
+    cache = ensure_rdap_cache(value_list)
 
     results = []
     for domain in domains:
