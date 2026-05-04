@@ -32827,7 +32827,6 @@
     "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/net/v1/domain/kristyre.net",
     "fetched_at": "2026-05-04T11:49:59.945532"
   },
-<<<<<<< HEAD
   "wedevse.com": {
     "domain": "wedevse.com",
     "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/wedevse.com",
@@ -34758,7 +34757,7 @@
     "domain": "kxisoftware.com",
     "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/kxisoftware.com",
     "fetched_at": "2026-05-04T14:04:57.944265"
-=======
+  },
   "4d0ec0d26.me": {
     "domain": "4d0ec0d26.me",
     "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/4d0ec0d26.me",
@@ -40290,14 +40289,12 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T12:59:48.775631",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/rbcwealthmanagement.com"
->>>>>>> c1fb2912d93401e4ad23299f06432b16aecdce98
   },
   "cisco.com": {
     "domain": "cisco.com",
     "registrar": "MarkMonitor Inc.",
     "registration_date": "1987-05-14T04:00:00Z",
     "registrar_location": null,
-<<<<<<< HEAD
     "fetched_at": "2026-05-04T13:09:11.451360",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/cisco.com"
   },
@@ -46085,7 +46082,6 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T13:44:27.647900",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/americabonus.com"
-=======
     "fetched_at": "2026-05-04T12:59:48.851865",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/cisco.com"
   },
@@ -47427,6 +47423,5 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T13:00:09.458811",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/yongfeng-medical.com"
->>>>>>> c1fb2912d93401e4ad23299f06432b16aecdce98
   }
 }
