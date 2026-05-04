@@ -2,7 +2,7 @@
   "preprocessing": {
     "incidents_csv_path": "data/incidents/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "test_data/misp/phishing_emails.json",
+    "misp_json_path": "data/misp/incidents-lake-misp-large.json",
     "limit": 0,
     "category_allowlist": [
       "phishing",
@@ -21,9 +21,9 @@
     ]
   },
   "datasets": {
-    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-large.json",
     "ground_truth_json": "data/groundtruth/ground_truth_merged.json",
-    "featureset_base_name": "incidents-lake-misp"
+    "featureset_base_name": "incidents-lake-misp-large"
   },
   "graph": {
     "misp_json_path": "data/misp/incidents-lake-misp.json",
@@ -52,7 +52,7 @@
       "create_indexes": true
     }
   },
-  "featureset-clustering": {
+  "featureset-creation": {
     "feature_sets": [
       "FS1",
       "FS2",
@@ -60,9 +60,17 @@
       "FS4",
       "FS5",
       "FS6",
-      "FS7"
+      "FS7",
+      "FSOLS"
     ],
-    "max_tfidf_features": 5000,
+    "max_workers": 2
+  },
+  "featureset-clustering": {
+    "feature_sets": [
+      "FS3",
+      "FSOLS"
+    ],
+    "max_tfidf_features": 100000,
     "n_components_values": [
       100000
     ],
@@ -71,11 +79,11 @@
       "contamination": 0.05
     },
     "dbscan": {
-      "eps_values": [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+      "eps_values": [0.001, 0.005, 0.01, 0.05],
       "min_samples": 2
     },
     "meanshift": {
-      "quantile_values": [0.8, 0.9, 0.1],
+      "quantile_values": [],
       "n_samples": 30000
     },
     "hdbscan": {
