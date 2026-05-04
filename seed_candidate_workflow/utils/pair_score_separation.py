@@ -11,11 +11,18 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+# GNN code uses package ``src`` under core/GNN/src; mirror core/main.py and the
+# seed_candidate_workflow wrapper script so ``python -m`` from repo root works.
+_GNN_ROOT = Path(__file__).resolve().parents[2] / "core" / "GNN"
+if str(_GNN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_GNN_ROOT))
 
 from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 from seed_candidate_workflow.utils.pair_model_inference import (
