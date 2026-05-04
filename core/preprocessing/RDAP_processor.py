@@ -2,6 +2,7 @@ import json
 import os
 import time
 from datetime import datetime
+from urllib.parse import urlsplit
 from typing import Dict, List, Optional
 
 import requests
@@ -32,6 +33,25 @@ def extract_domain(hostname: str) -> str:
     if ext.domain and ext.suffix:
         return f"{ext.domain}.{ext.suffix}"
     return None
+
+
+def normalize_domain_input(value: str) -> Optional[str]:
+    if not value:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    # If a full URL is passed in, keep only the hostname before domain extraction.
+    if "://" in text:
+        parsed = urlsplit(text)
+        text = parsed.netloc or parsed.path
+
+    text = text.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    text = text.split("@")[-1]
+    text = text.split(":", 1)[0]
+    return extract_domain(text)
 
 
 def _extract_tld(domain: str) -> str:
@@ -216,11 +236,9 @@ def _load_cache_unlocked():
 
 
 def load_cache():
-    _acquire_cache_lock()
-    try:
-        return _load_cache_unlocked()
-    finally:
-        _release_cache_lock()
+    # Reads stay lock-free so feature extraction can proceed while cache updates happen.
+    # Writers use atomic replace, so readers observe either old or new complete JSON.
+    return _load_cache_unlocked()
 
 
 def _save_cache_unlocked(cache):
@@ -263,7 +281,10 @@ def ensure_rdap_cache(domains):
         cache = _load_cache_unlocked()
         updated = False
 
-        for domain in domains:
+        for raw_domain in domains:
+            domain = normalize_domain_input(raw_domain)
+            if not domain:
+                continue
             cached_entry = cache.get(domain)
             should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
             if should_fetch:
