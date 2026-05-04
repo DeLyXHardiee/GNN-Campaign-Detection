@@ -1,7 +1,9 @@
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 from typing import Dict, List, Optional
 
@@ -17,6 +19,10 @@ RDAP_BOOTSTRAP_DNS_URL = "https://data.iana.org/rdap/dns.json"
 RDAP_TIMEOUT_SECONDS = 2
 RDAP_LOCK_TIMEOUT_SECONDS = 3
 RDAP_LOCK_POLL_INTERVAL_SECONDS = 0.1
+RDAP_PREFETCH_MAX_WORKERS = 2
+RDAP_MAX_RETRIES_PER_URL = 5
+RDAP_BACKOFF_BASE_SECONDS = 1.0
+RDAP_BACKOFF_MAX_SECONDS = 8.0
 _RDAP_BOOTSTRAP_CACHE: Optional[Dict[str, List[str]]] = None
 _REQUEST_HEADERS = {
     "User-Agent": "GNN-Campaign-Detection/1.0 (+https://github.com)",
@@ -111,6 +117,28 @@ def _candidate_rdap_urls_for_domain(domain: str) -> List[str]:
             seen.add(u)
             ordered.append(u)
     return ordered
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code == 429 or status_code >= 500
+
+
+def _compute_retry_delay_seconds(response, attempt_index: int) -> float:
+    retry_after = response.headers.get("Retry-After", "") if response is not None else ""
+    if retry_after:
+        # Retry-After can be either delta-seconds or an HTTP date.
+        try:
+            return max(0.0, float(retry_after))
+        except Exception:
+            try:
+                retry_dt = parsedate_to_datetime(retry_after)
+                now = datetime.now(retry_dt.tzinfo) if retry_dt.tzinfo else datetime.utcnow()
+                return max(0.0, (retry_dt - now).total_seconds())
+            except Exception:
+                pass
+
+    backoff = RDAP_BACKOFF_BASE_SECONDS * (2 ** attempt_index)
+    return min(float(backoff), RDAP_BACKOFF_MAX_SECONDS)
 
 
 def _extract_registrar_fields(data: dict) -> Dict[str, Optional[str]]:
@@ -221,21 +249,38 @@ def extract_domains_from_records(records):
 def fetch_rdap(domain):
     last_error = None
     for url in _candidate_rdap_urls_for_domain(domain):
-        try:
-            response = requests.get(url, timeout=RDAP_TIMEOUT_SECONDS, headers=_REQUEST_HEADERS)
-            response.raise_for_status()
-            data = response.json() if response.content else {}
-            fields = _extract_registrar_fields(data if isinstance(data, dict) else {})
-            return {
-                "domain": domain,
-                "registrar": fields.get("registrar"),
-                "registration_date": fields.get("registration_date"),
-                "registrar_location": fields.get("registrar_location"),
-                "fetched_at": datetime.utcnow().isoformat(),
-                "rdap_url": url,
-            }
-        except Exception as e:
-            last_error = f"{type(e).__name__}: {e}"
+        for attempt_index in range(RDAP_MAX_RETRIES_PER_URL + 1):
+            try:
+                response = requests.get(url, timeout=RDAP_TIMEOUT_SECONDS, headers=_REQUEST_HEADERS)
+                status_code = int(response.status_code)
+
+                if _is_retryable_status(status_code):
+                    if attempt_index < RDAP_MAX_RETRIES_PER_URL:
+                        time.sleep(_compute_retry_delay_seconds(response, attempt_index))
+                        continue
+
+                response.raise_for_status()
+                data = response.json() if response.content else {}
+                fields = _extract_registrar_fields(data if isinstance(data, dict) else {})
+                return {
+                    "domain": domain,
+                    "registrar": fields.get("registrar"),
+                    "registration_date": fields.get("registration_date"),
+                    "registrar_location": fields.get("registrar_location"),
+                    "fetched_at": datetime.utcnow().isoformat(),
+                    "rdap_url": url,
+                }
+            except requests.RequestException as e:
+                response = getattr(e, "response", None)
+                status_code = int(response.status_code) if response is not None else 0
+                if _is_retryable_status(status_code) and attempt_index < RDAP_MAX_RETRIES_PER_URL:
+                    time.sleep(_compute_retry_delay_seconds(response, attempt_index))
+                    continue
+                last_error = f"{type(e).__name__}: {e}"
+                break
+            except Exception as e:
+                last_error = f"{type(e).__name__}: {e}"
+                break
 
     return {
         "domain": domain,
@@ -330,59 +375,61 @@ def _is_retryable_cached_error(entry):
 # -----------------------------
 def ensure_rdap_cache(records):
     domains = extract_domains_from_records(records)
+    cache_snapshot = load_cache()
+    requested_domains = set()
+    domains_to_fetch = []
+
+    for domain in domains:
+        if domain in requested_domains:
+            continue
+        cached_entry = cache_snapshot.get(domain)
+        should_fetch = domain not in cache_snapshot or _is_retryable_cached_error(cached_entry)
+        if should_fetch:
+            domains_to_fetch.append(domain)
+        requested_domains.add(domain)
+
+    if not domains_to_fetch:
+        return cache_snapshot
+
+    total_domains = len(domains_to_fetch)
+    print(f"RDAP cache ensure: fetching {total_domains} domains...")
+
+    fetched_entries = {}
+    completed = 0
+    max_workers = min(RDAP_PREFETCH_MAX_WORKERS, len(domains_to_fetch))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_domain = {
+            executor.submit(fetch_rdap, domain): domain
+            for domain in domains_to_fetch
+        }
+        for future in as_completed(future_to_domain):
+            domain = future_to_domain[future]
+            try:
+                fetched_entries[domain] = future.result()
+            except Exception as exc:
+                fetched_entries[domain] = {
+                    "domain": domain,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "fetched_at": datetime.utcnow().isoformat(),
+                }
+            completed += 1
+            print(f"RDAP cache ensure progress: {completed}/{total_domains}")
+
     _acquire_cache_lock()
     try:
         cache = _load_cache_unlocked()
         updated = False
-
-        for domain in domains:
+        for domain, entry in fetched_entries.items():
             cached_entry = cache.get(domain)
-            should_fetch = domain not in cache or _is_retryable_cached_error(cached_entry)
-            if should_fetch:
-                print(f"Fetching RDAP for {domain}...")
-                cache[domain] = fetch_rdap(domain)
+            should_store = domain not in cache or _is_retryable_cached_error(cached_entry)
+            if should_store:
+                cache[domain] = entry
                 updated = True
 
         if updated:
             _save_cache_unlocked(cache)
 
+        print(f"RDAP cache ensure done: {len(fetched_entries)} fetched, updated={updated}")
         return cache
     finally:
         _release_cache_lock()
-
-
-# -----------------------------
-# Main function (your use case)
-# -----------------------------
-def process_received_headers(value_list):
-    domains = extract_domains_from_records(value_list)
-    cache = ensure_rdap_cache(value_list)
-
-    results = []
-    for domain in domains:
-        results.append(cache.get(domain, {"domain": domain}))
-
-    return results
-
-
-# -----------------------------
-# Example usage
-# -----------------------------
-if __name__ == "__main__":
-    sample_input = [
-        {
-            "origin_ip": "203.0.113.8",
-            "helo_host": "mail.mailservice.net",
-            "by_host": "mx.mailservice.net",
-            "timestamp": "Mon, 16 Mar 2026 10:27:18 GMT"
-        },
-        {
-            "origin_ip": "203.0.113.149",
-            "helo_host": "mx.mailservice.net",
-            "by_host": "mailbox.outlook.com",
-            "timestamp": "Mon, 16 Mar 2026 10:27:18 GMT"
-        }
-    ]
-
-    output = process_received_headers(sample_input)
-    print(json.dumps(output, indent=2))
