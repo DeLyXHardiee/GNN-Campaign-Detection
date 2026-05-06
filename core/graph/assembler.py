@@ -552,6 +552,8 @@ def materialize_edges(
     indices: Dict[str, Dict[str, int]],
     schema: GraphSchema,
     registry: ProviderRegistry = DEFAULT_PROVIDER_REGISTRY,
+    *,
+    zero_email_timestamps: bool = False,
 ) -> Tuple[Dict[str, List[int]], List[Dict[str, Any]], Dict[str, List[Any]], Dict[str, Dict[str, Set[int]]]]:
     edges_idx: Dict[str, List[int]] = {}
     for edge_name in schema.edges:
@@ -600,7 +602,9 @@ def materialize_edges(
                 "external_id": str(ext_id) if ext_id is not None else "",
             }
         )
-        email_attrs_raw["ts"].append(to_unix_ts(em.get("date", "")))
+        email_attrs_raw["ts"].append(
+            0 if zero_email_timestamps else to_unix_ts(em.get("date", ""))
+        )
         email_attrs_raw["len_subject"].append(int(len(em.get("subject", "") or "")))
         email_attrs_raw["len_body"].append(int(len(em.get("body", "") or "")))
         domains = {
@@ -985,6 +989,7 @@ def assemble_misp_graph_ir(
     *,
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
+    zero_email_timestamps: bool = False,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -1001,7 +1006,11 @@ def assemble_misp_graph_ir(
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
     edges_idx, email_meta, email_attrs_raw, docfreq_maps = materialize_edges(
-        emails, indices, schema, DEFAULT_PROVIDER_REGISTRY
+        emails,
+        indices,
+        schema,
+        DEFAULT_PROVIDER_REGISTRY,
+        zero_email_timestamps=zero_email_timestamps,
     )
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
         indices["sender"], indices["receiver"], indices["email_domain"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -579,8 +580,20 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             p = project_root / p
         p = p.resolve()
         if not p.is_file():
-            raise FileNotFoundError(f"Ground truth file not found: {p}")
+            warnings.warn(
+                f"Ground truth file not found (skipping): {p}",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
         gt_paths.append(p)
+    if not gt_paths:
+        warnings.warn(
+            "No ground truth files from ground_truth.paths exist on disk; "
+            "community sweep will run without per-GT metric outputs.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     out_root = Path(
         out_cfg.get("output_root")
