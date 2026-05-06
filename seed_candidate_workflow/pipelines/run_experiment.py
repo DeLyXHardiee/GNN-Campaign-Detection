@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +62,81 @@ def _resolve_path(raw: str | Path) -> Path:
     else:
         p = p.resolve()
     return p
+
+
+def _resolve_community_archive_gnn_run_dir(
+    *,
+    artifacts_cfg: dict[str, Any],
+    score_mode: str,
+    score_params: dict[str, Any],
+) -> Path | None:
+    """
+    Parent directory of GNN training run (e.g. ``output/runs/<run_id>``).
+
+    Prefer ``artifacts.archive_community_gnn_run_dir`` when set; otherwise infer
+    ``pu_run.run_dir`` from PU scorer params.
+    """
+    raw = str(artifacts_cfg.get("archive_community_gnn_run_dir") or "").strip()
+    if raw:
+        p = _resolve_path(raw)
+        return p if p.is_dir() else None
+    if str(score_mode or "").strip() != "seed_candidate_pu_v1":
+        return None
+    pu_run = dict(score_params.get("pu_run") or {})
+    rd = str(pu_run.get("run_dir") or "").strip()
+    if not rd:
+        return None
+    p = Path(rd).expanduser()
+    if not p.is_absolute():
+        p = (PROJECT_ROOT / p).resolve()
+    else:
+        p = p.resolve()
+    return p if p.is_dir() else None
+
+
+def _maybe_archive_seed_candidate_community_to_gnn_run(
+    *,
+    run_root: Path,
+    score_targets: list[str],
+    artifacts_cfg: dict[str, Any],
+    score_mode: str,
+    score_params: dict[str, Any],
+    dry_run: bool,
+    mode: str,
+) -> dict[str, Any] | None:
+    """
+    Copy ``<scoring_run>/seed_candidate/community`` → ``<gnn_run_dir>/community``
+    so fixed scoring paths do not lose history when re-running under the same
+    ``scoring_run_id``.
+    """
+    if dry_run or mode == "setup_only":
+        return None
+    if not bool(artifacts_cfg.get("archive_seed_candidate_community", True)):
+        return None
+    if "seed_candidate" not in score_targets:
+        return None
+    dest_parent = _resolve_community_archive_gnn_run_dir(
+        artifacts_cfg=artifacts_cfg,
+        score_mode=score_mode,
+        score_params=score_params,
+    )
+    if dest_parent is None:
+        return {
+            "skipped": True,
+            "reason": "no_gnn_run_dir",
+            "hint": "Set scoring.params.pu.pu_run.run_dir (PU mode) or artifacts.archive_community_gnn_run_dir",
+        }
+    src = (run_root / "seed_candidate" / "community").resolve()
+    if not src.is_dir():
+        return {"skipped": True, "reason": "source_missing", "source": str(src)}
+    dest = (dest_parent / "community").resolve()
+    shutil.copytree(src, dest, dirs_exist_ok=True)
+    return {
+        "archived": True,
+        "source": str(src),
+        "destination": str(dest),
+        "gnn_run_dir": str(dest_parent),
+    }
 
 
 def _resolve_bundle_dir(*, graph_bundle_root: Path, graph_id: str) -> Path:
@@ -474,6 +550,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
             "setup_result": setup_result,
             "community_results": [],
             "community_results_legacy": [],
+            "community_gnn_run_archive": None,
         }
 
     target_results: list[dict[str, Any]] = []
@@ -532,6 +609,19 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
             }
         )
 
+    artifacts_cfg = dict(cfg.get("artifacts") or {})
+    community_archive = _maybe_archive_seed_candidate_community_to_gnn_run(
+        run_root=run_root,
+        score_targets=score_targets,
+        artifacts_cfg=artifacts_cfg,
+        score_mode=score_mode,
+        score_params=score_params,
+        dry_run=dry_run,
+        mode=mode,
+    )
+    if community_archive is not None:
+        run_manifest["community_gnn_run_archive"] = community_archive
+
     run_manifest["targets"] = target_results
     p_manifest = Path(rman.write_manifest(run_root, run_manifest))
     return {
@@ -541,6 +631,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
         "setup_result": setup_result,
         "community_results": target_results,
         "community_results_legacy": [rman.legacy_compatible_target_view(x) for x in target_results],
+        "community_gnn_run_archive": community_archive,
     }
 
 

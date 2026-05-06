@@ -52,7 +52,7 @@
         "require_min_support_channels": 2,
         "semantic_support": {
           "enabled": true,
-          "min_semantic_score": 0.97,
+          "min_semantic_score": 0.95,
           "require_non_semantic_support": true,
           "min_non_semantic_support_channels": 1
         }

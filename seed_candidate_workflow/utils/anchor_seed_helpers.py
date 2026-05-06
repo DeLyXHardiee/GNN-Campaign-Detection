@@ -221,7 +221,7 @@ def _corroborated_v1_default_cfg() -> dict[str, Any]:
         "require_min_support_channels": 2,
         "semantic_support": {
             "enabled": True,
-            "min_semantic_score": 0.97,
+            "min_semantic_score": 0.95,
             "require_non_semantic_support": True,
             "min_non_semantic_support_channels": 1,
         },
@@ -241,7 +241,7 @@ def generate_corroborated_seed_edges_v1(
 
     sem_cfg = cfg.get("semantic_support") or {}
     sem_enabled = bool(sem_cfg.get("enabled", True))
-    min_sem = float(sem_cfg.get("min_semantic_score", 0.97))
+    min_sem = float(sem_cfg.get("min_semantic_score", 0.95))
     req_non_sem = bool(sem_cfg.get("require_non_semantic_support", True))
     min_non_sem = int(sem_cfg.get("min_non_semantic_support_channels", 1))
 
