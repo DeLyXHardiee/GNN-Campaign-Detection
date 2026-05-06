@@ -8,6 +8,19 @@ import numpy as np
 import pandas as pd
 import torch
 
+
+def _resolve_inference_device(device: str | torch.device) -> torch.device:
+    """Map config device to a load/run device; fall back to CPU if backend is unavailable."""
+    dev = torch.device(device) if isinstance(device, str) else device
+    if dev.type == "cuda" and not torch.cuda.is_available():
+        return torch.device("cpu")
+    if dev.type == "mps":
+        mps_ok = getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()
+        if not mps_ok:
+            return torch.device("cpu")
+    return dev
+
+
 def load_pair_supervision_for_inference(
     *,
     run_dir: Path,
@@ -35,11 +48,12 @@ def load_pair_supervision_for_inference(
     pair_batch_size = int(train_cfg.get("pair_batch_size", 64))
     max_unique = int(train_cfg.get("pair_max_unique_emails_per_graph_batch", 2048))
 
-    dev = torch.device(device)
+    dev = _resolve_inference_device(device)
     data = load_hetero_pt(str(graph_pt), to_undirected=to_undirected)
     data_cpu = data.to("cpu")
     metadata = data_cpu.metadata()
 
+    # map_location must be a device PyTorch can deserialize to (CPU if CUDA checkpoint on CPU-only host)
     ckpt = torch.load(str(ckpt_path), map_location=dev, weights_only=False)  # nosemgrep
     enc = train_cfg
     hidden = int(enc.get("hidden", 128))

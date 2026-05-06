@@ -192,6 +192,10 @@ class GraphBuildSettings:
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
     degree_node_filter: DegreeNodeFilterSettings | None = None
+    #: When set, saved graph is ``{output_dir}/{hetero_graph_stem}_hetero.pt`` (branch/run tag).
+    hetero_graph_stem: str | None = None
+    #: If True, email scalar ``ts`` (and attrs) are all zero; removes calendar time from GNN inputs.
+    zero_email_timestamps: bool = False
 
 
 def graph_build_settings_from_pipeline(
@@ -327,6 +331,17 @@ def graph_build_settings_from_pipeline(
             if v > 0:
                 max_misp_events = v
 
+    stem_raw = graph_cfg.get("hetero_graph_stem")
+    hetero_graph_stem: str | None = None
+    if stem_raw is not None and str(stem_raw).strip():
+        hetero_graph_stem = str(stem_raw).strip()
+
+    zts_raw = graph_cfg.get("zero_email_timestamps", False)
+    if isinstance(zts_raw, str):
+        zero_email_timestamps = str(zts_raw).strip().lower() in ("1", "true", "yes", "on")
+    else:
+        zero_email_timestamps = bool(zts_raw)
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
@@ -336,13 +351,16 @@ def graph_build_settings_from_pipeline(
         max_misp_events=max_misp_events,
         email_feature_projection=email_feature_projection,
         degree_node_filter=degree_node_filter,
+        hetero_graph_stem=hetero_graph_stem,
+        zero_email_timestamps=zero_email_timestamps,
     )
 
 
 def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     """
-    Path to the hetero .pt file produced by build_graph for the current pipeline config
-    (same basename rule: {misp_basename}_hetero.pt under graph.output_dir).
+    Path to the hetero .pt for the current pipeline config.
+
+    Order: ``graph_pt_path_override``; else ``hetero_graph_stem``; else MISP basename.
     """
     cfg = load_pipeline_config(project_root=project_root)
     graph_cfg = cfg.get("graph") or {}
@@ -352,6 +370,8 @@ def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
         if resolved:
             return resolved
     s = graph_build_settings_from_pipeline(cfg, project_root=project_root)
+    if s.hetero_graph_stem:
+        return os.path.join(s.output_dir, f"{s.hetero_graph_stem}_hetero.pt")
     base, _ = os.path.splitext(os.path.basename(s.misp_json_path))
     return os.path.join(s.output_dir, f"{base}_hetero.pt")
 

@@ -61,10 +61,8 @@
   },
   "ground_truth": {
     "paths": [
-      "data/groundtruth/ground_truth_merged.json",
-      "data/groundtruth/ground_truth_merged.json",
       "data/groundtruth/ground_truth.json",
-      "data/groundtruth/ground_truth_dedup.json"
+      "data/groundtruth/ground_truth.json"
     ]
   },
   "seed_components": {
