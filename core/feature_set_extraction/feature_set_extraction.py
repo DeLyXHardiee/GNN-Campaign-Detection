@@ -892,10 +892,6 @@ def get_lsa_features_for_misp(misp_path, events_count=None):
 
 
 def extract_features(misp_path, features, events=None):
-    extract_features_t0 = perf_counter()
-    feature_timing_order = list(dict.fromkeys(features))
-    feature_type_timings = {feature_type: 0.0 for feature_type in feature_timing_order}
-
     if events is None:
         events = parse_misp_events(_load_raw_misp_events(misp_path))
 
