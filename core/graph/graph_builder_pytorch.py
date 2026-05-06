@@ -229,6 +229,7 @@ def build_hetero_graph_from_misp(
     degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
     embeddings_output_dir: Optional[str] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    zero_email_timestamps: bool = False,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -260,6 +261,7 @@ def build_hetero_graph_from_misp(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
+        zero_email_timestamps=zero_email_timestamps,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
@@ -323,6 +325,7 @@ def build_graph(
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
+    zero_email_timestamps: bool = False,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -343,6 +346,7 @@ def build_graph(
         degree_node_filter=degree_node_filter,
         embeddings_output_dir=embeddings_output_dir,
         email_feature_projection=email_feature_projection,
+        zero_email_timestamps=zero_email_timestamps,
     )
 
     if out_name is None:
