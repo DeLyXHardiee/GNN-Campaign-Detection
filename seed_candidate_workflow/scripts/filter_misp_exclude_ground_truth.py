@@ -3,10 +3,10 @@ Drop MISP events whose canonical external_id appears in ground_truth.json.
 
 Reads:
   - data/groundtruth/ground_truth.json (clusters -> list of email dicts with external_id)
-  - data/misp/incidents-lake-misp-large.json (list of {"Event": ...} MISP events)
+ - data/misp/incidents-lake-misp.json (list of {"Event": ...} MISP events)
 
 Writes:
-  - data/incidents-lake-misp-large-no-ground-truth.json
+ - data/incidents-lake-misp-no-ground-truth.json
 
 Canonical id per event matches ``parse_misp_events`` in core/graph/common.py:
   external_id stripped string, or ``str(email_index)`` with email_index defaulting to
@@ -87,12 +87,12 @@ def main() -> None:
     p.add_argument(
         "--misp-in",
         type=Path,
-        default=PROJECT_ROOT / "data" / "misp" / "incidents-lake-misp-large.json",
+        default=PROJECT_ROOT / "data" / "misp" / "incidents-lake-misp.json",
     )
     p.add_argument(
         "--out",
         type=Path,
-        default=PROJECT_ROOT / "data" / "incidents-lake-misp-large-no-ground-truth.json",
+        default=PROJECT_ROOT / "data" / "incidents-lake-misp-no-ground-truth.json",
     )
     p.add_argument(
         "--indent",

@@ -510,15 +510,21 @@ def run_graph_creation(
     )
     limit_eff = limit if limit is not None and limit > 0 else None
 
+    hetero_out_name: str | None = None
+    if settings.hetero_graph_stem:
+        hetero_out_name = f"{settings.hetero_graph_stem}_hetero.pt"
+
     email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
     graph, graph_path, meta_path = build_graph(
         misp_json_path=path,
         out_dir=settings.output_dir,
+        out_name=hetero_out_name,
         exclude_nodes=settings.exclude_node_types,
         degree_node_filter=settings.degree_node_filter,
         embeddings_output_dir=settings.embeddings_output_dir,
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
+        zero_email_timestamps=settings.zero_email_timestamps,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -536,6 +542,7 @@ def run_graph_creation(
             create_indexes=mg.create_indexes,
             exclude_nodes=settings.exclude_node_types,
             max_misp_events=limit_eff,
+            zero_email_timestamps=settings.zero_email_timestamps,
         )
         print("Memgraph load summary:")
         print(json.dumps(summary, indent=2))
@@ -722,8 +729,7 @@ if __name__ == "__main__":
     #create_feature_sets()
     #run_featureset_clustering()
     
-    # Use None so paths come from pipeline_config (graph.misp_json_path, else datasets.misp_json_path).
-    # To point at a specific file, pass a repo-relative path, e.g. preprocessing output from run_preprocessing_lake().
+    # Use None so graph.misp_json_path + hetero_graph_stem from pipeline_config apply.
     #run_graph_creation(misp_json_path=None, to_memgraph=False)
     run_gnn()
     #run_gnn_evaluation()
