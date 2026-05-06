@@ -56,7 +56,6 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "rare_artifact_rarity_max",
     "twohop_rarity_max",
     "component_cosine_max",
-    "time_gap_seconds_min",
 ]
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
@@ -1436,7 +1435,8 @@ def run_pair_training(
         "pair_feature_dim_passed_to_scorer": pair_feat_dim_for_scorer,
         "pair_feature_missing_policy": "numeric NaN -> 0.0; bool unknown -> 0",
         "pair_feature_note": (
-            "Explicit pair features exclude raw seed_component_i/j (identifier-like). "
+            "Explicit pair features exclude timestamp-derived fields and raw seed_component_i/j "
+            "(identifier-like). "
             "Flags same_seed_component_flag / cross_seed_component_flag are retained."
         ),
         "loss_objective": {

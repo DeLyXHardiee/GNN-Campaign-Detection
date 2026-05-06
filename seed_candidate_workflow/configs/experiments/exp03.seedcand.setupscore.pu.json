@@ -43,7 +43,7 @@
       "handcrafted": {},
       "pu": {
         "pu_run": {
-          "run_dir": "output/runs/second_pu_run_128_32_dim",
+          "run_dir": "output/runs/second_pu_run_128_32_dim (3)",
           "graph_pt": "core/graph/output/incidents-lake-misp_hetero.pt",
           "checkpoint": "best_model.pt",
           "pair_dataset_csv": "",

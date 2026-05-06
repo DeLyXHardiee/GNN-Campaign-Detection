@@ -4,6 +4,10 @@ Post-training score separation: same-campaign vs cross-campaign on GT-covered ca
 Loads a pair-supervision checkpoint, scores rows from pair_training_dataset.csv,
 labels pairs using ground-truth JSON (email external_id -> campaign), and writes
 plots + pair_score_separation_summary.json.
+
+Also writes ``score_distribution_all_scored_pairs.png``: a histogram of every finite
+model score in the pair table (no ground-truth filter), for comparison with GT-only
+same/cross plots.
 """
 
 from __future__ import annotations
@@ -982,6 +986,16 @@ def run_pair_score_separation_analysis(
         pair_batch_size=bundle["pair_batch_size"],
         max_unique_emails=bundle["max_unique_emails"],
     )
+    scored_mask = np.isfinite(scores)
+    plot_all_scored = plots_dir / "score_distribution_all_scored_pairs.png"
+    _plot_score_histogram_counts(
+        scores[scored_mask],
+        title="Score distribution — all scored pairs (no GT filter)",
+        out_path=plot_all_scored,
+        bins=None,
+        cohort_label="all_scored",
+        color="tab:purple",
+    )
     project_root = Path(__file__).resolve().parents[2]
     nodes_by_email, shared_ctx = _load_anchor_nodes_by_email(
         pair_csv=pair_csv,
@@ -1003,7 +1017,7 @@ def run_pair_score_separation_analysis(
         ei = df_work["email_i"].astype(str).values
         ej = df_work["email_j"].astype(str).values
         n = len(df_work)
-        scored = np.isfinite(scores)
+        scored = scored_mask
         camp_i = np.array([label_map.get(str(ei[k])) for k in range(n)], dtype=object)
         camp_j = np.array([label_map.get(str(ej[k])) for k in range(n)], dtype=object)
         both = np.array(
@@ -1110,7 +1124,8 @@ def run_pair_score_separation_analysis(
         "shared_evidence_context": shared_ctx,
         "per_gt": per_gt,
         "n_pair_rows_scored": int(len(df_work)),
-        "n_finite_scores": int(np.isfinite(scores).sum()),
+        "n_finite_scores": int(scored_mask.sum()),
+        "plot_all_scored_pairs": str(plot_all_scored.relative_to(out_dir)),
     }
     summary_path = out_dir / "pair_score_separation_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
