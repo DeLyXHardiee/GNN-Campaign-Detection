@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from feature_set_extraction.lsa import get_lsa_features
 from preprocessing.utils.url_extractor import extract_urls_from_text
 from preprocessing.RDAP_processor import load_cache as load_rdap_cache
+from preprocessing.RDAP_processor import ensure_rdap_cache as ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
@@ -1082,7 +1083,19 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     events_for_precompute = parse_misp_events(_load_raw_misp_events(misp_path))
 
     try:
+        # Single upfront RDAP cache ensure from parsed events.
+        # This attempts all domains from event URLs and received hop hosts before workers start.
+        ensure_rdap_cache(events_for_precompute)
+    except Exception:
+        print("Warning: RDAP cache ensure failed")
+
+    try:
         ensure_subject_idf(misp_path, events_for_precompute)
+    except Exception:
+        # If ensure fails, workers will compute missing artifacts on demand.
+        pass
+
+    try:
         ensure_lsa_features_for_misp(misp_path, events_for_precompute)
     except Exception:
         # If ensure fails, workers will compute missing artifacts on demand.
@@ -1108,13 +1121,23 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
         extraction_args.append((fs_name, fs_function, misp_path, events_for_precompute, output_path))
 
     if parallel:
+        cpu_count = os.cpu_count() or 1
+        if max_workers is None:
+            effective_max_workers = min(2, cpu_count)
+        else:
+            try:
+                requested_workers = int(max_workers)
+            except Exception:
+                requested_workers = 2
+            effective_max_workers = max(1, min(requested_workers, cpu_count, 8))
+
         print(f"\n{'='*80}")
         print(f"Starting parallel feature extraction ({len(fs_extractors)} feature sets)...")
-        print(f"Max workers: {max_workers or 'auto (CPU count)'}")
+        print(f"Max workers: {effective_max_workers}")
         print(f"{'='*80}")
 
         results = []
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=effective_max_workers) as executor:
             future_to_fs = {executor.submit(_extract_and_save_featureset, args): args[0] 
                            for args in extraction_args}
 
