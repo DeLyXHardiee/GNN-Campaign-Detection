@@ -80,6 +80,7 @@ def run_gnn(
     runs_parent: str | Path | None = None,
     checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
     device_pref: str | None = None,
+    pair_training_overrides: dict[str, Any] | None = None,
 ):
     cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
@@ -105,6 +106,7 @@ def run_gnn(
         path_layout=g["path_layout"],
         device_pref=device_pref if device_pref is not None else g["device_pref"],
         to_undirected=g["to_undirected"],
+        pair_training_overrides=pair_training_overrides,
     )
 
 
@@ -659,6 +661,31 @@ def run_featureset_clustering():
 
     _run()
 
+def run_seed_candidate_pu_pipeline(
+    experiment_config: str | Path | None = None,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """
+    One-shot flow: seed/candidate graph setup (``setup_only``) → pair-supervised GNN training
+    on the bundle pair CSV (same train stage as :func:`run_gnn`) → community scoring (``score_only``)
+    with PU scorer paths filled from ``pipeline_config.json``.
+
+    Equivalent to ``experiment.mode`` = ``setup_gnn_score`` in
+    :func:`seed_candidate_workflow.pipelines.run_experiment.run_experiment`.
+    """
+    from seed_candidate_workflow.pipelines.run_experiment import (
+        DEFAULT_EXPERIMENT_CONFIG_PATH,
+        run_experiment,
+    )
+
+    cfg_path = Path(experiment_config or DEFAULT_EXPERIMENT_CONFIG_PATH).expanduser().resolve()
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg.setdefault("experiment", {})
+    cfg["experiment"]["mode"] = "setup_gnn_score"
+    return run_experiment(cfg, dry_run=dry_run)
+
+
 def run_metric_comparison(
     *,
     run_dir: str | Path | None = None,
@@ -720,7 +747,8 @@ if __name__ == "__main__":
     
     #misp_path = "preprocessing/output/incidents-lake-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
-    run_gnn()
+    run_seed_candidate_pu_pipeline()
+    #run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()
     #run_metric_comparison()

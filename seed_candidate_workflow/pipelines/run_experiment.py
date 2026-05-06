@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 import sys
@@ -20,6 +21,10 @@ except Exception:  # pragma: no cover - optional dependency
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+# ``config`` / ``steps`` live under ``core/`` but are imported as top-level ``config`` / ``steps``.
+_CORE_ROOT = PROJECT_ROOT / "core"
+if str(_CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CORE_ROOT))
 
 from seed_candidate_workflow.utils.graph_scorer_registry import SCORER_REGISTRY, apply_scorer, validate_scorer_target
 from seed_candidate_workflow.pipelines.pipeline_helpers import runner_config as rcfg
@@ -373,8 +378,10 @@ def _run_semantic_shard_multi_gt_community_sweep(
 def _validate_experiment_config(cfg: dict[str, Any]) -> None:
     exp = dict(cfg.get("experiment") or {})
     mode = str(exp.get("mode") or "").strip().lower()
-    if mode not in {"setup_only", "score_only", "setup_and_score"}:
-        raise ValueError("experiment.mode must be one of: setup_only, score_only, setup_and_score")
+    if mode not in {"setup_only", "score_only", "setup_and_score", "setup_gnn_score"}:
+        raise ValueError(
+            "experiment.mode must be one of: setup_only, score_only, setup_and_score, setup_gnn_score"
+        )
     sel = dict(cfg.get("selection") or {})
     targets = sel.get("score_targets") or ["seed_candidate"]
     if not isinstance(targets, list) or not targets:
@@ -471,8 +478,176 @@ def _resolve_gt_paths(*, gt_set_name: str, gt_sets_path: Path) -> list[str]:
     return [str(v) for v in vals]
 
 
+def _path_relative_to_project(path: Path, *, project_root: Path) -> str:
+    path = path.expanduser().resolve()
+    root = project_root.resolve()
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _apply_pipeline_pu_paths_to_experiment_cfg(
+    cfg: dict[str, Any],
+    *,
+    project_root: Path,
+    pipeline_cfg: dict[str, Any] | None = None,
+    run_dir: str | Path | None = None,
+    runs_parent: str | Path | None = None,
+    graph_path: str | Path | None = None,
+) -> None:
+    """
+    Fill ``scoring.params.pu.pu_run`` and ``artifacts.archive_community_gnn_run_dir`` from
+    ``pipeline_config.json`` (GNN run directory, hetero graph .pt, checkpoint name, device),
+    so experiment JSON does not need hand-edited paths.
+    """
+    from config.pipeline_config import load_pipeline_config
+
+    pip = dict(pipeline_cfg if pipeline_cfg is not None else load_pipeline_config(project_root=project_root))
+    from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+
+    g = load_gnn_cfg(pip, project_root=project_root)
+    run_dir_str, _checkpoint_str, graph_path_str, _ = resolve_gnn_paths(
+        cfg=pip,
+        run_dir=run_dir,
+        runs_parent=runs_parent,
+        checkpoint_path=None,
+        graph_path=graph_path,
+        ground_truth_path=None,
+        require_ground_truth=False,
+        project_root=project_root,
+    )
+    ckpt_name = str(g["training_cfg"].get("model_save_name") or "best_model.pt")
+    device = str(pip.get("device") or "cpu")
+    no_to_undirected = not bool(pip.get("to_undirected", True))
+
+    scoring = dict(cfg.get("scoring") or {})
+    params = dict(scoring.get("params") or {})
+    pu = dict(params.get("pu") or {})
+    pu_run = dict(pu.get("pu_run") or {})
+    pu_run.update(
+        {
+            "run_dir": _path_relative_to_project(Path(run_dir_str), project_root=project_root),
+            "graph_pt": _path_relative_to_project(Path(graph_path_str), project_root=project_root),
+            "checkpoint": ckpt_name,
+            "device": device,
+            "no_to_undirected": no_to_undirected,
+            "pair_dataset_csv": "",
+        }
+    )
+    pu["pu_run"] = pu_run
+    params["pu"] = pu
+    scoring["params"] = params
+    cfg["scoring"] = scoring
+
+    artifacts = dict(cfg.get("artifacts") or {})
+    artifacts["archive_community_gnn_run_dir"] = _path_relative_to_project(
+        Path(run_dir_str), project_root=project_root
+    )
+    cfg["artifacts"] = artifacts
+
+
+def _run_experiment_setup_gnn_score(cfg: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
+    """
+    setup_only → pair-supervised GNN training on the bundle pair CSV (train stage used by ``run_gnn``)
+    → score_only, with PU scorer paths taken from ``pipeline_config.json``.
+    """
+    ctx = rcfg.build_run_context(cfg=cfg, project_root=PROJECT_ROOT, default_gt_sets_path=DEFAULT_GT_SETS_PATH)
+    if str(ctx.score_mode or "").strip() != "seed_candidate_pu_v1":
+        raise ValueError(
+            "experiment.mode setup_gnn_score requires scoring.score_mode 'seed_candidate_pu_v1' "
+            f"(got {ctx.score_mode!r})."
+        )
+
+    cfg_setup = copy.deepcopy(cfg)
+    cfg_setup.setdefault("experiment", {})
+    cfg_setup["experiment"]["mode"] = "setup_only"
+    out_setup = run_experiment(cfg_setup, dry_run=dry_run)
+
+    gnn_training: dict[str, Any]
+    if dry_run:
+        from config.pipeline_config import load_pipeline_config
+        from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+
+        pip = load_pipeline_config(project_root=PROJECT_ROOT)
+        g = load_gnn_cfg(pip, project_root=PROJECT_ROOT)
+        run_dir_str, _, graph_path_str, _ = resolve_gnn_paths(
+            cfg=pip,
+            run_dir=None,
+            runs_parent=None,
+            checkpoint_path=None,
+            graph_path=None,
+            ground_truth_path=None,
+            require_ground_truth=False,
+            project_root=PROJECT_ROOT,
+        )
+        bundle_guess = (ctx.graph_bundle_root / ctx.graph_id).resolve()
+        pair_guess = bundle_guess / "pair_training" / ctx.graph_id / "pair_training_dataset.csv"
+        gnn_training = {
+            "dry_run": True,
+            "planned_gnn_run_dir": run_dir_str,
+            "planned_graph_pt": graph_path_str,
+            "planned_pair_dataset_csv": str(pair_guess),
+            "checkpoint": str(g["training_cfg"].get("model_save_name") or "best_model.pt"),
+        }
+    else:
+        from config.pipeline_config import load_pipeline_config
+        from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+        from steps.train_stage import run_train_stage
+
+        graph_id = ctx.graph_id
+        bundle_dir = _resolve_bundle_dir(graph_bundle_root=ctx.graph_bundle_root, graph_id=graph_id)
+        pair_csv = (bundle_dir / "pair_training" / graph_id / "pair_training_dataset.csv").resolve()
+        if not pair_csv.is_file():
+            raise FileNotFoundError(f"Pair training CSV missing after setup: {pair_csv}")
+
+        pip = load_pipeline_config(project_root=PROJECT_ROOT)
+        g = load_gnn_cfg(pip, project_root=PROJECT_ROOT)
+        run_dir_str, _ck, graph_path_str, _ = resolve_gnn_paths(
+            cfg=pip,
+            run_dir=None,
+            runs_parent=None,
+            checkpoint_path=None,
+            graph_path=None,
+            ground_truth_path=None,
+            require_ground_truth=False,
+            project_root=PROJECT_ROOT,
+        )
+        run_path = Path(run_dir_str)
+        gnn_training = run_train_stage(
+            graph_path=graph_path_str,
+            runs_parent=run_path.parent,
+            run_id=run_path.name,
+            training_cfg=g["training_cfg"],
+            path_layout=g["path_layout"],
+            device_pref=g["device_pref"],
+            to_undirected=g["to_undirected"],
+            pair_training_overrides={"pair_dataset_csv": str(pair_csv)},
+        )
+
+    cfg_score = copy.deepcopy(cfg)
+    cfg_score.setdefault("experiment", {})
+    cfg_score["experiment"]["mode"] = "score_only"
+    _apply_pipeline_pu_paths_to_experiment_cfg(cfg_score, project_root=PROJECT_ROOT)
+    out_score = run_experiment(cfg_score, dry_run=dry_run)
+
+    manifest = out_score.get("manifest")
+    if isinstance(manifest, dict):
+        manifest["setup_gnn_score"] = {
+            "setup_manifest_json": out_setup.get("manifest_json"),
+            "gnn_training": gnn_training,
+        }
+        out_score["manifest"] = manifest
+    out_score["setup_phase"] = out_setup
+    return out_score
+
+
 def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
     cfg = dict(config)
+    exp_early = dict(cfg.get("experiment") or {})
+    if str(exp_early.get("mode") or "").strip().lower() == "setup_gnn_score":
+        return _run_experiment_setup_gnn_score(cfg, dry_run=dry_run)
+
     ctx = rcfg.build_run_context(cfg=cfg, project_root=PROJECT_ROOT, default_gt_sets_path=DEFAULT_GT_SETS_PATH)
     exp = dict(cfg.get("experiment") or {})
     setup = dict(cfg.get("setup") or {})
@@ -648,7 +823,7 @@ def main() -> None:
         "--run-mode",
         type=str,
         default="",
-        help="Override experiment mode: setup_only|score_only|setup_and_score",
+        help="Override experiment mode: setup_only|score_only|setup_and_score|setup_gnn_score",
     )
     p.add_argument(
         "--mode-override",

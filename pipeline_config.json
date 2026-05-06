@@ -97,7 +97,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "semantic_similarity_95",
+  "run_id": "test_run",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",

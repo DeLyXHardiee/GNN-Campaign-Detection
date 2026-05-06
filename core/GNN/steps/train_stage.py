@@ -24,6 +24,7 @@ def run_train_stage(
     device_pref: str | None,
     to_undirected: bool,
     path_layout: GnnPathLayout | None = None,
+    pair_training_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Train into ``<runs_parent>/<run_id>/`` (``run_id`` from config). Subpaths for
@@ -52,6 +53,8 @@ def run_train_stage(
 
     if objective == "pair_supervision":
         pair_block = dict(cfg_full.get("pair_training") or {})
+        if pair_training_overrides:
+            pair_block.update(pair_training_overrides)
         merged = {**pair_block, **training_cfg}
         pair_out = run_pair_training(
             DEVICE=device,
