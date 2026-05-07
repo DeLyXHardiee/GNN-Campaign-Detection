@@ -192,6 +192,7 @@ def build_memgraph(
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
+    zero_email_timestamps: bool = False,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
@@ -210,6 +211,7 @@ def build_memgraph(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
+        zero_email_timestamps=zero_email_timestamps,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
