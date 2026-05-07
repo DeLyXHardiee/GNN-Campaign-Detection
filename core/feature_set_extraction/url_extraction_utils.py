@@ -358,10 +358,6 @@ def extract_url_features(
     ev_domains = {d for d in unique_domains if domain_metadata.get(d, {}).get("ev")}
     any_ev_cert = len(ev_domains) > 0
 
-    for url in urls:
-        if ("amazonaws") in url:
-            print("url is "  + url)
-
     # Direct substring match: any web-host domain token appears in any URL string.
     raw_urls = [str(u).strip().lower() for u in urls if isinstance(u, str) and u]
     any_is_web_hosting_domain = any(
@@ -369,8 +365,6 @@ def extract_url_features(
         for raw_url in raw_urls
         for webhost_domain in webhost_domains
     )
-    if any_is_web_hosting_domain:
-        print("match found")
 
     # heuristic for multi-part TLDs (e.g., co.uk)
     any_multi_part_tld = any((d.get("tld") or "").count(".") >= 1 for d in per_url)
