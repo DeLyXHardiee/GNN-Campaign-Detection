@@ -1,0 +1,81 @@
+{
+  "experiment": {
+    "scoring_run_id": "run_seedcand_pu_relax85",
+    "graph_id": "bundle_seedcand_relax85",
+    "mode": "score_only",
+    "graph_family": "seed_candidate"
+  },
+  "artifacts": {
+    "graph_bundle_root": "seed_candidate_workflow/output/graph_bundles",
+    "scoring_output_root": "seed_candidate_workflow/output/scoring_runs"
+  },
+  "setup": {
+    "enable": {
+      "anchor": true,
+      "seed": true,
+      "candidate": true,
+      "seed_candidate": true,
+      "pair_training": true
+    },
+    "policy": {
+      "on_missing": "build",
+      "on_present": "reuse"
+    },
+    "paths": {
+      "anchor_config": "seed_candidate_workflow/configs/anchor_graph.relaxed_sem85.json",
+      "seed_config": "seed_candidate_workflow/configs/anchor_seed.relaxed_sem85.json",
+      "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.relaxed_sem85.json",
+      "pair_training": {
+        "graph_meta_json": "core/graph/output/incidents-lake-misp_hetero.meta.json"
+      }
+    }
+  },
+  "selection": {
+    "score_targets": [
+      "seed_candidate"
+    ],
+    "gt_set": "default_multi_gt",
+    "gt_sets_path": "seed_candidate_workflow/configs/experiments/gt_sets.json"
+  },
+  "scoring": {
+    "score_mode": "seed_candidate_pu_v1",
+    "params": {
+      "handcrafted": {},
+      "pu": {
+        "pu_run": {
+          "run_dir": "",
+          "graph_pt": "",
+          "checkpoint": "best_model.pt",
+          "pair_dataset_csv": "",
+          "device": "cuda",
+          "no_to_undirected": false
+        },
+        "seed_edge_weight": 1.0,
+        "weight_mode": "raw_score",
+        "export_non_seed_min_pu_score": 0.0
+      }
+    }
+  },
+  "community": {
+    "base_config": "seed_candidate_workflow/configs/anchor_community.default.json",
+    "sweep": {
+      "methods": [
+        "louvain",
+        "leiden"
+      ],
+      "weight_thresholds": [
+        0.0,
+        0.1,
+        0.2,
+        0.3
+      ],
+      "resolutions": [
+        1.0,
+        1.5,
+        2.0
+      ],
+      "use_edge_weights_in_partitioning": true,
+      "sort_by": "v-measure"
+    }
+  }
+}

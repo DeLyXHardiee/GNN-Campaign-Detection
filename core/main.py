@@ -664,6 +664,7 @@ def run_featureset_clustering():
 def run_seed_candidate_pu_pipeline(
     experiment_config: str | Path | None = None,
     *,
+    relaxed_semantics: bool = False,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """
@@ -671,15 +672,26 @@ def run_seed_candidate_pu_pipeline(
     on the bundle pair CSV (same train stage as :func:`run_gnn`) → community scoring (``score_only``)
     with PU scorer paths filled from ``pipeline_config.json``.
 
+    Graph setup always uses ``on_present: rebuild`` (fresh anchor/seed/candidate/pair artifacts).
+
     Equivalent to ``experiment.mode`` = ``setup_gnn_score`` in
     :func:`seed_candidate_workflow.pipelines.run_experiment.run_experiment`.
+
+    Pass ``relaxed_semantics=True`` (and leave ``experiment_config`` unset) to use the relaxed
+    semantic-threshold experiment (``exp04`` — lower min cosine for seeds, candidates, and anchor).
     """
     from seed_candidate_workflow.pipelines.run_experiment import (
         DEFAULT_EXPERIMENT_CONFIG_PATH,
+        RELAXED_SEED_CANDIDATE_PU_EXPERIMENT_CONFIG_PATH,
         run_experiment,
     )
 
-    cfg_path = Path(experiment_config or DEFAULT_EXPERIMENT_CONFIG_PATH).expanduser().resolve()
+    if experiment_config is not None:
+        cfg_path = Path(experiment_config).expanduser().resolve()
+    elif relaxed_semantics:
+        cfg_path = RELAXED_SEED_CANDIDATE_PU_EXPERIMENT_CONFIG_PATH
+    else:
+        cfg_path = DEFAULT_EXPERIMENT_CONFIG_PATH
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     cfg.setdefault("experiment", {})
     cfg["experiment"]["mode"] = "setup_gnn_score"
@@ -747,7 +759,7 @@ if __name__ == "__main__":
     
     #misp_path = "preprocessing/output/incidents-lake-misp.json"
     #run_graph_creation(misp_path, to_memgraph=False)
-    run_seed_candidate_pu_pipeline()
+    run_seed_candidate_pu_pipeline(relaxed_semantics=True)   # uses exp04
     #run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()

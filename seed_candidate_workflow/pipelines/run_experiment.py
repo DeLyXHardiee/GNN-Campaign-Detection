@@ -35,6 +35,13 @@ from seed_candidate_workflow.pipelines.pipeline_helpers import runner_targets as
 DEFAULT_EXPERIMENT_CONFIG_PATH = (
     PROJECT_ROOT / "seed_candidate_workflow" / "configs" / "experiments" / "exp03.seedcand.setupscore.pu.json"
 )
+RELAXED_SEED_CANDIDATE_PU_EXPERIMENT_CONFIG_PATH = (
+    PROJECT_ROOT
+    / "seed_candidate_workflow"
+    / "configs"
+    / "experiments"
+    / "exp04.seedcand.relaxed_sem85.pu.json"
+)
 DEFAULT_GT_SETS_PATH = (
     PROJECT_ROOT / "seed_candidate_workflow" / "configs" / "experiments" / "gt_sets.json"
 )
@@ -562,6 +569,13 @@ def _run_experiment_setup_gnn_score(cfg: dict[str, Any], *, dry_run: bool) -> di
     cfg_setup = copy.deepcopy(cfg)
     cfg_setup.setdefault("experiment", {})
     cfg_setup["experiment"]["mode"] = "setup_only"
+    # Always rebuild bundle artifacts for this mode so runs are not silently tied to stale graphs.
+    setup_sec = dict(cfg_setup.get("setup") or {})
+    pol = dict(setup_sec.get("policy") or {})
+    pol["on_present"] = "rebuild"
+    setup_sec["policy"] = pol
+    cfg_setup["setup"] = setup_sec
+
     out_setup = run_experiment(cfg_setup, dry_run=dry_run)
 
     gnn_training: dict[str, Any]
@@ -636,6 +650,7 @@ def _run_experiment_setup_gnn_score(cfg: dict[str, Any], *, dry_run: bool) -> di
         manifest["setup_gnn_score"] = {
             "setup_manifest_json": out_setup.get("manifest_json"),
             "gnn_training": gnn_training,
+            "forced_setup_policy": {"on_present": "rebuild"},
         }
         out_score["manifest"] = manifest
     out_score["setup_phase"] = out_setup
