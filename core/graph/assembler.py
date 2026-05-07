@@ -1002,6 +1002,13 @@ def assemble_misp_graph_ir(
     """
     schema = schema or DEFAULT_SCHEMA
     emails = parse_misp_events(misp_events)
+    #iterate through emails and print urls if not empty
+    '''
+    for email in emails:
+        urls = _as_email_list(email.get("urls"))
+        if len(urls) > 0 and email.get("external_id") == "trec_28184":
+            print(f"Email index {email.get('email_index', 'N/A')} has URLs: {urls}")
+    '''
     indexed = index_entities(emails, schema, DEFAULT_PROVIDER_REGISTRY)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]

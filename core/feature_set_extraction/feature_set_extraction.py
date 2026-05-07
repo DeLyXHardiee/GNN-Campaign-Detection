@@ -972,6 +972,8 @@ def extract_features(misp_path, features, events=None):
 
             elif feature_type == "urls":
                 explicit_urls = email_fields.get("urls", [])
+                #print("Explicit urls")
+                #print(explicit_urls)
                 extracted_urls = []
                 if isinstance(explicit_urls, list):
                     extracted_urls.extend([u for u in explicit_urls if isinstance(u, str) and u])

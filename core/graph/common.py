@@ -445,7 +445,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                     fallback = normalize_email_address(to_str(raw_val))
                     extracted = [fallback] if fallback and "@" in fallback else []
             elif mapping.strategy == "url_list":
-                extracted = _extract_urls_from_attr_value(raw_val)
+                #extracted = _extract_urls_from_attr_value(raw_val)
+                extracted = _extract_strings_from_attr_value(raw_val)
             elif mapping.strategy == "string_list":
                 extracted = _extract_strings_from_attr_value(raw_val)
             elif mapping.strategy == "dict_mapping":
