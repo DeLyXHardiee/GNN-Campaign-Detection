@@ -121,8 +121,12 @@ def parse_url_host_and_registrable_domain(url: str) -> tuple[str, str, bool]:
             host = (h or "").strip().lower() if h else ""
         except ValueError:
             host = ""
+    if host in {"http", "https", "hxxp", "hxxps"}:
+        host = ""
     if not host:
         host = _fallback_hostname(norm) or _fallback_hostname(raw)
+    if host in {"http", "https", "hxxp", "hxxps"}:
+        host = ""
     if not host:
         return "", "", False
     ext = tldextract.extract(host)
@@ -155,8 +159,14 @@ def _normalize_url_for_hostname_extraction(url: str) -> str:
     s = (url or "").strip()
     if not s:
         return s
+    # Common defang patterns in MISP/email artifacts.
+    s = s.replace("[.]", ".").replace("(.)", ".")
     low = s.lower()
     if low.startswith(("http://", "https://")):
+        return s
+    # Preserve any explicit scheme to avoid corrupting host parsing
+    # (e.g. hxxps://... becoming http://hxxps://...).
+    if "://" in s:
         return s
     if s.startswith("//"):
         return "http:" + s
@@ -394,8 +404,14 @@ def extract_url_features(
             if text.startswith("http") and text != actual:
                 mismatch_count += 1
 
-    # keep domain/hostname values as lists for downstream set/text processing
-    domain_list = sorted(unique_domains)
+    # Export base domain labels (without TLD) in the `domains` field.
+    domain_list = sorted(
+        {
+            (tldextract.extract(d).domain or d)
+            for d in unique_domains
+            if d
+        }
+    )
 
     return {
         "domains": domain_list,
