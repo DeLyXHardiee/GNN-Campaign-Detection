@@ -26,8 +26,14 @@ LSA_TOPIC_KEYS = [f"lsa_topic_{index}" for index in range(10)]
 
 FS1_FEATURE_TYPES = ["time", "subject", "body", "origin", "receiver", "urls", "attachments"]
 
-FS2_FEATURE_TYPES = ["time", "subject", "body", "urls", "origin", "attachments"]
-FS2_OMIT_KEYS = frozenset(["sender_email"])
+FS2_FEATURE_TYPES = ["time", "subject", "body", "urls", "origin", "receiver", "attachments"]
+FS2_OMIT_KEYS = frozenset([
+    "hostnames", 
+    "any_typo_popular_domains", 
+    "registrar_locations", 
+    "sender_email", 
+    "recipient_name", 
+    "recipient_email"])
 
 FS3_FEATURE_TYPES = ["body", "urls", "origin"]
 FS3_OMIT_KEYS = frozenset([
@@ -39,6 +45,9 @@ FS3_OMIT_KEYS = frozenset([
     "bow",
     "has_html",
     "num_html_tags",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
     "num_images",
     "num_urls_in_body",
     "has_script",
@@ -54,6 +63,11 @@ FS4_OMIT_KEYS = frozenset([
     "num_urls_in_body",
     "has_urls_in_body",
     "body_word_count",
+    "bow",
+    "has_script",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
     "num_lines",
     "avg_word_length",
     "greeting",
@@ -74,6 +88,12 @@ FS5_OMIT_KEYS = frozenset([
     "num_urls_in_body",
     "has_urls_in_body",
     "body_word_count",
+    "bow",
+    "has_script",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
+    "num_images",
     "num_lines",
     "avg_word_length",
     "greeting",
@@ -102,18 +122,13 @@ FS5_OMIT_KEYS = frozenset([
 
 FS6_FEATURE_TYPES = ["subject", "time", "body", "origin", "urls", "attachments"]
 FS6_OMIT_KEYS = frozenset([
-    "subject_term_frequency",
-    "bow",
-    "sender_email",
-    "greeting",
     "body",
     "subject",
     *LSA_TOPIC_KEYS,
-    "has_attachments",
 ])
 
 FS7_FEATURE_TYPES = ["subject", "body", "origin", "urls"]
-FS7_OMIT_KEYS = frozenset(["bow", "sender_email", "body"])
+FS7_OMIT_KEYS = frozenset(["body"])
 
 # FSOLS: Top OLS features extracted directly from event HTML/CSS/URL attrs.
 FSOLS_FEATURE_TYPES = ["body", "urls"]
