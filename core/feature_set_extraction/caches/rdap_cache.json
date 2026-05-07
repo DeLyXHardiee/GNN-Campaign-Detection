@@ -33658,8 +33658,8 @@
   },
   "osert.hk": {
     "domain": "osert.hk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/osert.hk",
-    "fetched_at": "2026-05-04T14:09:11.643504"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/osert.hk",
+    "fetched_at": "2026-05-06T08:46:16.831639"
   },
   "syncretaassoc.com": {
     "domain": "syncretaassoc.com",
@@ -34271,8 +34271,8 @@
   },
   "philcogc.com": {
     "domain": "philcogc.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/philcogc.com",
-    "fetched_at": "2026-05-04T14:11:21.367289"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/philcogc.com",
+    "fetched_at": "2026-05-06T08:46:16.722632"
   },
   "liban.hk": {
     "domain": "liban.hk",
@@ -43599,8 +43599,8 @@
   },
   "rsujzfull.com": {
     "domain": "rsujzfull.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/rsujzfull.com",
-    "fetched_at": "2026-05-04T14:06:35.396037"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/rsujzfull.com",
+    "fetched_at": "2026-05-06T08:46:17.049566"
   },
   "shrezee.net": {
     "domain": "shrezee.net",
@@ -44471,8 +44471,8 @@
   },
   "aveletti.com": {
     "domain": "aveletti.com",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/aveletti.com",
-    "fetched_at": "2026-05-04T14:04:24.358260"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.verisign.com/com/v1/domain/aveletti.com",
+    "fetched_at": "2026-05-06T08:46:16.744471"
   },
   "vegas2007cazino.com": {
     "domain": "vegas2007cazino.com",
@@ -45205,8 +45205,8 @@
   },
   "savel.hk": {
     "domain": "savel.hk",
-    "error": "HTTPError: 429 Client Error: Too Many Requests for url: https://rdap.org/domain/savel.hk",
-    "fetched_at": "2026-05-04T14:11:21.538085"
+    "error": "HTTPError: 404 Client Error: Not Found for url: https://rdap.org/domain/savel.hk",
+    "fetched_at": "2026-05-06T08:46:16.829460"
   },
   "shius.com": {
     "domain": "shius.com",
