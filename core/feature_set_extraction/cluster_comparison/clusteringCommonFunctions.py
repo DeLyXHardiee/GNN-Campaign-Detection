@@ -221,6 +221,10 @@ def preprocess_for_clustering(
     l2_normalize=True,
     sbert_model_name="intfloat/multilingual-e5-large",
     embeddings_output_dir=None,
+    #numeric_weight=1.0,
+    #text_weight=2.0,
+    #token_weight=2.0,
+    #dict_weight=2.0,
 ):
 
     if not records:
@@ -275,6 +279,10 @@ def preprocess_for_clustering(
     print(f"Using {len(text_fields)} text fields: {text_fields}")
     print(f"Using {len(token_list_fields)} token-list fields: {token_list_fields}")
     print(f"Using {len(dict_feature_fields)} dict feature fields: {dict_feature_fields}")
+    #print(
+    #    "Block weights "
+    #    f"(numeric={numeric_weight}, text={text_weight}, token={token_weight}, dict={dict_weight})"
+    #)
 
     precomputed_sbert = {}
     if sbert_model_name == MODEL_NAME and any(f in text_fields for f in ("subject", "body")):
@@ -302,7 +310,7 @@ def preprocess_for_clustering(
     X_numeric = np.asarray(X_numeric, dtype=np.float64)
 
     # Sparse blocks until SVD: avoids dense (n × sum_features) TF-IDF materialization.
-    feature_parts_sparse = [_dense_block_to_csr(X_numeric)]
+    feature_parts_sparse = [_dense_block_to_csr(X_numeric)]# * float(numeric_weight)]
     feature_names = numeric_fields.copy()
     
     for text_field in text_fields:
@@ -318,9 +326,9 @@ def preprocess_for_clustering(
                     X_text = precomputed_sbert[text_field]
                 else:
                     X_text = _encode_texts_with_sbert(texts, model_name=sbert_model_name)
-                feature_parts_sparse.append(_dense_block_to_csr(X_text))
+                feature_parts_sparse.append(_dense_block_to_csr(X_text))# * float(text_weight))
                 feature_names.extend([f"{text_field}_sbert_{i}" for i in range(X_text.shape[1])])
-                print(f"  {text_field}: extracted {X_text.shape[1]} SBERT features")
+                print(f"  {text_field}: extracted {X_text.shape[1]} SBERT features -> shape {X_text.shape}")
                 continue
 
             tfidf = TfidfVectorizer(
@@ -333,9 +341,9 @@ def preprocess_for_clustering(
             X_text = tfidf.fit_transform(texts)
 
             if X_text.shape[1] > 0:
-                feature_parts_sparse.append(X_text.tocsr())
+                feature_parts_sparse.append(X_text.tocsr())# * float(text_weight))
                 feature_names.extend([f"{text_field}_tfidf_{i}" for i in range(X_text.shape[1])])
-                print(f"  {text_field}: extracted {X_text.shape[1]} TF-IDF features")
+                print(f"  {text_field}: extracted {X_text.shape[1]} TF-IDF features -> shape {X_text.shape}")
             else:
                 print(f"  Skipping '{text_field}': no features extracted")
         except Exception as e:
@@ -359,11 +367,11 @@ def preprocess_for_clustering(
             )
             X_tokens_sparse = vectorizer.fit_transform(token_docs)
             if X_tokens_sparse.shape[1] > 0:
-                feature_parts_sparse.append(X_tokens_sparse.tocsr())
+                feature_parts_sparse.append(X_tokens_sparse.tocsr())# * float(token_weight))
                 feature_names.extend(
                     [f"{token_field}_tfidf_{i}" for i in range(X_tokens_sparse.shape[1])]
                 )
-                print(f"  {token_field}: extracted {X_tokens_sparse.shape[1]} TF-IDF token features")
+                print(f"  {token_field}: extracted {X_tokens_sparse.shape[1]} TF-IDF token features -> shape {X_tokens_sparse.shape}")
             else:
                 print(f"  Skipping '{token_field}': no features extracted")
         except Exception as e:
@@ -381,11 +389,11 @@ def preprocess_for_clustering(
             vectorizer = DictVectorizer(sparse=True)
             X_dict_sparse = vectorizer.fit_transform(dict_docs)
             if X_dict_sparse.shape[1] > 0:
-                feature_parts_sparse.append(X_dict_sparse.tocsr())
+                feature_parts_sparse.append(X_dict_sparse.tocsr())# * float(dict_weight))
                 feature_names.extend(
                     [f"{dict_field}_dict_{i}" for i in range(X_dict_sparse.shape[1])]
                 )
-                print(f"  {dict_field}: extracted {X_dict_sparse.shape[1]} dict features")
+                print(f"  {dict_field}: extracted {X_dict_sparse.shape[1]} dict features -> shape {X_dict_sparse.shape}")
             else:
                 print(f"  Skipping '{dict_field}': no features extracted")
         except Exception as e:
@@ -393,7 +401,14 @@ def preprocess_for_clustering(
     
     # combine (CSR); TruncatedSVD uses sparse matmuls — much faster than dense SVD on wide TF-IDF.
     X = sparse_hstack(feature_parts_sparse, format="csr")
-
+    '''
+    print("feature_parts_sparse block shapes:")
+    for i, part in enumerate(feature_parts_sparse):
+        print(f"  block {i}: shape {part.shape}")
+    total_width = sum(part.shape[1] for part in feature_parts_sparse)
+    print(f"feature_parts_sparse summary: {len(feature_parts_sparse)} blocks, total width {total_width}")
+    print(f"Combined feature matrix before SVD: shape {X.shape}")
+    '''
     # Only does dimensionality reduction if it is larger than n components, doesnt project upwards
     if n_components is not None and n_components < X.shape[1]:
         print(f"Applying SVD dimensionality reduction: {X.shape[1]} -> {n_components} components")
