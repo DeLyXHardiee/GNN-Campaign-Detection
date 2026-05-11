@@ -46,8 +46,7 @@ def _load_records(fs_name: str):
     if not path.exists():
         return None, path
     with open(path, "r", encoding="utf-8") as f:
-        #TODO
-        #REMEMBER TO REMOVE THE LIMITER [:8000] WHEN RUNNING THE FULL PIPELINE. THIS IS JUST TO SPEED UP TESTING.
+        #TODO REMOVE 8000 LIMIT
         return json.load(f)[:8000], path
 
 
