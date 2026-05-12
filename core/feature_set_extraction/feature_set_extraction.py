@@ -2,6 +2,7 @@ from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
 import pandas as pd
 import os
+from time import perf_counter
 from collections import Counter
 import json
 import re
@@ -15,6 +16,7 @@ from preprocessing.RDAP_processor import load_cache as load_rdap_cache
 from preprocessing.RDAP_processor import ensure_rdap_cache as ensure_rdap_cache
 from preprocessing.utils.defang import sanitize_for_json
 from feature_set_extraction.url_extraction_utils import extract_url_features as extract_url_features_utils
+from feature_set_extraction.url_extraction_utils import _build_popular_base_index
 from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
 from feature_set_extraction.fsols_extractor import extract_fsols_features
 from graph.common import parse_misp_events
@@ -24,8 +26,14 @@ LSA_TOPIC_KEYS = [f"lsa_topic_{index}" for index in range(10)]
 
 FS1_FEATURE_TYPES = ["time", "subject", "body", "origin", "receiver", "urls", "attachments"]
 
-FS2_FEATURE_TYPES = ["time", "subject", "body", "urls", "origin", "attachments"]
-FS2_OMIT_KEYS = frozenset(["sender_email"])
+FS2_FEATURE_TYPES = ["time", "subject", "body", "urls", "origin", "receiver", "attachments"]
+FS2_OMIT_KEYS = frozenset([
+    "hostnames", 
+    "any_typo_popular_domains", 
+    "registrar_locations", 
+    "sender_email", 
+    "recipient_name", 
+    "recipient_email"])
 
 FS3_FEATURE_TYPES = ["body", "urls", "origin"]
 FS3_OMIT_KEYS = frozenset([
@@ -37,6 +45,9 @@ FS3_OMIT_KEYS = frozenset([
     "bow",
     "has_html",
     "num_html_tags",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
     "num_images",
     "num_urls_in_body",
     "has_script",
@@ -52,6 +63,11 @@ FS4_OMIT_KEYS = frozenset([
     "num_urls_in_body",
     "has_urls_in_body",
     "body_word_count",
+    "bow",
+    "has_script",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
     "num_lines",
     "avg_word_length",
     "greeting",
@@ -72,6 +88,12 @@ FS5_OMIT_KEYS = frozenset([
     "num_urls_in_body",
     "has_urls_in_body",
     "body_word_count",
+    "bow",
+    "has_script",
+    "has_images",
+    "has_css_specs",
+    "has_html_tags",
+    "num_images",
     "num_lines",
     "avg_word_length",
     "greeting",
@@ -100,18 +122,13 @@ FS5_OMIT_KEYS = frozenset([
 
 FS6_FEATURE_TYPES = ["subject", "time", "body", "origin", "urls", "attachments"]
 FS6_OMIT_KEYS = frozenset([
-    "subject_term_frequency",
-    "bow",
-    "sender_email",
-    "greeting",
     "body",
     "subject",
     *LSA_TOPIC_KEYS,
-    "has_attachments",
 ])
 
 FS7_FEATURE_TYPES = ["subject", "body", "origin", "urls"]
-FS7_OMIT_KEYS = frozenset(["bow", "sender_email", "body"])
+FS7_OMIT_KEYS = frozenset(["body"])
 
 # FSOLS: Top OLS features extracted directly from event HTML/CSS/URL attrs.
 FSOLS_FEATURE_TYPES = ["body", "urls"]
@@ -607,7 +624,7 @@ compromised accounts to send the email.
 
 '''
 
-def extract_origin_based_features(sender, auth_spf=None):
+def extract_origin_based_features(sender, auth_spf=None, rdap_cache=None):
     def _parse_sender_entry(sender_entry):
         if not isinstance(sender_entry, str) or not sender_entry.strip():
             return "", ""
@@ -656,7 +673,7 @@ def extract_origin_based_features(sender, auth_spf=None):
 
     if sender_domains:
         try:
-            cache = load_rdap_cache()
+            cache = rdap_cache if isinstance(rdap_cache, dict) else load_rdap_cache()
             for domain in sender_domains:
                 item = cache.get(domain, {})
                 domain_registrars.append(item.get("registrar") or "")
@@ -751,18 +768,20 @@ PageRank and popularity are excluded. Suggested online tools appear to cost mone
 
 '''
 
-def extract_url_based_features(urls):
+def extract_url_based_features(urls, url_intel_sets=None, rdap_cache=None, popular_base_index=None):
     # Delegate to shared extractor and return its full feature dict
     try:
-        url_intel_sets = load_url_intelligence_sets()
+        intel_sets = url_intel_sets if isinstance(url_intel_sets, dict) else load_url_intelligence_sets()
         return extract_url_features_utils(
         urls,
-        popular_domains=url_intel_sets.get("popular_domains", set()),
-        webhost_domains=url_intel_sets.get("webhost_domains", set()),
-        phishing_target_domains=url_intel_sets.get("phishing_target_domains", set()),
-        blacklist=url_intel_sets.get("blacklist", set()),
+        popular_domains=intel_sets.get("popular_domains", set()),
+        popular_base_index=popular_base_index,
+        webhost_domains=intel_sets.get("webhost_domains", set()),
+        phishing_target_domains=intel_sets.get("phishing_target_domains", set()),
+        blacklist=intel_sets.get("blacklist", set()),
         domain_metadata=None,
-        anchor_pairs=None
+        anchor_pairs=None,
+        rdap_cache=rdap_cache,
     )
     except Exception as e:
         return {
@@ -893,6 +912,13 @@ def extract_features(misp_path, features, events=None):
 
     subject_idf_dict = get_subject_idf_for_misp(misp_path) if "subject" in features else {}
     lsa_features_list = get_lsa_features_for_misp(misp_path, events_count=len(events)) if "body" in features else []
+    rdap_cache = load_rdap_cache() if ("origin" in features or "urls" in features) else {}
+    url_intel_sets = load_url_intelligence_sets() if "urls" in features else {}
+    popular_base_index = (
+        _build_popular_base_index(url_intel_sets.get("popular_domains", set()))
+        if "urls" in features
+        else {}
+    )
 
     features_list = []
 
@@ -906,6 +932,7 @@ def extract_features(misp_path, features, events=None):
         feat = {"external_id": ext_s}
 
         for feature_type in features:
+
             if feature_type == "time":
                 feat.update(extract_time_features(email_fields.get("date")))
 
@@ -936,6 +963,7 @@ def extract_features(misp_path, features, events=None):
                     extract_origin_based_features(
                         email_fields.get("senders"),
                         email_fields.get("auth_spf", ""),
+                        rdap_cache=rdap_cache,
                     )
                 )
 
@@ -950,7 +978,14 @@ def extract_features(misp_path, features, events=None):
                 elif isinstance(explicit_urls, str) and explicit_urls:
                     extracted_urls.append(explicit_urls)
                 extracted_urls = list(dict.fromkeys(extracted_urls))
-                feat.update(extract_url_based_features(extracted_urls))
+                feat.update(
+                    extract_url_based_features(
+                        extracted_urls,
+                        url_intel_sets=url_intel_sets,
+                        rdap_cache=rdap_cache,
+                        popular_base_index=popular_base_index,
+                    )
+                )
 
         features_list.append(feat)
     return features_list

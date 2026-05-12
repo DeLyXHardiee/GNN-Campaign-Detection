@@ -5,7 +5,6 @@ import idna
 from urllib.parse import urlparse
 from datetime import datetime
 from collections import defaultdict, Counter
-from preprocessing.RDAP_processor import ensure_rdap_cache
 
 # WHOIS import disabled — domain lookups are outcommented per request
 # try:
@@ -122,8 +121,12 @@ def parse_url_host_and_registrable_domain(url: str) -> tuple[str, str, bool]:
             host = (h or "").strip().lower() if h else ""
         except ValueError:
             host = ""
+    if host in {"http", "https", "hxxp", "hxxps"}:
+        host = ""
     if not host:
         host = _fallback_hostname(norm) or _fallback_hostname(raw)
+    if host in {"http", "https", "hxxp", "hxxps"}:
+        host = ""
     if not host:
         return "", "", False
     ext = tldextract.extract(host)
@@ -156,8 +159,14 @@ def _normalize_url_for_hostname_extraction(url: str) -> str:
     s = (url or "").strip()
     if not s:
         return s
+    # Common defang patterns in MISP/email artifacts.
+    s = s.replace("[.]", ".").replace("(.)", ".")
     low = s.lower()
     if low.startswith(("http://", "https://")):
+        return s
+    # Preserve any explicit scheme to avoid corrupting host parsing
+    # (e.g. hxxps://... becoming http://hxxps://...).
+    if "://" in s:
         return s
     if s.startswith("//"):
         return "http:" + s
@@ -222,19 +231,74 @@ def contains_popular_in_subdomain(url, popular_domains):
             return True
     return False
 
+
+def _build_popular_base_index(popular_domains):
+    """Index popular domains by suffix so typo checks compare against fewer candidates."""
+    by_suffix = {}
+    for pop in popular_domains:
+        ext = tldextract.extract(pop)
+        suffix = (ext.suffix or "").lower()
+        base = (ext.domain or "").lower()
+        if not suffix or not base:
+            continue
+        by_suffix.setdefault(suffix, set()).add(base)
+    return by_suffix
+
+
+def is_typo_of_popular_fast(domain, popular_base_index, max_distance=2):
+    ext = tldextract.extract(domain or "")
+    suffix = (ext.suffix or "").lower()
+    base = (ext.domain or "").lower()
+    if not suffix or not base:
+        return False
+
+    candidates = popular_base_index.get(suffix, set())
+    if not candidates:
+        return False
+
+    base_len = len(base)
+    for candidate in candidates:
+        if abs(len(candidate) - base_len) > max_distance:
+            continue
+        if edit_distance(base, candidate) <= max_distance:
+            return True
+    return False
+
+
+def contains_popular_in_subdomain_fast(hostname, popular_domains):
+    """Set-based label-fragment probing; avoids scanning all popular domains each time."""
+    host = (hostname or "").strip().lower()
+    if not host or "." not in host:
+        return False
+
+    labels = [p for p in host.split(".") if p]
+    n = len(labels)
+    if n < 3:
+        return False
+
+    for i in range(n - 1):
+        for j in range(i + 1, n):
+            frag = ".".join(labels[i : j + 1])
+            if frag in popular_domains and j < n - 1:
+                return True
+    return False
+
 def extract_url_features(
     urls,
     popular_domains=None,
+    popular_base_index=None,
     webhost_domains=None,
     phishing_target_domains=None,
     blacklist=None,
     domain_metadata=None,
-    anchor_pairs=None   # list of (visible_text, actual_url)
+    anchor_pairs=None,   # list of (visible_text, actual_url)
+    rdap_cache=None,
 ):
     """
     urls: list[str]
     popular_domains: set[str] (top 10k etc.)
     webhost_domains: set[str] (known web-hosting-like domains)
+    popular_base_index: dict[str, set[str]] (optional prebuilt suffix->base index)
     phishing_target_domains: set[str]
     blacklist: set[str]
     domain_metadata: dict[domain] -> {
@@ -244,6 +308,7 @@ def extract_url_features(
         'registrar_location': str       # optional registrar country/location
     }
     anchor_pairs: [(visible_text, actual_url)]
+    rdap_cache: dict[domain] -> RDAP payload (optional, preloaded by caller)
     """
 
     popular_domains = popular_domains or set()
@@ -251,6 +316,8 @@ def extract_url_features(
     phishing_target_domains = phishing_target_domains or set()
     blacklist = blacklist or set()
     domain_metadata = domain_metadata or {}
+    if not isinstance(popular_base_index, dict):
+        popular_base_index = _build_popular_base_index(popular_domains)
 
     # Domain metadata lookups disabled (WHOIS/RDAP/TLS). Keep `domain_metadata` if supplied,
     # otherwise proceed without attempting lookups.
@@ -259,6 +326,7 @@ def extract_url_features(
     # ---------- aggregate ----------
     domains = [d["domain"] for d in per_url if d["domain"]]
     unique_domains = set(domains)
+    hostname_list = [h for h in (d.get("hostname") for d in per_url) if h]
 
     num_ip_urls = sum(d["is_ip"] for d in per_url)
     num_short_urls = sum(d["is_shortener"] for d in per_url)
@@ -270,18 +338,15 @@ def extract_url_features(
     any_has_at_symbol = any(d.get("has_at_symbol") for d in per_url)
     any_has_non_ascii = any(d.get("has_non_ascii") for d in per_url)
 
-    # ---------- domain stats (creation dates via RDAP cache) ----------
+    # ---------- domain stats (creation dates via caller-provided RDAP cache) ----------
     creation_dates = []
     if unique_domains:
-        try:
-            cache = ensure_rdap_cache(unique_domains)
-            for d in unique_domains:
-                item = cache.get(d, {})
-                registration_date = item.get("registration_date")
-                if registration_date:
-                    creation_dates.append(registration_date)
-        except Exception:
-            pass
+        cache = rdap_cache if isinstance(rdap_cache, dict) else {}
+        for d in unique_domains:
+            item = cache.get(d, {}) if isinstance(cache.get(d, {}), dict) else {}
+            registration_date = item.get("registration_date")
+            if registration_date:
+                creation_dates.append(registration_date)
 
     # ---------- domain categories / registrar locations ----------
     domain_category_map = {}
@@ -303,16 +368,27 @@ def extract_url_features(
     ev_domains = {d for d in unique_domains if domain_metadata.get(d, {}).get("ev")}
     any_ev_cert = len(ev_domains) > 0
 
-    # Match against caller-provided web-host domain list.
-    any_is_web_hosting_domain = any((d.get("domain") or "") in webhost_domains for d in per_url)
+    # Direct substring match: any web-host domain token appears in any URL string.
+    raw_urls = [str(u).strip().lower() for u in urls if isinstance(u, str) and u]
+    any_is_web_hosting_domain = any(
+        webhost_domain in raw_url
+        for raw_url in raw_urls
+        for webhost_domain in webhost_domains
+    )
 
     # heuristic for multi-part TLDs (e.g., co.uk)
     any_multi_part_tld = any((d.get("tld") or "").count(".") >= 1 for d in per_url)
 
     # aggregated binary flags for typo/similarity/popular-subdomain
-    any_typo_popular = any(is_typo_of_popular(d["domain"], popular_domains) for d in per_url if d.get("domain"))
-    any_similar_phish_target = any(d["domain"] in phishing_target_domains for d in per_url)
-    any_popular_in_subdomain = any(contains_popular_in_subdomain(u, popular_domains) for u in urls)
+    any_typo_popular = any(
+        is_typo_of_popular_fast(domain, popular_base_index)
+        for domain in unique_domains
+    )
+    any_similar_phish_target = any(domain in phishing_target_domains for domain in unique_domains)
+    any_popular_in_subdomain = any(
+        contains_popular_in_subdomain_fast(host, popular_domains)
+        for host in hostname_list
+    )
 
     oldest_domain = min(creation_dates) if creation_dates else None
     newest_domain = max(creation_dates) if creation_dates else None
@@ -328,9 +404,14 @@ def extract_url_features(
             if text.startswith("http") and text != actual:
                 mismatch_count += 1
 
-    # keep domain/hostname values as lists for downstream set/text processing
-    domain_list = sorted(unique_domains)
-    hostname_list = [h for h in (d.get("hostname") for d in per_url) if h]
+    # Export base domain labels (without TLD) in the `domains` field.
+    domain_list = sorted(
+        {
+            (tldextract.extract(d).domain or d)
+            for d in unique_domains
+            if d
+        }
+    )
 
     return {
         "domains": domain_list,
