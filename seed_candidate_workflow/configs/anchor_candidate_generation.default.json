@@ -46,8 +46,8 @@
         "name": "semantic_reciprocal_v1",
         "enabled": true,
         "config": {
-          "semantic_top_k": 50,
-          "semantic_min_cos": 0.9,
+          "semantic_top_k": 40,
+          "semantic_min_cos": 0.92,
           "time_gating_enabled": false,
           "max_time_gap_seconds": 2592000
         }
@@ -72,13 +72,13 @@
           "max_artifact_df": 50,
           "max_artifacts_per_type": 25,
           "semantic_component_top_k_neighbors": 5,
-          "semantic_centroid_min_cos": 0.95,
-          "singleton_semantic_min_cos": 0.96,
-          "semantic_email_cross_top_k":10,
-          "min_cross_retrieval_hits": 2,
+          "semantic_centroid_min_cos": 0.92,
+          "singleton_semantic_min_cos": 0.92,
+          "semantic_email_cross_top_k": 10,
+          "min_cross_retrieval_hits": 3,
           "max_time_gap_seconds": 2592000,
           "max_component_size_for_expansion": 200,
-          "max_component_links_total": 1000,
+          "max_component_links_total": 900,
           "max_pairs_per_component_link": 25,
           "max_singleton_pairs_per_proposal": 25
         }
@@ -121,14 +121,14 @@
               "node_set_col": "sender_set",
               "path_type": "email_sender_pattern_email",
               "max_degree": 10,
-              "min_idf": 1.1
+              "min_idf": 1.0
             },
             {
               "artifact_type": "sender_domain",
               "node_set_col": "sender_email_domain_set",
               "path_type": "email_sender_domain_pattern_email",
               "max_degree": 12,
-              "min_idf": 1.0
+              "min_idf": 0.95
             },
             {
               "artifact_type": "routing",
@@ -157,7 +157,7 @@
   "evaluation": {
     "enabled": true,
     "ground_truth": {
-      "paths": ["\\data\\groundtruth\\ground_truth.json"]
+      "paths": ["data/groundtruth/ground_truth.dedup_strict.json"]
     },
     "manual_review": {
       "random_seed": 1337,

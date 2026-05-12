@@ -34,6 +34,12 @@
             "channel": "stem",
             "evidence_type": "rare_exact_url_template",
             "max_artifact_df": 8
+          },
+          {
+            "rule_id": "exact_return_path_domain",
+            "channel": "return_path_domain",
+            "evidence_type": "exact_return_path_domain",
+            "max_artifact_df": 12
           }
         ]
       },
@@ -52,7 +58,7 @@
         "require_min_support_channels": 2,
         "semantic_support": {
           "enabled": true,
-          "min_semantic_score": 0.97,
+          "min_semantic_score": 0.9,
           "require_non_semantic_support": true,
           "min_non_semantic_support_channels": 1
         }
@@ -61,8 +67,7 @@
   },
   "ground_truth": {
     "paths": [
-      "data/groundtruth/ground_truth.json",
-      "data/groundtruth/ground_truth.json"
+      "data/groundtruth/ground_truth.dedup_strict.json"
     ]
   },
   "seed_components": {

@@ -48,6 +48,12 @@ PAIR_FEATURE_BOOL_COLS = [
     "from_2hop",
     "same_seed_component_flag",
     "cross_seed_component_flag",
+    "has_shared_sender",
+    "has_shared_stem",
+    "has_shared_url",
+    "has_shared_attachment",
+    "has_shared_sender_domain",
+    "has_shared_domain",
 ]
 
 PAIR_FEATURE_NUMERIC_COLS = [
@@ -57,6 +63,12 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "twohop_rarity_max",
     "component_cosine_max",
     "time_gap_seconds_min",
+    "shared_sender_count",
+    "shared_stem_count",
+    "shared_url_count",
+    "shared_attachment_count",
+    "shared_sender_domain_count",
+    "shared_domain_count",
 ]
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
@@ -1437,7 +1449,9 @@ def run_pair_training(
         "pair_feature_missing_policy": "numeric NaN -> 0.0; bool unknown -> 0",
         "pair_feature_note": (
             "Explicit pair features exclude raw seed_component_i/j (identifier-like). "
-            "Flags same_seed_component_flag / cross_seed_component_flag are retained."
+            "Flags same_seed_component_flag / cross_seed_component_flag are retained. "
+            "Shared-attribute overlap features (sender/stem/url/attachment/sender_domain/domain) "
+            "are included as both counts and booleans."
         ),
         "loss_objective": {
             "pair_loss_type": pair_loss_type,

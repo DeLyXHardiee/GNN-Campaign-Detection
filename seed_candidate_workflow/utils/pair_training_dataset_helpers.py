@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from seed_candidate_workflow.utils import graph_structure_helpers as gh
+from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 
 
 def _pair_key(a: str, b: str) -> tuple[str, str]:
@@ -37,6 +38,167 @@ def _feature_availability(df: pd.DataFrame, cols: list[str]) -> dict[str, Any]:
             "present": True,
             "non_null_count": nn,
             "non_null_fraction": float(nn / n) if n else None,
+        }
+    return out
+
+
+def _infer_anchor_run_dir(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None,
+    project_root: Path | None,
+) -> Path | None:
+    root = project_root or gh.find_project_root()
+    gid = str(graph_id or "").strip()
+    if gid:
+        run_dir = (
+            root / "seed_candidate_workflow" / "output" / "graph_bundles" / gid / "anchor" / gid
+        ).resolve()
+        return run_dir if run_dir.is_dir() else None
+    parts = list(candidate_union_csv.resolve().parts)
+    try:
+        i = [p.lower() for p in parts].index("graph_bundles")
+        if i + 1 < len(parts):
+            inferred = str(parts[i + 1]).strip()
+            if inferred:
+                run_dir = (
+                    root
+                    / "seed_candidate_workflow"
+                    / "output"
+                    / "graph_bundles"
+                    / inferred
+                    / "anchor"
+                    / inferred
+                ).resolve()
+                return run_dir if run_dir.is_dir() else None
+    except ValueError:
+        return None
+    return None
+
+
+def _load_anchor_node_sets_by_email(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None,
+    project_root: Path | None,
+) -> tuple[dict[str, dict[str, set[str]]], dict[str, Any]]:
+    run_dir = _infer_anchor_run_dir(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=project_root,
+    )
+    if run_dir is None:
+        return {}, {"available": False, "reason": "anchor_run_dir_not_found"}
+    nodes_df, _edges_df, _candidates_df, _summary, _g = load_anchor_graph_artifacts(
+        run_dir,
+        load_graph_pickle=False,
+    )
+    required_cols = [
+        "sender_set",
+        "stem_set",
+        "url_set",
+        "attachment_set",
+        "sender_email_domain_set",
+        "domain_set",
+    ]
+    keep = [c for c in required_cols if c in nodes_df.columns]
+    if "external_id" not in nodes_df.columns or not keep:
+        return {}, {"available": False, "reason": "anchor_nodes_missing_required_columns"}
+
+    def _to_set_cell(v: Any) -> set[str]:
+        if isinstance(v, set):
+            return {str(x) for x in v if str(x).strip()}
+        if isinstance(v, list):
+            return {str(x) for x in v if str(x).strip()}
+        if isinstance(v, str):
+            t = v.strip()
+            if not t:
+                return set()
+            if t.startswith("[") and t.endswith("]"):
+                try:
+                    xs = json.loads(t)
+                    if isinstance(xs, list):
+                        return {str(x) for x in xs if str(x).strip()}
+                except Exception:
+                    pass
+            if "|" in t:
+                return {p.strip() for p in t.split("|") if p.strip()}
+        return set()
+
+    out: dict[str, dict[str, set[str]]] = {}
+    for _, r in nodes_df[["external_id", *keep]].iterrows():
+        eid = str(r["external_id"])
+        out[eid] = {c: _to_set_cell(r.get(c)) for c in keep}
+    return out, {
+        "available": True,
+        "anchor_run_dir": str(run_dir),
+        "shared_columns": keep,
+    }
+
+
+def _add_shared_attribute_pair_features(
+    *,
+    df: pd.DataFrame,
+    nodes_by_email: dict[str, dict[str, set[str]]],
+) -> pd.DataFrame:
+    spec = [
+        ("sender_set", "sender"),
+        ("stem_set", "stem"),
+        ("url_set", "url"),
+        ("attachment_set", "attachment"),
+        ("sender_email_domain_set", "sender_domain"),
+        ("domain_set", "domain"),
+    ]
+    out = df.copy()
+    for _col, base in spec:
+        out[f"shared_{base}_count"] = np.nan
+        out[f"has_shared_{base}"] = False
+    for idx, r in out.iterrows():
+        a = str(r["email_i"])
+        b = str(r["email_j"])
+        na = nodes_by_email.get(a)
+        nb = nodes_by_email.get(b)
+        if na is None or nb is None:
+            continue
+        for col, base in spec:
+            sa = na.get(col) or set()
+            sb = nb.get(col) or set()
+            cnt = int(len(sa & sb))
+            out.at[idx, f"shared_{base}_count"] = cnt
+            out.at[idx, f"has_shared_{base}"] = bool(cnt > 0)
+    return out
+
+
+def _shared_feature_stats(
+    df: pd.DataFrame,
+    *,
+    count_cols: list[str],
+    bool_cols: list[str],
+) -> dict[str, Any]:
+    n = int(len(df))
+    out: dict[str, Any] = {}
+    for c in count_cols:
+        if c not in df.columns:
+            out[c] = {"present": False, "nonzero_count": 0, "nonzero_fraction": None}
+            continue
+        s = pd.to_numeric(df[c], errors="coerce")
+        nnz = int(s.fillna(0).gt(0).sum())
+        out[c] = {
+            "present": True,
+            "nonzero_count": nnz,
+            "nonzero_fraction": float(nnz / n) if n else None,
+            "non_null_count": int(s.notna().sum()),
+        }
+    for c in bool_cols:
+        if c not in df.columns:
+            out[c] = {"present": False, "true_count": 0, "true_fraction": None}
+            continue
+        s = df[c].fillna(False).astype(bool)
+        t = int(s.sum())
+        out[c] = {
+            "present": True,
+            "true_count": t,
+            "true_fraction": float(t / n) if n else None,
         }
     return out
 
@@ -288,6 +450,15 @@ def build_pair_training_dataset(
 
     df = pd.DataFrame(rows)
     df = df.sort_values(["email_i", "email_j"]).reset_index(drop=True)
+    # Align boolean with rarity scalar (union writer should keep these consistent; coerce if not).
+    _rar_num = pd.to_numeric(df["rare_artifact_rarity_max"], errors="coerce")
+    df["from_rare_artifact"] = df["from_rare_artifact"].astype(bool) | _rar_num.notna()
+    nodes_by_email, shared_ctx = _load_anchor_node_sets_by_email(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=project_root,
+    )
+    df = _add_shared_attribute_pair_features(df=df, nodes_by_email=nodes_by_email)
 
     # Every row is part of the candidate-universe handoff; seed-only extras are still
     # "candidate stage" outputs for training contract purposes.
@@ -392,6 +563,18 @@ def build_pair_training_dataset(
             "twohop_rarity_max": pd.to_numeric(df["twohop_rarity_max"], errors="coerce"),
             "component_cosine_max": pd.to_numeric(df["component_cosine_max"], errors="coerce"),
             "time_gap_seconds_min": pd.to_numeric(df["time_gap_seconds_min"], errors="coerce"),
+            "shared_sender_count": pd.to_numeric(df["shared_sender_count"], errors="coerce"),
+            "shared_stem_count": pd.to_numeric(df["shared_stem_count"], errors="coerce"),
+            "shared_url_count": pd.to_numeric(df["shared_url_count"], errors="coerce"),
+            "shared_attachment_count": pd.to_numeric(df["shared_attachment_count"], errors="coerce"),
+            "shared_sender_domain_count": pd.to_numeric(df["shared_sender_domain_count"], errors="coerce"),
+            "shared_domain_count": pd.to_numeric(df["shared_domain_count"], errors="coerce"),
+            "has_shared_sender": df["has_shared_sender"].fillna(False).astype(bool),
+            "has_shared_stem": df["has_shared_stem"].fillna(False).astype(bool),
+            "has_shared_url": df["has_shared_url"].fillna(False).astype(bool),
+            "has_shared_attachment": df["has_shared_attachment"].fillna(False).astype(bool),
+            "has_shared_sender_domain": df["has_shared_sender_domain"].fillna(False).astype(bool),
+            "has_shared_domain": df["has_shared_domain"].fillna(False).astype(bool),
             "seed_component_i": pd.to_numeric(df["seed_component_i"], errors="coerce"),
             "seed_component_j": pd.to_numeric(df["seed_component_j"], errors="coerce"),
             "same_seed_component_flag": df["same_seed_component_flag"].astype(bool),
@@ -441,6 +624,34 @@ def build_pair_training_dataset(
         "component_cosine_max",
         "time_gap_seconds_min",
         "source_count",
+        "shared_sender_count",
+        "shared_stem_count",
+        "shared_url_count",
+        "shared_attachment_count",
+        "shared_sender_domain_count",
+        "shared_domain_count",
+        "has_shared_sender",
+        "has_shared_stem",
+        "has_shared_url",
+        "has_shared_attachment",
+        "has_shared_sender_domain",
+        "has_shared_domain",
+    ]
+    shared_count_cols = [
+        "shared_sender_count",
+        "shared_stem_count",
+        "shared_url_count",
+        "shared_attachment_count",
+        "shared_sender_domain_count",
+        "shared_domain_count",
+    ]
+    shared_bool_cols = [
+        "has_shared_sender",
+        "has_shared_stem",
+        "has_shared_url",
+        "has_shared_attachment",
+        "has_shared_sender_domain",
+        "has_shared_domain",
     ]
 
     both_ids = (
@@ -507,12 +718,20 @@ def build_pair_training_dataset(
             "final_usable_row_count_for_training_both_indices": int(both_mapped.sum()),
         },
         "feature_availability": _feature_availability(out_df, feat_cols),
+        "shared_attribute_context": shared_ctx,
+        "shared_attribute_feature_stats": _shared_feature_stats(
+            out_df,
+            count_cols=shared_count_cols,
+            bool_cols=shared_bool_cols,
+        ),
         "component_context": comp_ctx,
         "split_strategy": "not_constructed_in_substep_1",
         "notes": [
             "Pair supervision: seed pairs => positive; other candidate_union rows => unlabeled by default.",
             "Optional reliable_negative_pool relabels a capped subset of mapped non-seed rows to reliable_negative.",
             "No ground-truth labels for campaign class; train/val/test split happens in GNN training.",
+            "Shared-attribute pair features are derived from anchor node-set overlap "
+            "(sender/stem/url/attachment/sender_domain/domain), without GT-dependent rules.",
         ],
     }
     if n_dup:

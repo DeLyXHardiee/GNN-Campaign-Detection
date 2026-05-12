@@ -1,4 +1,7 @@
 {
+  "dedup_strict_multi_gt": [
+    "data/groundtruth/ground_truth.dedup_strict.json"
+  ],
   "default_multi_gt": [
     "data/groundtruth/ground_truth.json"
   ],

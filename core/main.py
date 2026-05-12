@@ -723,16 +723,18 @@ def run_pipeline():
     visualize_clusters()
 
 if __name__ == "__main__":
-    
     # For individual stages of the pipeline, uncomment as needed:
-    #misp_path = run_preprocessing_lake()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    
-    # Use None so graph.misp_json_path + hetero_graph_stem from pipeline_config apply.
+    # misp_path = run_preprocessing_lake()
+    # create_feature_sets()
+    # run_featureset_clustering()
+
+    # Dedup-strict MISP hetero graph (see pipeline_config graph.* and datasets.*):
+    #   python core/main.py
+    # Uses graph.misp_json_path, hetero_graph_stem, graph_pt_path_override from pipeline_config.json.
     #run_graph_creation(misp_json_path=None, to_memgraph=False)
+
     run_gnn()
-    #run_gnn_evaluation()
+    # run_gnn_evaluation()
     #run_gnn_clustering()
     #run_metric_comparison()
     #visualize_clusters()

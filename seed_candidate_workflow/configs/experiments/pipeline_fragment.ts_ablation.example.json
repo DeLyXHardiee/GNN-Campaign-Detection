@@ -1,0 +1,9 @@
+{
+  "_comment": "Merge these keys into repo-root pipeline_config.json for a timestamp ablation run (new stem/run_id). Rebuild hetero .pt then full seed_candidate bundle.",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_strict_uplift_ts",
+  "graph": {
+    "hetero_graph_stem": "main_gnn_pu_1_no_ts_dedup_strict_uplift_ts",
+    "graph_pt_path_override": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_uplift_ts_hetero.pt",
+    "zero_email_timestamps": false
+  }
+}
