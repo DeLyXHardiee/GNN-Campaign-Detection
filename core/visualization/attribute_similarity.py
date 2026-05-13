@@ -125,17 +125,20 @@ def _encode_texts(model: Any, texts: list[str]) -> np.ndarray:
 
 def build_attribute_similarity_sidecar(
     *,
-    gnn: dict[str, Any] | None,
-    featureset: dict[str, Any] | None,
+    solutions: dict[str, dict[str, Any]],
     emails: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """
-    For each solution (gnn / featureset) and each campaign, compute per-email
-    scores for how similar each attribute embedding is to the average of the
-    other members' embeddings in that campaign. Values are **min–max normalized
-    per campaign and attribute** to [0, 1] so the UI red→green scale uses the
-    full range when comparing emails *within the same campaign* (raw cosines in
-    a tight cluster are often all ~0.97+ and would otherwise look uniformly green).
+    For each solution and each campaign, compute per-email scores for how
+    similar each attribute embedding is to the average of the other members'
+    embeddings in that campaign. Values are **min–max normalized per campaign
+    and attribute** to [0, 1] so the UI red→green scale uses the full range
+    when comparing emails *within the same campaign* (raw cosines in a tight
+    cluster are often all ~0.97+ and would otherwise look uniformly green).
+
+    ``solutions`` maps a solution key (e.g. relative path of a
+    ``campaigns*.json`` artifact) to its stripped payload dict (must contain
+    a ``campaigns`` list of ``{id, member_external_ids}`` entries).
     """
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore
@@ -145,20 +148,13 @@ def build_attribute_similarity_sidecar(
             f"Install with: pip install sentence-transformers ({exc})"
         ) from exc
 
-    # Unique external ids that appear in any campaign
     eid_set: set[str] = set()
-
-    def collect(camps: list[dict[str, Any]] | None) -> None:
-        if not camps:
-            return
-        for c in camps:
+    for payload in (solutions or {}).values():
+        if not payload:
+            continue
+        for c in payload.get("campaigns") or []:
             for eid in c.get("member_external_ids") or []:
                 eid_set.add(str(eid))
-
-    if gnn and gnn.get("campaigns"):
-        collect(gnn["campaigns"])
-    if featureset and featureset.get("campaigns"):
-        collect(featureset["campaigns"])
 
     if not eid_set:
         return {}
@@ -168,21 +164,18 @@ def build_attribute_similarity_sidecar(
 
     model = SentenceTransformer(MODEL_NAME)
 
-    # Precompute embeddings per attribute for all needed emails (global order)
     emb_by_attr: dict[str, np.ndarray] = {}
     for attr in ATTR_KEYS:
         texts = [_text_for_attr(emails.get(eid, {}), attr) for eid in eids_sorted]
         raw = _encode_texts(model, texts)
         emb_by_attr[attr] = _l2_normalize_rows(raw)
 
-    out: dict[str, Any] = {"gnn": {}, "featureset": {}}
-
-    def fill_solution(sol_key: str, payload: dict[str, Any] | None) -> None:
+    out: dict[str, Any] = {}
+    for sol_key, payload in (solutions or {}).items():
         if not payload or not payload.get("campaigns"):
-            return
-        camps = payload["campaigns"]
+            continue
         sol_out: dict[str, Any] = {}
-        for camp in camps:
+        for camp in payload["campaigns"]:
             cid = camp.get("id")
             members = [str(x) for x in (camp.get("member_external_ids") or [])]
             members_ok = [eid for eid in members if eid in eid_to_row]
@@ -205,7 +198,4 @@ def build_attribute_similarity_sidecar(
             _min_max_normalize_campaign_attrs(sol_out)
             out[sol_key] = sol_out
 
-    fill_solution("gnn", gnn)
-    fill_solution("featureset", featureset)
-
-    return {k: v for k, v in out.items() if v}
+    return out

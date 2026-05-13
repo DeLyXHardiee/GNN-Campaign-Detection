@@ -44,6 +44,8 @@ body {
   padding: 0 1rem;
   background: #fff;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .tab {
@@ -53,6 +55,7 @@ body {
   background: transparent;
   font-size: 1rem;
   border-bottom: 3px solid transparent;
+  flex: 0 0 auto;
 }
 
 .tab:hover {

@@ -1,6 +1,6 @@
 let state = {
   data: null,
-  solution: null, // 'gnn' | 'featureset'
+  solutionKey: null,
   campaignId: null,
   externalId: null,
 };
@@ -25,45 +25,46 @@ async function loadData() {
   buildTabs();
 }
 
+function solutionKeys() {
+  const sols = state.data && state.data.solutions;
+  if (!sols) return [];
+  return Object.keys(sols);
+}
+
 function buildTabs() {
   const tabs = document.getElementById("tabs");
   tabs.innerHTML = "";
-  const gnn = state.data.gnn;
-  const fs = state.data.featureset;
+  const keys = solutionKeys();
 
-  if (!gnn && !fs) {
+  if (keys.length === 0) {
     tabs.innerHTML =
-      '<p class="muted" style="padding:1rem">No GNN or featureset campaign data in this run.</p>';
+      '<p class="muted" style="padding:1rem">No campaigns*.json files found in this run.</p>';
+    state.solutionKey = null;
+    renderCampaigns();
     return;
   }
 
-  if (gnn) {
+  keys.forEach((key, i) => {
+    const sol = state.data.solutions[key];
     const b = document.createElement("button");
-    b.className = "tab active";
-    b.textContent = "GNN";
-    b.dataset.sol = "gnn";
-    b.addEventListener("click", () => selectTab("gnn"));
+    b.className = i === 0 ? "tab active" : "tab";
+    b.textContent = sol.label || key;
+    b.title = key;
+    b.dataset.sol = key;
+    b.addEventListener("click", () => selectTab(key));
     tabs.appendChild(b);
-  }
-  if (fs) {
-    const b = document.createElement("button");
-    b.className = gnn ? "tab" : "tab active";
-    b.textContent = "Feature set";
-    b.dataset.sol = "featureset";
-    b.addEventListener("click", () => selectTab("featureset"));
-    tabs.appendChild(b);
-  }
+  });
 
-  state.solution = gnn ? "gnn" : "featureset";
+  state.solutionKey = keys[0];
   renderCampaigns();
 }
 
-function selectTab(sol) {
-  state.solution = sol;
+function selectTab(key) {
+  state.solutionKey = key;
   state.campaignId = null;
   state.externalId = null;
   document.querySelectorAll(".tabs .tab").forEach((t) => {
-    t.classList.toggle("active", t.dataset.sol === sol);
+    t.classList.toggle("active", t.dataset.sol === key);
   });
   renderCampaigns();
   document.getElementById("emailList").innerHTML = "";
@@ -72,8 +73,8 @@ function selectTab(sol) {
 }
 
 function currentPayload() {
-  if (!state.data) return null;
-  return state.solution === "gnn" ? state.data.gnn : state.data.featureset;
+  if (!state.data || !state.solutionKey) return null;
+  return state.data.solutions ? state.data.solutions[state.solutionKey] : null;
 }
 
 function renderCampaigns() {
@@ -134,9 +135,9 @@ function esc(s) {
 }
 
 function similarityFor(eid) {
-  const sol = state.solution;
+  const sol = state.solutionKey;
   const cid = state.campaignId;
-  if (cid == null || !state.data.attribute_similarity) return null;
+  if (sol == null || cid == null || !state.data.attribute_similarity) return null;
   const block =
     state.data.attribute_similarity[sol]?.[String(cid)]?.[eid];
   return block || null;

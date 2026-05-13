@@ -382,6 +382,146 @@ def _best_row(df: pd.DataFrame, metric: str = "v_measure") -> dict[str, Any]:
     return r.to_dict() if not r.empty else {}
 
 
+def _pred_map_for_best_row(
+    sweep_partitions: list[dict[str, Any]],
+    best_row: dict[str, Any],
+) -> dict[str, int] | None:
+    """Look up the partition whose sweep parameters match ``best_row``."""
+    if not best_row or not sweep_partitions:
+        return None
+
+    def _to_float(v: Any) -> float | None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    target_method = str(best_row.get("method") or "")
+    target_weight_col = str(best_row.get("weight_col") or "")
+    target_uew = bool(best_row.get("use_edge_weights_in_partitioning", True))
+    target_res = _to_float(best_row.get("resolution"))
+    target_thr = _to_float(best_row.get("min_edge_weight"))
+
+    for part in sweep_partitions:
+        if str(part.get("method") or "") != target_method:
+            continue
+        if str(part.get("weight_col") or "") != target_weight_col:
+            continue
+        if bool(part.get("use_edge_weights_in_partitioning", True)) != target_uew:
+            continue
+        if _to_float(part.get("resolution")) != target_res:
+            continue
+        if _to_float(part.get("min_edge_weight")) != target_thr:
+            continue
+        pm = part.get("_pred_map")
+        if isinstance(pm, dict):
+            return {str(k): int(v) for k, v in pm.items()}
+    return None
+
+
+def _build_campaigns_payload_for_best(
+    *,
+    solution_name: str,
+    score_mode: str,
+    sort_by: str,
+    gt_path: Path,
+    gt_slug: str,
+    node_ids: list[str],
+    pred_map: dict[str, int],
+    best_row: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Compose a ``campaigns_*.json`` payload (same schema as ``core/visualization``
+    artifacts written by GNN/featureset clustering) describing the best community
+    partition for ``gt_slug``.
+    """
+    try:
+        from visualization.campaign_utils import build_campaign_artifact_payload
+    except ModuleNotFoundError:
+        from core.visualization.campaign_utils import build_campaign_artifact_payload
+
+    labels = np.array(
+        [int(pred_map.get(str(eid), -1)) for eid in node_ids],
+        dtype=np.int64,
+    )
+
+    def _opt_float(v: Any) -> float | None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    params: dict[str, Any] = {
+        "method": best_row.get("method"),
+        "weight_col": best_row.get("weight_col"),
+        "use_edge_weights_in_partitioning": bool(
+            best_row.get("use_edge_weights_in_partitioning", True)
+        ),
+        "resolution": _opt_float(best_row.get("resolution")),
+        "min_edge_weight": _opt_float(best_row.get("min_edge_weight")),
+        "score_mode": score_mode or None,
+        "n_edges_after_threshold": _opt_float(best_row.get("n_edges_after_threshold")),
+        "n_communities_in_sweep": _opt_float(best_row.get("n_communities")),
+    }
+    metrics: dict[str, Any] = {
+        "sort_by": sort_by,
+        "gt_path": str(gt_path),
+        "gt_slug": gt_slug,
+        "n_eval": _opt_float(best_row.get("n_eval")),
+        "coverage_gt": _opt_float(best_row.get("coverage_gt")),
+        "homogeneity": _opt_float(best_row.get("homogeneity")),
+        "completeness": _opt_float(best_row.get("completeness")),
+        "v_measure": _opt_float(best_row.get("v_measure")),
+    }
+    return build_campaign_artifact_payload(
+        solution=solution_name,
+        algorithm=str(best_row.get("method") or "louvain"),
+        sorted_ids=[str(x) for x in node_ids],
+        labels=labels,
+        params=params,
+        metrics=metrics,
+    )
+
+
+def _write_campaigns_json_for_best(
+    *,
+    out_dir: Path,
+    solution_name: str,
+    gt_slug: str,
+    score_mode: str,
+    sort_by: str,
+    gt_path: Path,
+    node_ids: list[str],
+    sweep_partitions: list[dict[str, Any]],
+    best_row: dict[str, Any],
+) -> Path | None:
+    """
+    Write ``<out_dir>/<solution_name>__<gt_slug>/campaigns.json`` with the same
+    schema as GNN/featureset campaign artifacts so the visualization webapp can
+    pick it up automatically. Returns the path or ``None`` if no best partition.
+    """
+    pred_map = _pred_map_for_best_row(sweep_partitions, best_row)
+    if not pred_map:
+        return None
+    payload = _build_campaigns_payload_for_best(
+        solution_name=solution_name,
+        score_mode=score_mode,
+        sort_by=sort_by,
+        gt_path=gt_path,
+        gt_slug=gt_slug,
+        node_ids=node_ids,
+        pred_map=pred_map,
+        best_row=best_row,
+    )
+    if not payload.get("campaigns"):
+        return None
+    sub = out_dir / f"{solution_name}__{gt_slug}"
+    sub.mkdir(parents=True, exist_ok=True)
+    p = sub / "campaigns.json"
+    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
 def _validate_output_contract(df: pd.DataFrame, *, sort_by: str) -> None:
     if df.empty:
         return
@@ -587,6 +727,10 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         or (project_root / "seed_candidate_workflow" / "output" / "anchor_community")
     ).expanduser().resolve()
     stage_name = str(out_cfg.get("stage_name") or "community_sweep")
+    solution_name_raw = str(out_cfg.get("solution_name") or "").strip()
+    if not solution_name_raw:
+        solution_name_raw = score_mode_raw or "anchor_unweighted"
+    solution_name = _slugify(solution_name_raw)
     created_at_utc = datetime.now(timezone.utc).isoformat(timespec="seconds")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     bundle_out_raw = str(run_cfg.get("community_bundle_out_dir") or "").strip()
@@ -655,11 +799,27 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         }
         p_best = out_dir / f"anchor_community_best__{gt_slug}.json"
         p_best.write_text(json.dumps(best_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        # Visualization-compatible campaign assignments for the best partition
+        # (same schema as GNN / featureset campaigns_*.json artifacts).
+        p_campaigns = _write_campaigns_json_for_best(
+            out_dir=out_dir,
+            solution_name=solution_name,
+            gt_slug=gt_slug,
+            score_mode=score_mode_raw,
+            sort_by=sort_by,
+            gt_path=gt_path,
+            node_ids=node_ids,
+            sweep_partitions=sweep_partitions,
+            best_row=best,
+        )
+
         return {
             "gt_path": str(gt_path),
             "gt_slug": gt_slug,
             "sweep_csv": str(p_csv),
             "best_json": str(p_best),
+            "campaigns_json": str(p_campaigns) if p_campaigns is not None else None,
             "n_rows": int(len(sweep_df)),
             "best_row": best,
         }

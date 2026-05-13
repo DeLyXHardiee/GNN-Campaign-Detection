@@ -21,12 +21,12 @@
     ]
   },
   "datasets": {
-    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-large.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "ground_truth_json": "data/groundtruth/ground_truth_merged.json",
-    "featureset_base_name": "incidents-lake-misp-large"
+    "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
-    "misp_json_path": "data/misp/incidents-lake-misp.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
     "max_misp_events": null,
     "output_dir": "core/graph/output",
     "graph_pt_path_override": "core/graph/output/incidents-lake-misp_hetero.pt",
@@ -97,7 +97,7 @@
   },
   "device": "cuda",
   "to_undirected": true,
-  "run_id": "test_run",
+  "run_id": "visualization_run",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",

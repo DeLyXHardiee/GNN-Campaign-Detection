@@ -448,6 +448,16 @@ def _execute_anchor_like_target(
     comm_cfg["ground_truth"]["paths"] = gt_paths
     comm_cfg["output"]["output_root"] = str((target_root / "community_root").resolve())
     comm_cfg["output"]["stage_name"] = "community_sweep"
+    if not str(comm_cfg["output"].get("solution_name") or "").strip():
+        score_mode_clean = str(score_mode or "").strip()
+        target_clean = str(target or "").strip()
+        if not score_mode_clean:
+            solution_name_default = f"{target_clean}__unweighted"
+        elif score_mode_clean.startswith(f"{target_clean}_"):
+            solution_name_default = score_mode_clean
+        else:
+            solution_name_default = f"{target_clean}__{score_mode_clean}"
+        comm_cfg["output"]["solution_name"] = solution_name_default
     comm_cfg["sweep"].update(dict(community_cfg.get("sweep") or {}))
     if dry_run:
         return {"dry_run": True, "target": target, "community_config": comm_cfg}
