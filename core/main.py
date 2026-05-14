@@ -730,8 +730,9 @@ if __name__ == "__main__":
     #run_featureset_clustering()
     
     # Use None so graph.misp_json_path + hetero_graph_stem from pipeline_config apply.
-    #run_graph_creation(misp_json_path=None, to_memgraph=False)
-    run_gnn()
+    misp_path = "core/preprocessing/output/incidents-misp-lake-urls-fixed.json"
+    run_graph_creation(misp_json_path=misp_path, to_memgraph=False)
+    #run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()
     #run_metric_comparison()
