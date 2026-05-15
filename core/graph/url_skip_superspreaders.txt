@@ -1,0 +1,6 @@
+# One substring per line. If a URL (lowercased) contains that substring, no `url` node
+# is created for it; email→domain and email→stem edges from that URL are unchanged.
+#
+# Example (uncomment to use):
+# mailingservice.com
+learnaboutsenderidentification

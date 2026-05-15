@@ -34,7 +34,9 @@
     "score_targets": [
       "seed_candidate"
     ],
+
     "gt_set": "dedup_strict_multi_gt",
+
     "gt_sets_path": "seed_candidate_workflow/configs/experiments/gt_sets.json"
   },
   "scoring": {

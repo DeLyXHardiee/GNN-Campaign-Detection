@@ -33,7 +33,6 @@ def _resolve_path(project_root: Path, raw: str | Path) -> Path:
         p = p.resolve()
     return p
 
-
 def _default_graph_meta_json_from_pipeline(project_root: Path) -> Path | None:
     """
     When experiment config omits setup.paths.pair_training.graph_meta_json,

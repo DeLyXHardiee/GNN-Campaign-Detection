@@ -58,6 +58,7 @@ core/graph/misp_attribute_schema.py
 core/graph/normalizer.py
 core/graph/postprocess_hetero_graph.py
 core/graph/utils/graph_metrics.py
+core/graph/utils/url_analysis.py
 core/lake/client.py
 core/lake/test.py
 core/metric_comparison/__init__.py
@@ -89,6 +90,7 @@ core/tests/test_rollout_parity_gate.py
 core/tests/test_schema_evolution.py
 core/tests/test_schema_validation.py
 core/tests/test_url_extraction.py
+core/tests/test_url_extractor_pipeline.py
 core/utils/OLS/OLS.py
 core/utils/embeddings/__init__.py
 core/utils/embeddings/__main__.py

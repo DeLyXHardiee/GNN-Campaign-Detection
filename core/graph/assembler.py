@@ -14,11 +14,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Set
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+
+from tqdm import tqdm
 
 from tqdm import tqdm
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
+from .url_skip_superspreaders import resolve_url_skip_superspreaders_patterns
 from .common import (
     parse_misp_events,
     extract_email_domain,
@@ -162,6 +165,14 @@ def _as_email_list(value: Any) -> List[str]:
     return out
 
 
+def _url_should_skip_for_superspreader(url: str, skip_substrings: Tuple[str, ...]) -> bool:
+    """True if ``url`` contains any non-empty substring from the skip list (``url`` is lowercased in data)."""
+    if not skip_substrings:
+        return False
+    u = url or ""
+    return any(p and p in u for p in skip_substrings)
+
+
 @dataclass
 class ProviderRegistry:
     """Registry for declarative assembler providers."""
@@ -190,16 +201,6 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
         html = email.get("html") or {}
         if not isinstance(html, dict):
             return []
-        multi = html.get("structure_fingerprints")
-        if isinstance(multi, list):
-            vals: List[str] = []
-            seen: set[str] = set()
-            for x in multi:
-                v = to_str(x).strip().lower()
-                if v and v not in seen:
-                    seen.add(v)
-                    vals.append(v)
-            return vals
         v = to_str(html.get("structure_fingerprint", "")).strip().lower()
         return [v] if v else []
     if node_key == "url":
@@ -240,7 +241,9 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
     return _as_email_list(email.get(f"{node_key}s") or email.get(node_key))
 
 
-def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int]]]:
+def _node_indexers(
+    url_skip_substrings: Tuple[str, ...] = (),
+) -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int]]]:
     def sender(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
@@ -256,7 +259,10 @@ def _node_indexers() -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int
     def url(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
-            vals.extend(_as_email_list(em.get("urls")))
+            for u in _as_email_list(em.get("urls")):
+                if _url_should_skip_for_superspreader(u, url_skip_substrings):
+                    continue
+                vals.append(u)
         return _dedup_index(vals)
 
     def domain(emails: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -523,11 +529,15 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
     }
 
 
-DEFAULT_PROVIDER_REGISTRY = ProviderRegistry(
-    node_indexers=_node_indexers(),
-    edge_builders=_edge_builders(),
-    node_feature_builders=_node_feature_builders(),
-)
+def default_provider_registry(url_skip_substrings: Tuple[str, ...] = ()) -> ProviderRegistry:
+    return ProviderRegistry(
+        node_indexers=_node_indexers(url_skip_substrings),
+        edge_builders=_edge_builders(),
+        node_feature_builders=_node_feature_builders(),
+    )
+
+
+DEFAULT_PROVIDER_REGISTRY = default_provider_registry()
 
 
 def index_entities(
@@ -551,6 +561,9 @@ def index_entities(
         for u in _as_email_list(em.get("urls")):
             comp = parse_url_components(u)
             url_components[u] = (comp.get("domain", ""), comp.get("stem", ""))
+
+    url_keys = set(indices.get("url") or {})
+    url_components = {u: c for u, c in url_components.items() if u in url_keys}
 
     out: Dict[str, Any] = dict(indices)
     out["url_components"] = url_components
@@ -1000,21 +1013,44 @@ def assemble_misp_graph_ir_from_parsed_emails(
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
+    url_skip_superspreaders_path: Optional[str] = None,
+    url_skip_substrings: Optional[Sequence[str]] = None,
 ) -> GraphIR:
     """Assemble Graph IR from emails already in ``parse_misp_events`` output shape.
+    High-level steps:
+    1) Parse/normalize MISP events.
+    2) Index unique component entities and URL parts.
+    3) Build email->component edges and raw email attributes.
+    4) Compute per-node features/attributes and text vectors.
+    5) Assemble nodes, edges, and email_attrs blocks.
 
-    Use this for semantic supernode collapsed payloads (merged per cluster) or any
-    caller that has normalized email dicts without round-tripping through MISP JSON.
+    URLs whose string contains any line from ``core/graph/url_skip_superspreaders.txt``
+    (substring match, case-insensitive) are omitted as ``url`` nodes; email→domain and
+    email→stem edges for those URLs are unchanged. Pass ``url_skip_substrings`` to
+    override the file (including ``[]`` to skip loading the file).
     """
     schema = schema or DEFAULT_SCHEMA
-    indexed = index_entities(emails, schema, DEFAULT_PROVIDER_REGISTRY)
+    url_skip_patterns = resolve_url_skip_superspreaders_patterns(
+        path=url_skip_superspreaders_path,
+        inline_substrings=url_skip_substrings,
+    )
+    registry = default_provider_registry(url_skip_patterns)
+    emails = parse_misp_events(misp_events)
+    #iterate through emails and print urls if not empty
+    '''
+    for email in emails:
+        urls = _as_email_list(email.get("urls"))
+        if len(urls) > 0 and email.get("external_id") == "trec_28184":
+            print(f"Email index {email.get('email_index', 'N/A')} has URLs: {urls}")
+    '''
+    indexed = index_entities(emails, schema, registry)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
     edges_idx, email_meta, email_attrs_raw, docfreq_maps = materialize_edges(
         emails,
         indices,
         schema,
-        DEFAULT_PROVIDER_REGISTRY,
+        registry,
         zero_email_timestamps=zero_email_timestamps,
     )
     snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
@@ -1034,7 +1070,7 @@ def assemble_misp_graph_ir_from_parsed_emails(
         indices,
         url_components,
         docfreq_maps,
-        DEFAULT_PROVIDER_REGISTRY,
+        registry,
         embeddings_output_dir=embeddings_output_dir,
     )
 

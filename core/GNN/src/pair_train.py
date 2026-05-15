@@ -1220,7 +1220,6 @@ def run_pair_training(
     rne_oversample_factor = float(rne_cfg.get("oversample_factor", 1.0))
     rne_shuffle_each_epoch = bool(rne_cfg.get("shuffle_each_epoch", True))
     reliable_negative_loss_weight = float(training_cfg.get("reliable_negative_loss_weight", 1.0))
-
     sc_cfg = dict(training_cfg.get("semantic_cluster_sampling") or {})
     sc_enabled = bool(sc_cfg.get("enabled", False))
     sc_email_col = str(sc_cfg.get("email_column", "email_id"))
@@ -1253,6 +1252,7 @@ def run_pair_training(
         )
         if not email_to_cluster:
             raise ValueError(f"No cluster memberships loaded from {map_path}")
+
 
     shuffle_train_epoch = (
         (hpe_enabled and hpe_shuffle_each_epoch)
@@ -1550,6 +1550,7 @@ def run_pair_training(
             "Flags same_seed_component_flag / cross_seed_component_flag are retained. "
             "Shared-attribute overlap features (sender/stem/url/attachment/sender_domain/domain) "
             "are included as both counts and booleans."
+
         ),
         "loss_objective": {
             "pair_loss_type": pair_loss_type,

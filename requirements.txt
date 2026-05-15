@@ -18,6 +18,7 @@ hdbscan
 tqdm
 matplotlib
 beautifulsoup4
+linkify-it-py
 tldextract
 httpx
 pyarrow

@@ -752,6 +752,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         "sort_by": sort_by,
         "n_sweep_settings": len(sweep_partitions),
         "ground_truth_paths": [str(p) for p in gt_paths],
+
         "gt_metric_email_expansion": {
             "enabled": bool(gid_to_members),
             "member_expansion_source": mapping_source if gid_to_members else None,
@@ -768,6 +769,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                 else int(n_graph_nodes)
             ),
         },
+
         "per_ground_truth_outputs": per_gt_outputs,
         "best_rows_by_gt": best_rows,
     }

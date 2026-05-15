@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from seed_candidate_workflow.utils import graph_structure_helpers as gh
+
 from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts
 
 
@@ -40,6 +41,7 @@ def _feature_availability(df: pd.DataFrame, cols: list[str]) -> dict[str, Any]:
             "non_null_fraction": float(nn / n) if n else None,
         }
     return out
+
 
 
 def _infer_anchor_run_dir(
@@ -201,7 +203,6 @@ def _shared_feature_stats(
             "true_fraction": float(t / n) if n else None,
         }
     return out
-
 
 def _reliable_negative_eligible_mask(
     df: pd.DataFrame,
@@ -459,7 +460,6 @@ def build_pair_training_dataset(
         project_root=project_root,
     )
     df = _add_shared_attribute_pair_features(df=df, nodes_by_email=nodes_by_email)
-
     # Every row is part of the candidate-universe handoff; seed-only extras are still
     # "candidate stage" outputs for training contract purposes.
     df["is_candidate_pair"] = True
@@ -718,20 +718,24 @@ def build_pair_training_dataset(
             "final_usable_row_count_for_training_both_indices": int(both_mapped.sum()),
         },
         "feature_availability": _feature_availability(out_df, feat_cols),
+
         "shared_attribute_context": shared_ctx,
         "shared_attribute_feature_stats": _shared_feature_stats(
             out_df,
             count_cols=shared_count_cols,
             bool_cols=shared_bool_cols,
         ),
+
         "component_context": comp_ctx,
         "split_strategy": "not_constructed_in_substep_1",
         "notes": [
             "Pair supervision: seed pairs => positive; other candidate_union rows => unlabeled by default.",
             "Optional reliable_negative_pool relabels a capped subset of mapped non-seed rows to reliable_negative.",
             "No ground-truth labels for campaign class; train/val/test split happens in GNN training.",
+
             "Shared-attribute pair features are derived from anchor node-set overlap "
             "(sender/stem/url/attachment/sender_domain/domain), without GT-dependent rules.",
+
         ],
     }
     if n_dup:

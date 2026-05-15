@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProjectionSettings
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
-from .assembler import assemble_misp_graph_ir, assemble_misp_graph_ir_from_parsed_emails
+from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
 from .feature_projection import (
@@ -259,22 +259,12 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
-    if parsed_emails is not None:
-        ir = assemble_misp_graph_ir_from_parsed_emails(
-            parsed_emails,
-            schema=schema,
-            embeddings_output_dir=embeddings_output_dir,
-            zero_email_timestamps=zero_email_timestamps,
-        )
-    else:
-        if not misp_events:
-            raise ValueError("build_hetero_graph_from_misp: provide misp_events or parsed_emails")
-        ir = assemble_misp_graph_ir(
-            misp_events,
-            schema=schema,
-            embeddings_output_dir=embeddings_output_dir,
-            zero_email_timestamps=zero_email_timestamps,
-        )
+    ir = assemble_misp_graph_ir(
+        misp_events,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+        zero_email_timestamps=zero_email_timestamps,
+    )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
     if degree_node_filter and degree_node_filter.enabled and degree_node_filter.strength > 0:
@@ -359,13 +349,14 @@ def build_graph(
                 "Provide misp_events / misp_json_path, or parsed_emails for semantic supernode build."
             )
 
-        if misp_events is None:
-            if misp_json_path is None:
-                raise ValueError("misp_json_path must be set when misp_events is not provided.")
-            misp_events = _load_misp_json(misp_json_path)
+    if misp_events is None:
+        if misp_json_path is None:
+            raise ValueError("misp_json_path must be set when misp_events is not provided.")
+        misp_events = _load_misp_json(misp_json_path)
 
-        if max_misp_events is not None and max_misp_events > 0:
-            misp_events = misp_events[:max_misp_events]
+    if max_misp_events is not None and max_misp_events > 0:
+        misp_events = misp_events[:max_misp_events]
+
 
         graph, metadata = build_hetero_graph_from_misp(
             misp_events,

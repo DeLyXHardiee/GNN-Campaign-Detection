@@ -738,6 +738,7 @@ def run_pipeline():
     visualize_clusters()
 
 if __name__ == "__main__":
+    
     # For individual stages of the pipeline, uncomment as needed:
     # misp_path = run_preprocessing_lake()
     # create_feature_sets()

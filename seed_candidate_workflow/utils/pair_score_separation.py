@@ -1028,6 +1028,7 @@ def run_pair_score_separation_analysis(
         cross_mask = both & (camp_i != camp_j)
         same_s = scores[same_mask & scored]
         cross_s = scores[cross_mask & scored]
+
         pos_mask = (
             df_work["pair_status"].astype(str).str.lower().eq("positive").to_numpy()
             if "pair_status" in df_work.columns
@@ -1038,6 +1039,7 @@ def run_pair_score_separation_analysis(
             if "pair_status" in df_work.columns
             else np.zeros(n, dtype=bool)
         )
+
 
         stem = _sanitize_filename_stem(gt_path.stem)
         title = f"Score distribution (GT: {gt_path.name})"
@@ -1076,6 +1078,7 @@ def run_pair_score_separation_analysis(
         cc_plot_cross_pos: Path | None = None
         cc_plot_same_unl: Path | None = None
         cc_plot_cross_unl: Path | None = None
+
         if cross_comp is not None:
             cc_mask = cross_comp.astype(bool)
             s_cc = scores[same_mask & cc_mask & scored]
@@ -1089,6 +1092,7 @@ def run_pair_score_separation_analysis(
                 out_same=cc_plot_same,
                 out_cross=cc_plot_cross,
             )
+
             cc_plot_same_pos = (
                 plots_dir
                 / f"score_distribution_cross_component_same_campaign_positive_{stem}.png"
@@ -1120,6 +1124,7 @@ def run_pair_score_separation_analysis(
                 out_cross=cc_plot_cross_unl,
             )
 
+
         summary = _summarize_one_gt(
             gt_path=gt_path,
             gt_label_map=label_map,
@@ -1141,6 +1146,7 @@ def run_pair_score_separation_analysis(
         summary["band_diagnostics"] = band_diag
         summary["plot_same_campaign"] = str(plot_same.relative_to(out_dir))
         summary["plot_cross_campaign"] = str(plot_cross.relative_to(out_dir))
+
         summary["plot_same_campaign_positive_only"] = str(
             plot_same_pos.relative_to(out_dir)
         )
