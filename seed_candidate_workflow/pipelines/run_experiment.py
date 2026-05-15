@@ -359,6 +359,14 @@ def _execute_anchor_like_target(
     comm_cfg["output"]["output_root"] = str((target_root / "community_root").resolve())
     comm_cfg["output"]["stage_name"] = "community_sweep"
     comm_cfg["sweep"].update(dict(community_cfg.get("sweep") or {}))
+    for key in (
+        "member_expansion_mapping_json",
+        "semantic_supernode_mapping_json",
+        "dedup_collapse_out_dir",
+    ):
+        val = str(community_cfg.get(key) or "").strip()
+        if val:
+            comm_cfg["run"][key] = val
     if dry_run:
         return {"dry_run": True, "target": target, "community_config": comm_cfg}
     from seed_candidate_workflow.utils.anchor_graph_community_helpers import run_anchor_multi_gt_community_sweep

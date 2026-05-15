@@ -8,10 +8,10 @@ score > high_min and score <= 1.0, both endpoints in GT, different campaigns.
 Example (dedup_strict run, inspect false-positive-ish cross edges):
 
   python seed_candidate_workflow/scripts/export_gt_pair_band_rows.py ^
-    --run-dir output/runs/main_gnn_pu_1_no_ts_dedup_strict_uplift ^
-    --graph-pt core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_uplift_hetero.pt ^
+    --run-dir output/runs/main_gnn_pu_1_no_ts_dedup_strict ^
+    --graph-pt core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.pt ^
     --gt-path data/groundtruth/ground_truth.dedup_strict.json ^
-    --out-csv output/runs/main_gnn_pu_1_no_ts_dedup_strict_uplift/cross_campaign_high_scores.csv
+    --out-csv output/runs/main_gnn_pu_1_no_ts_dedup_strict/cross_campaign_high_scores.csv
 """
 
 from __future__ import annotations

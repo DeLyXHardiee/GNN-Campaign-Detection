@@ -190,6 +190,16 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
         html = email.get("html") or {}
         if not isinstance(html, dict):
             return []
+        multi = html.get("structure_fingerprints")
+        if isinstance(multi, list):
+            vals: List[str] = []
+            seen: set[str] = set()
+            for x in multi:
+                v = to_str(x).strip().lower()
+                if v and v not in seen:
+                    seen.add(v)
+                    vals.append(v)
+            return vals
         v = to_str(html.get("structure_fingerprint", "")).strip().lower()
         return [v] if v else []
     if node_key == "url":
@@ -984,31 +994,19 @@ def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
     return ir
 
 
-def assemble_misp_graph_ir(
-    misp_events: List[dict],
+def assemble_misp_graph_ir_from_parsed_emails(
+    emails: List[Dict[str, Any]],
     *,
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
 ) -> GraphIR:
-    """Assemble a backend-agnostic Graph IR from raw MISP events.
+    """Assemble Graph IR from emails already in ``parse_misp_events`` output shape.
 
-    High-level steps:
-    1) Parse/normalize MISP events.
-    2) Index unique component entities and URL parts.
-    3) Build email->component edges and raw email attributes.
-    4) Compute per-node features/attributes and text vectors.
-    5) Assemble nodes, edges, and email_attrs blocks.
+    Use this for semantic supernode collapsed payloads (merged per cluster) or any
+    caller that has normalized email dicts without round-tripping through MISP JSON.
     """
     schema = schema or DEFAULT_SCHEMA
-    emails = parse_misp_events(misp_events)
-    #iterate through emails and print urls if not empty
-    '''
-    for email in emails:
-        urls = _as_email_list(email.get("urls"))
-        if len(urls) > 0 and email.get("external_id") == "trec_28184":
-            print(f"Email index {email.get('email_index', 'N/A')} has URLs: {urls}")
-    '''
     indexed = index_entities(emails, schema, DEFAULT_PROVIDER_REGISTRY)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
@@ -1101,4 +1099,29 @@ def assemble_misp_graph_ir(
     return _collapse_graph_ir(ir, schema)
 
 
-__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir"]
+def assemble_misp_graph_ir(
+    misp_events: List[dict],
+    *,
+    schema: Optional[GraphSchema] = None,
+    embeddings_output_dir: Optional[str] = None,
+    zero_email_timestamps: bool = False,
+) -> GraphIR:
+    """Assemble a backend-agnostic Graph IR from raw MISP events.
+
+    High-level steps:
+    1) Parse/normalize MISP events.
+    2) Index unique component entities and URL parts.
+    3) Build email->component edges and raw email attributes.
+    4) Compute per-node features/attributes and text vectors.
+    5) Assemble nodes, edges, and email_attrs blocks.
+    """
+    emails = parse_misp_events(misp_events)
+    return assemble_misp_graph_ir_from_parsed_emails(
+        emails,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+        zero_email_timestamps=zero_email_timestamps,
+    )
+
+
+__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir", "assemble_misp_graph_ir_from_parsed_emails"]

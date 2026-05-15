@@ -1,7 +1,7 @@
 {
   "experiment": {
-    "scoring_run_id": "main_gnn_pu_1_no_ts_dedup_strict",
-    "graph_id": "main_gnn_pu_1_no_ts_dedup_strict",
+    "scoring_run_id": "main_gnn_pu_1_full_dgs",
+    "graph_id": "main_gnn_pu_1_full_dgs",
     "mode": "setup_only",
     "graph_family": "seed_candidate"
   },
@@ -26,7 +26,7 @@
       "seed_config": "seed_candidate_workflow/configs/anchor_seed.default.json",
       "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.default.json",
       "pair_training": {
-        "graph_meta_json": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.meta.json"
+        "graph_meta_json": "core/graph/output/main_gnn_pu_1_full_dgs_hetero.meta.json"
       }
     }
   },
@@ -34,7 +34,7 @@
     "score_targets": [
       "seed_candidate"
     ],
-    "gt_set": "dedup_strict_multi_gt",
+    "gt_set": "default_multi_gt",
     "gt_sets_path": "seed_candidate_workflow/configs/experiments/gt_sets.json"
   },
   "scoring": {
@@ -43,10 +43,10 @@
       "handcrafted": {},
       "pu": {
         "pu_run": {
-          "run_dir": "output/runs/main_gnn_pu_1_no_ts_dedup_strict",
-          "graph_pt": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.pt",
+          "run_dir": "output/runs/main_gnn_pu_1_full_dgs",
+          "graph_pt": "core/graph/output/main_gnn_pu_1_full_dgs_hetero.pt",
           "checkpoint": "best_model.pt",
-          "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_strict/pair_training/main_gnn_pu_1_no_ts_dedup_strict/pair_training_dataset.csv",
+          "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_full_dgs/pair_training/main_gnn_pu_1_full_dgs/pair_training_dataset.csv",
           "device": "cpu",
           "no_to_undirected": false
         },

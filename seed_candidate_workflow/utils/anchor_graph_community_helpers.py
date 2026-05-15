@@ -14,6 +14,7 @@ import pandas as pd
 from seed_candidate_workflow.utils import community_eval_contract as cec
 from seed_candidate_workflow.utils import community_sweep_driver as csd
 from seed_candidate_workflow.utils import graph_structure_helpers as gh
+from seed_candidate_workflow.utils import semantic_supernode_gt_metrics as ssgt
 from seed_candidate_workflow.utils.config_run_fields import resolve_graph_id
 from seed_candidate_workflow.utils import raw_gnn_notebook as rn
 from seed_candidate_workflow.utils.graph_scorer_registry import apply_scorer
@@ -340,11 +341,17 @@ def _metrics_for_gt(
     gt_label_map: dict[str, Any],
     *,
     sort_by: str,
+    gid_to_members: dict[str, list[str]] | None,
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for part in sweep_partitions:
         pred_map = part["_pred_map"]
-        m = evaluate_external_metrics(pred_map=pred_map, gt_label_map=gt_label_map)
+        pred_for_gt = (
+            ssgt.expand_pred_map_for_gt_eval(pred_map, gid_to_members)
+            if gid_to_members
+            else pred_map
+        )
+        m = evaluate_external_metrics(pred_map=pred_for_gt, gt_label_map=gt_label_map)
         rows.append(
             {
                 "method": part["method"],
@@ -559,6 +566,26 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             edges_df = edges_df.drop(columns=["edge_weight"])
     node_ids = [str(x) for x in nodes_df["external_id"].astype(str).tolist()]
 
+    gid_to_members, mapping_path, mapping_source = ssgt.resolve_gid_to_members_for_gt_eval(
+        project_root,
+        member_expansion_mapping_json=str(run_cfg.get("member_expansion_mapping_json") or "").strip() or None,
+        semantic_supernode_mapping_json=str(run_cfg.get("semantic_supernode_mapping_json") or "").strip() or None,
+        dedup_collapse_out_dir=str(run_cfg.get("dedup_collapse_out_dir") or "").strip() or None,
+    )
+    if mapping_path is not None and gid_to_members is None:
+        if mapping_source == "dedup_collapse_out_dir":
+            warnings.warn(
+                f"dedup_collapse_out_dir not found or empty (GT metrics will use graph nodes only): {mapping_path}",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                f"{mapping_source} not found or empty (GT metrics will use graph nodes only): {mapping_path}",
+                UserWarning,
+                stacklevel=2,
+            )
+
     methods = [str(x).strip().lower() for x in (sweep_cfg.get("methods") or ["louvain", "leiden"]) if str(x).strip()]
     weight_thresholds = [float(x) for x in (sweep_cfg.get("weight_thresholds") or [0.0])]
     resolutions = [float(x) for x in (sweep_cfg.get("resolutions") or [1.0])]
@@ -637,7 +664,12 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
 
     def _per_gt(gt_path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
         gt_label_map, _eid_row, _campaign_to_members = rn.load_ground_truth_structures(gt_path)
-        sweep_df = _metrics_for_gt(sweep_partitions, gt_label_map, sort_by=sort_by)
+        sweep_df = _metrics_for_gt(
+            sweep_partitions,
+            gt_label_map,
+            sort_by=sort_by,
+            gid_to_members=gid_to_members,
+        )
         best = _best_row(sweep_df, metric=sort_by)
         return sweep_df, {"gt_label_map": gt_label_map, "best_row": best}
 
@@ -651,8 +683,12 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         p_csv = out_dir / f"anchor_community_sweep__{gt_slug}.csv"
         sweep_df.to_csv(p_csv, index=False)
         gt_ids = {str(k) for k in gt_label_map.keys()}
-        graph_ids = {str(x) for x in node_ids}
-        n_intersection = len(gt_ids & graph_ids)
+        if gid_to_members:
+            graph_member_ids = ssgt.member_emails_represented_by_graph_nodes(node_ids, gid_to_members)
+        else:
+            graph_member_ids = {str(x) for x in node_ids}
+        n_intersection = len(gt_ids & graph_member_ids)
+        denom_cover = len(graph_member_ids) if gid_to_members else n_graph_nodes
         best_payload = {
             "graph_id": graph_id,
             "anchor_run_dir": str(run_dir),
@@ -662,7 +698,17 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             "n_graph_nodes": n_graph_nodes,
             "n_gt_labeled_emails": len(gt_label_map),
             "n_gt_ids_in_graph": n_intersection,
-            "labeled_in_graph_fraction": float(n_intersection / max(1, n_graph_nodes)),
+            "labeled_in_graph_fraction": float(n_intersection / max(1, denom_cover)),
+            "gt_metrics_use_member_expansion": bool(gid_to_members),
+            "gt_metrics_use_semantic_supernode_member_expansion": bool(gid_to_members),
+            "member_expansion_source": mapping_source if gid_to_members else None,
+            "member_expansion_mapping_path": str(mapping_path) if mapping_path and gid_to_members else None,
+            "semantic_supernode_mapping_json": (
+                str(mapping_path)
+                if mapping_path and gid_to_members and mapping_source == "semantic_supernode_mapping_json"
+                else None
+            ),
+            "n_distinct_member_emails_represented_by_graph": len(graph_member_ids),
             "sort_by": sort_by,
             "best_row": best,
         }
@@ -706,6 +752,22 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         "sort_by": sort_by,
         "n_sweep_settings": len(sweep_partitions),
         "ground_truth_paths": [str(p) for p in gt_paths],
+        "gt_metric_email_expansion": {
+            "enabled": bool(gid_to_members),
+            "member_expansion_source": mapping_source if gid_to_members else None,
+            "member_expansion_mapping_path": str(mapping_path) if mapping_path else None,
+            "semantic_supernode_mapping_json": (
+                str(mapping_path)
+                if mapping_path and mapping_source == "semantic_supernode_mapping_json"
+                else None
+            ),
+            "n_anchor_graph_nodes": int(n_graph_nodes),
+            "n_distinct_member_emails_represented": (
+                len(ssgt.member_emails_represented_by_graph_nodes(node_ids, gid_to_members))
+                if gid_to_members
+                else int(n_graph_nodes)
+            ),
+        },
         "per_ground_truth_outputs": per_gt_outputs,
         "best_rows_by_gt": best_rows,
     }

@@ -1,14 +1,14 @@
 {
   "run": {
-    "graph_id": "local_default"
+    "graph_id": "main_gnn_semantic_sn_cos097"
   },
   "inputs": {
-    "graph_pt": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.pt",
-    "meta_json": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.meta.json",
+    "graph_pt": "core/graph/output/main_gnn_semantic_sn_cos097_hetero.pt",
+    "meta_json": "core/graph/output/main_gnn_semantic_sn_cos097_hetero.meta.json",
     "to_undirected": true,
-    "embeddings_json": "core/utils/embeddings/output/embeddings.json",
+    "embeddings_json": "core/graph/output/semantic_supernode_embeddings_overlay/embeddings.json",
     "embedding_source": "cache_or_compute",
-    "prefer_translated_for_compute": true,
+    "prefer_translated_for_compute": false,
     "tfidf_max_features": 4096,
     "popular_domains_path": "core/feature_set_extraction/caches/popular_domains.txt",
     "web_hosting_domains_path": "core/feature_set_extraction/caches/web_hosting_domains.txt"

@@ -1,4 +1,7 @@
 {
+  "dedup_task_identity_multi_gt": [
+    "data/groundtruth/ground_truth.dedup_task_identity.json"
+  ],
   "dedup_strict_multi_gt": [
     "data/groundtruth/ground_truth.dedup_strict.json"
   ],

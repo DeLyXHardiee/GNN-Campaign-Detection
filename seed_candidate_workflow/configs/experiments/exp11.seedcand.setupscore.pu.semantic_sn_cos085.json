@@ -1,7 +1,7 @@
 {
   "experiment": {
-    "scoring_run_id": "main_gnn_pu_1_no_ts_dedup_strict",
-    "graph_id": "main_gnn_pu_1_no_ts_dedup_strict",
+    "scoring_run_id": "main_gnn_semantic_sn_cos085",
+    "graph_id": "main_gnn_semantic_sn_cos085",
     "mode": "setup_only",
     "graph_family": "seed_candidate"
   },
@@ -22,11 +22,11 @@
       "on_present": "reuse"
     },
     "paths": {
-      "anchor_config": "seed_candidate_workflow/configs/anchor_graph.default.json",
-      "seed_config": "seed_candidate_workflow/configs/anchor_seed.default.json",
-      "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.default.json",
+      "anchor_config": "seed_candidate_workflow/configs/anchor_graph.main_gnn_semantic_sn_cos085.json",
+      "seed_config": "seed_candidate_workflow/configs/anchor_seed.semantic_sn_cos085.json",
+      "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.semantic_sn_cos085.json",
       "pair_training": {
-        "graph_meta_json": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.meta.json"
+        "graph_meta_json": "core/graph/output/main_gnn_semantic_sn_cos085_hetero.meta.json"
       }
     }
   },
@@ -34,7 +34,7 @@
     "score_targets": [
       "seed_candidate"
     ],
-    "gt_set": "dedup_strict_multi_gt",
+    "gt_set": "default_multi_gt",
     "gt_sets_path": "seed_candidate_workflow/configs/experiments/gt_sets.json"
   },
   "scoring": {
@@ -43,10 +43,10 @@
       "handcrafted": {},
       "pu": {
         "pu_run": {
-          "run_dir": "output/runs/main_gnn_pu_1_no_ts_dedup_strict",
-          "graph_pt": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_hetero.pt",
+          "run_dir": "output/runs/main_gnn_semantic_sn_cos085",
+          "graph_pt": "core/graph/output/main_gnn_semantic_sn_cos085_hetero.pt",
           "checkpoint": "best_model.pt",
-          "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_strict/pair_training/main_gnn_pu_1_no_ts_dedup_strict/pair_training_dataset.csv",
+          "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_semantic_sn_cos085/pair_training/main_gnn_semantic_sn_cos085/pair_training_dataset.csv",
           "device": "cpu",
           "no_to_undirected": false
         },
@@ -58,21 +58,21 @@
   },
   "community": {
     "base_config": "seed_candidate_workflow/configs/anchor_community.default.json",
+    "semantic_supernode_mapping_json": "core/graph/output/semantic_supernode_mapping.json",
     "sweep": {
       "methods": [
         "louvain",
         "leiden"
       ],
       "weight_thresholds": [
-        0.0,
-        0.1,
-        0.2,
-        0.3
+        0.0
       ],
       "resolutions": [
         1.0,
         1.5,
-        2.0
+        2.0,
+        3.0,
+        4.0
       ],
       "use_edge_weights_in_partitioning": true,
       "sort_by": "v-measure"

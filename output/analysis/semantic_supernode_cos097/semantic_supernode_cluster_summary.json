@@ -1,0 +1,105 @@
+{
+  "purpose": "Semantic **redundancy-compression** groups (super-email candidates), not campaign clustering and not the final downstream graph.",
+  "evaluation_framing": "Clusters are evaluated as semantic redundancy-compression groups for a future super-email node rebuild \u2014 not as campaign recovery. Success is primarily high homogeneity / purity, meaningful redundant-pair removal, sane cluster sizes, and tight intra-cluster cosine; completeness is secondary.",
+  "success_criteria_notes": [
+    "Very high homogeneity / dominant-label purity",
+    "Meaningful reduction in email-node count and redundant within-cluster pairs",
+    "Cluster sizes not absurdly large; non-singleton clusters materially present",
+    "Tight intra-cluster cosine (watch min for chaining)",
+    "Completeness is secondary at this stage"
+  ],
+  "config": {
+    "embeddings_path": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\core\\utils\\embeddings\\output\\embeddings.json",
+    "embedding_dim": 2048,
+    "cosine_threshold": 0.97,
+    "mutual_top_k": null,
+    "max_component_size": null,
+    "clustering_mode": "connected_components_on_threshold_graph",
+    "n_jobs": -1,
+    "misp_json_path": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\misp\\incidents-lake-misp.json",
+    "misp_translated_json_path": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\misp\\incidents-lake-misp-text-en.by_external_id.json",
+    "use_misp_translated_inspection": false,
+    "inspection_text_wrap_width": 100,
+    "export_misp_inspection": true
+  },
+  "similarity_graph": {
+    "n_undirected_edges_before_optional_component_cap": 97639,
+    "n_undirected_edges_after_optional_component_cap": 97639
+  },
+  "counts": {
+    "n_email_embeddings": 7333,
+    "n_semantic_supernodes": 3432,
+    "n_singleton_clusters": 2644,
+    "n_non_singleton_clusters": 788,
+    "singleton_rate": 0.7703962703962703,
+    "n_emails_in_non_singleton_clusters": 4689,
+    "fraction_emails_in_clusters_size_ge_2": 0.6394381562798309
+  },
+  "redundancy_reduction": {
+    "n_original_email_nodes": 7333,
+    "n_supernodes": 3432,
+    "reduction_ratio_emails_over_supernodes": 2.136655011655012,
+    "redundant_pairs_removed_estimate_sum_n_choose_2": 106753
+  },
+  "cluster_size_distribution": {
+    "max": 280,
+    "p50": 1.0,
+    "p90": 3.0,
+    "p95": 6.0,
+    "histogram": {
+      "1": 2644,
+      "2": 345,
+      "3": 132,
+      "4": 82,
+      "5": 38,
+      "6-10": 101,
+      "11-20": 62,
+      "21-50": 23,
+      "51+": 5
+    }
+  },
+  "artifacts": {
+    "cluster_membership_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\semantic_supernode_cos097\\semantic_supernode_clusters.csv",
+    "inspection_cluster_json": [
+      "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\semantic_supernode_cos097\\semantic_supernode_inspect_rank1_largest_cluster.json",
+      "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\semantic_supernode_cos097\\semantic_supernode_inspect_rank2_largest_cluster.json",
+      "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\semantic_supernode_cos097\\semantic_supernode_inspect_rank3_largest_cluster.json"
+    ],
+    "summary_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\semantic_supernode_cos097\\semantic_supernode_cluster_summary.json"
+  },
+  "ground_truth_evaluations": [
+    {
+      "ground_truth_file": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+      "n_emails_with_gt": 1472,
+      "n_emails_embedding_only": 5861,
+      "homogeneity": 1.0,
+      "completeness": 0.6293144239200644,
+      "v_measure": 0.7724898456443533,
+      "interpretation": "Purity-first redundancy clustering: target **high homogeneity**; lower completeness is acceptable if clusters stay tight and pure.",
+      "dominant_gt_purity": {
+        "mean": 1.0,
+        "median": 1.0,
+        "fraction_clusters_purity_ge_0.95": 1.0,
+        "fraction_clusters_purity_ge_0.99": 1.0,
+        "n_semantic_clusters_with_any_gt_member": 483
+      },
+      "gt_campaign_fragmentation": {
+        "n_gt_campaigns_with_any_embedded_member": 33,
+        "mean_clusters_per_gt_campaign": 14.636363636363637,
+        "median_clusters_per_gt_campaign": 4.0,
+        "p90_clusters_per_gt_campaign": 42.80000000000001,
+        "fraction_gt_campaigns_in_single_semantic_cluster": 0.18181818181818182,
+        "fraction_gt_campaigns_spanning_2_to_5_clusters": 0.42424242424242425,
+        "fraction_gt_campaigns_spanning_gt_5_clusters": 0.3939393939393939
+      },
+      "intra_cluster_cosine_similarity": {
+        "mean_of_cluster_means": 0.9922969586153011,
+        "median_of_cluster_means": 0.9975391811479477,
+        "mean_of_cluster_min_estimates": 0.9897168954325278,
+        "median_of_cluster_min_estimates": 0.9957286718974874,
+        "n_clusters_size_ge_2": 788,
+        "note_min_is_exact_for_n_le_200_else_sampled": true
+      }
+    }
+  ]
+}

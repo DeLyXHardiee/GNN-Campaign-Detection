@@ -28,6 +28,15 @@ from .pair_graph_sampling import (
     sample_hetero_around_pair_endpoints,
 )
 from .pair_scorer import EmailPairMLPScorer, build_email_pair_mlp_scorer, count_scorer_parameters
+from .pair_semantic_cluster_sampling import (
+    annotate_pair_rows_with_semantic_clusters,
+    build_train_epoch_cluster_aware,
+    load_email_to_semantic_cluster,
+    resolve_mapping_csv,
+    split_pairs_by_disjoint_semantic_clusters,
+    summarize_train_cluster_inventory,
+    write_cluster_sampling_artifact,
+)
 from .pu_loss import (
     PAIR_LOSS_NNPU_WITH_RELIABLE_NEGATIVES,
     PAIR_LOSS_PLACEHOLDER_BCE,
@@ -39,6 +48,15 @@ from .pu_loss import (
 
 # Legacy config string (used only when ``pair_loss_type`` is omitted / inferred).
 PLACEHOLDER_LOSS_BCE_POS_VS_UNLABELED_AS_NEG = "bce_pos_vs_unlabeled_as_neg"
+
+
+def reliable_negative_supervision_active(training_cfg: dict[str, Any], pair_loss_type: str) -> bool:
+    """True when reliable-negative pool, emphasis, or hybrid nnPU loss is enabled."""
+    pool = training_cfg.get("reliable_negative_pool") or {}
+    rne = training_cfg.get("reliable_negative_emphasis") or {}
+    if bool(pool.get("enabled")) or bool(rne.get("enabled")):
+        return True
+    return pair_loss_type == PAIR_LOSS_NNPU_WITH_RELIABLE_NEGATIVES
 
 PAIR_FEATURE_BOOL_COLS = [
     "from_seed",
@@ -1203,11 +1221,46 @@ def run_pair_training(
     rne_shuffle_each_epoch = bool(rne_cfg.get("shuffle_each_epoch", True))
     reliable_negative_loss_weight = float(training_cfg.get("reliable_negative_loss_weight", 1.0))
 
+    sc_cfg = dict(training_cfg.get("semantic_cluster_sampling") or {})
+    sc_enabled = bool(sc_cfg.get("enabled", False))
+    sc_email_col = str(sc_cfg.get("email_column", "email_id"))
+    sc_cluster_col = str(sc_cfg.get("cluster_column", "cluster_id"))
+    split_hygiene_cfg = dict(training_cfg.get("cluster_split_hygiene") or {})
+    split_hygiene_enabled = bool(split_hygiene_cfg.get("enabled", False)) and sc_enabled
+    group_source = str(split_hygiene_cfg.get("group_source", "semantic_cluster"))
+    cross_split_policy = split_hygiene_cfg.get("cross_split_pair_policy")
+    cluster_split_assignment_strategy = split_hygiene_cfg.get("cluster_split_assignment_strategy")
+    redundancy_cfg = dict(training_cfg.get("cluster_redundancy_control") or {})
+    redundancy_enabled = bool(redundancy_cfg.get("enabled", False)) and sc_enabled
+    balance_cfg = dict(training_cfg.get("train_balance") or {})
+    balance_enabled = bool(balance_cfg.get("enabled", False)) and sc_enabled
+    cluster_epoch_sampling = redundancy_enabled or balance_enabled
+
+    email_to_cluster: dict[str, int] = {}
+    if sc_enabled:
+        raw_map = sc_cfg.get("mapping_csv")
+        if not raw_map:
+            raise ValueError(
+                "semantic_cluster_sampling.enabled requires semantic_cluster_sampling.mapping_csv"
+            )
+        map_path = resolve_mapping_csv(str(raw_map), project_root=root)
+        if not map_path.is_file():
+            raise FileNotFoundError(f"semantic_cluster mapping_csv not found: {map_path}")
+        email_to_cluster = load_email_to_semantic_cluster(
+            map_path,
+            email_column=sc_email_col,
+            cluster_column=sc_cluster_col,
+        )
+        if not email_to_cluster:
+            raise ValueError(f"No cluster memberships loaded from {map_path}")
+
     shuffle_train_epoch = (
         (hpe_enabled and hpe_shuffle_each_epoch)
         or (hue_enabled and hue_shuffle_each_epoch)
         or (epc_enabled and epc_shuffle_each_epoch)
         or (rne_enabled and rne_shuffle_each_epoch)
+        or (cluster_epoch_sampling and bool(redundancy_cfg.get("shuffle_each_epoch", True)))
+        or (cluster_epoch_sampling and bool(balance_cfg.get("shuffle_each_epoch", True)))
     )
 
     epochs = int(training_cfg["epochs"])
@@ -1227,9 +1280,38 @@ def run_pair_training(
     np.random.seed(TORCH_SEED)
 
     df, load_stats = load_pair_training_dataframe(csv_path)
-    train_df, val_df, test_df = split_pairs_train_val_test(
-        df, val_ratio=val_ratio, test_ratio=test_ratio, split_seed=split_seed
-    )
+    cluster_split_meta: dict[str, Any] = {}
+    if split_hygiene_enabled:
+        train_df, val_df, test_df, cluster_split_meta = split_pairs_by_disjoint_semantic_clusters(
+            df,
+            email_to_cluster,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            split_seed=split_seed,
+            cross_split_pair_policy=cross_split_policy,
+            cluster_split_assignment_strategy=cluster_split_assignment_strategy,
+            group_source=group_source,
+        )
+        pair_split_note = (
+            "Train/val/test partition whole semantic clusters (watertight: no cluster id shared "
+            "across split pair rows). Cross-split endpoint pairs are dropped when "
+            "group_source=semantic_cluster and cross_split_pair_policy=drop."
+        )
+    else:
+        train_df, val_df, test_df = split_pairs_train_val_test(
+            df, val_ratio=val_ratio, test_ratio=test_ratio, split_seed=split_seed
+        )
+        pair_split_note = (
+            "Train/val/test use one shuffled index permutation over all rows (positives, unlabeled, "
+            "reliable_negative together). Counts above show how many reliable negatives landed in each split."
+        )
+        if sc_enabled:
+            train_df = annotate_pair_rows_with_semantic_clusters(train_df, email_to_cluster)
+            val_df = annotate_pair_rows_with_semantic_clusters(val_df, email_to_cluster)
+            test_df = annotate_pair_rows_with_semantic_clusters(test_df, email_to_cluster)
+
+    rn_supervision_active = reliable_negative_supervision_active(training_cfg, pair_loss_type)
+
     hard_pos_mask_train = _hard_positive_mask(
         train_df,
         cross_seed_component_only=hpe_cross_seed_component_only,
@@ -1321,10 +1403,26 @@ def run_pair_training(
             "test_positive": int(test_df["is_positive"].sum()),
             "test_unlabeled": int(test_df["is_unlabeled"].sum()),
             "test_reliable_negative": int(test_df["is_reliable_negative"].sum()),
-            "split_note": (
-                "Train/val/test use one shuffled index permutation over all rows (positives, unlabeled, "
-                "reliable_negative together). Counts above show how many reliable negatives landed in each split."
+            "split_note": pair_split_note,
+            "cluster_split_hygiene": cluster_split_meta if split_hygiene_enabled else None,
+            "reliable_negative_supervision_active": rn_supervision_active,
+            "reliable_negative_note": (
+                "When supervision is off, reliable_negative rows stay in the loaded CSV/splits "
+                "but are not supervised as negatives (nnPU uses positive + unlabeled only). "
+                "Per-epoch cluster sampling does not append reliable_negative rows unless "
+                "reliable_negative_emphasis or hybrid nnPU+RN loss is enabled."
             ),
+        },
+        "semantic_cluster_sampling": {
+            "enabled": sc_enabled,
+            "mapping_csv": str(sc_cfg.get("mapping_csv") or ""),
+            "n_emails_in_mapping": len(email_to_cluster),
+            "cluster_split_hygiene_enabled": split_hygiene_enabled,
+            "cluster_redundancy_control_enabled": redundancy_enabled,
+            "train_balance_enabled": balance_enabled,
+            "train_cluster_inventory": summarize_train_cluster_inventory(train_df) if sc_enabled else {},
+            "cluster_redundancy_control": redundancy_cfg if redundancy_enabled else None,
+            "train_balance": balance_cfg if balance_enabled else None,
         },
         "batching": {
             "pair_batch_size": pair_batch_size,
@@ -1676,12 +1774,28 @@ def run_pair_training(
             f"[pair_supervision] reliable_negative_emphasis enabled | train_RN={int(reliable_neg_mask_train.sum())} "
             f"| oversample_factor={rne_oversample_factor:.3f} | shuffle_each_epoch={rne_shuffle_each_epoch}"
         )
+    if sc_enabled:
+        print(
+            f"[pair_supervision] semantic_cluster_sampling | mapping_emails={len(email_to_cluster)} "
+            f"| split_hygiene={split_hygiene_enabled} | redundancy_cap={redundancy_enabled} "
+            f"| train_balance={balance_enabled} "
+            f"| max_rows_per_cluster_pair={redundancy_cfg.get('max_rows_per_cluster_pair_per_epoch')}"
+        )
 
     if pair_tqdm and n_train_batches is not None:
         tqdm_train_msg = f"train={n_train_batches}"
-        if hpe_enabled or hue_enabled or epc_enabled or rne_enabled:
+        if hpe_enabled or hue_enabled or epc_enabled or rne_enabled or cluster_epoch_sampling:
+            probe_base = train_df
+            if cluster_epoch_sampling:
+                probe_base, _ = build_train_epoch_cluster_aware(
+                    train_df,
+                    redundancy_cfg=redundancy_cfg,
+                    balance_cfg=balance_cfg,
+                    epoch_seed=split_seed + 1,
+                    include_reliable_negative_in_epoch=rn_supervision_active,
+                )
             tdf_probe, _ = _build_train_df_epoch_emphasis(
-                train_df,
+                probe_base,
                 easy_pos_mask=easy_pos_mask_train,
                 epc_enabled=epc_enabled,
                 epc_downsample_fraction=epc_downsample_fraction,
@@ -1704,9 +1818,21 @@ def run_pair_training(
             f"{tqdm_train_msg} val={n_val_batches} test={n_test_batches}"
         )
 
+    last_cluster_epoch_diag: dict[str, Any] = {}
     for epoch in range(1, epochs + 1):
+        train_df_for_epoch = train_df
+        cluster_epoch_diag: dict[str, Any] = {}
+        if cluster_epoch_sampling:
+            train_df_for_epoch, cluster_epoch_diag = build_train_epoch_cluster_aware(
+                train_df,
+                redundancy_cfg=redundancy_cfg,
+                balance_cfg=balance_cfg,
+                epoch_seed=split_seed + epoch,
+                include_reliable_negative_in_epoch=rn_supervision_active,
+            )
+            last_cluster_epoch_diag = cluster_epoch_diag
         train_df_epoch, emphasis_epoch_diag = _build_train_df_epoch_emphasis(
-            train_df,
+            train_df_for_epoch,
             easy_pos_mask=easy_pos_mask_train,
             epc_enabled=epc_enabled,
             epc_downsample_fraction=epc_downsample_fraction,
@@ -1722,6 +1848,8 @@ def run_pair_training(
             shuffle_each_epoch=shuffle_train_epoch,
             epoch_seed=split_seed + epoch,
         )
+        if cluster_epoch_diag:
+            emphasis_epoch_diag = {**cluster_epoch_diag, "row_emphasis": emphasis_epoch_diag}
         n_train_batches_epoch = (
             count_pair_batches(train_df_epoch, pair_batch_size, max_unique) if pair_tqdm else None
         )
@@ -1952,6 +2080,13 @@ def run_pair_training(
         "test_sampling_diag": te_agg,
         "train_val_forward_ok": True,
     }
+    if sc_enabled:
+        cluster_sampling_artifact = {
+            "setup": setup_summary.get("semantic_cluster_sampling"),
+            "last_train_epoch_cluster_sampling": last_cluster_epoch_diag,
+        }
+        cluster_diag_path = write_cluster_sampling_artifact(run_dir, cluster_sampling_artifact)
+        setup_summary["semantic_cluster_sampling"]["diagnostic_json"] = cluster_diag_path
     (run_dir / "pair_training_setup_summary.json").write_text(
         json.dumps(setup_summary, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",

@@ -514,24 +514,39 @@ def run_graph_creation(
     if settings.hetero_graph_stem:
         hetero_out_name = f"{settings.hetero_graph_stem}_hetero.pt"
 
-    email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
-    graph, graph_path, meta_path = build_graph(
-        misp_json_path=path,
-        out_dir=settings.output_dir,
-        out_name=hetero_out_name,
-        exclude_nodes=settings.exclude_node_types,
-        degree_node_filter=settings.degree_node_filter,
-        embeddings_output_dir=settings.embeddings_output_dir,
-        max_misp_events=limit_eff,
-        email_feature_projection=email_proj,
-        zero_email_timestamps=settings.zero_email_timestamps,
-    )
+    sn = PIPELINE_CONFIG.get("semantic_supernode") or {}
+    if bool(sn.get("enabled")):
+        from graph.semantic_supernode_collapse import build_graph_from_semantic_supernode_pipeline_config
+
+        graph, graph_path, meta_path = build_graph_from_semantic_supernode_pipeline_config(
+            dict(PIPELINE_CONFIG),
+            graph_settings=settings,
+            misp_json_path=path,
+            max_misp_events=limit_eff,
+        )
+    else:
+        email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
+        graph, graph_path, meta_path = build_graph(
+            misp_json_path=path,
+            out_dir=settings.output_dir,
+            out_name=hetero_out_name,
+            exclude_nodes=settings.exclude_node_types,
+            degree_node_filter=settings.degree_node_filter,
+            embeddings_output_dir=settings.embeddings_output_dir,
+            max_misp_events=limit_eff,
+            email_feature_projection=email_proj,
+            zero_email_timestamps=settings.zero_email_timestamps,
+        )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
     print(f"Saved metadata to: {meta_path}")
 
     use_memgraph = settings.memgraph.enabled if to_memgraph is None else to_memgraph
-    if use_memgraph:
+    if use_memgraph and bool(sn.get("enabled")):
+        print(
+            "Note: semantic_supernode.enabled — skipping Memgraph load (Memgraph builder expects per-email MISP events)."
+        )
+    elif use_memgraph:
         mg = settings.memgraph
         summary = build_memgraph(
             misp_json_path=path,

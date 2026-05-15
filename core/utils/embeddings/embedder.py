@@ -28,6 +28,17 @@ def _email_key(em: Dict[str, Any], index: int) -> str:
     return str(em.get("email_index", index))
 
 
+def _cache_entry_has_vectors(entry: Any) -> bool:
+    """True if cached subject and/or body lists are non-empty (usable for graph / clustering)."""
+    if not isinstance(entry, dict):
+        return False
+    sj = entry.get("subj")
+    bd = entry.get("body")
+    sj_ok = isinstance(sj, list) and len(sj) > 0
+    bd_ok = isinstance(bd, list) and len(bd) > 0
+    return sj_ok or bd_ok
+
+
 def _load_cache(output_dir: Path) -> Tuple[Dict[str, Dict[str, List[float]]], int, int]:
     """Load cache from output_dir/embeddings.json. Returns (by_key, subj_dim, body_dim) or (empty dict, 0, 0)."""
     path = output_dir / _CACHE_FILENAME
@@ -127,7 +138,7 @@ def get_embeddings(
     for i in tqdm(range(len(emails)), total=len(emails), desc="Checking embedding cache"):
         k = keys[i]
         entry = cache.get(k) if isinstance(cache.get(k), dict) else None
-        if entry and (entry.get("subj") is not None or entry.get("body") is not None):
+        if entry and _cache_entry_has_vectors(entry):
             subj_vecs[i] = list(entry.get("subj") or [])
             body_vecs[i] = list(entry.get("body") or [])
         else:
@@ -139,6 +150,17 @@ def get_embeddings(
     if missing_indices:
         missing_emails = [emails[j] for j in missing_indices]
         new_subj, new_body, new_subj_dim, new_body_dim = _compute_batch(missing_emails)
+        any_missing_text = any(
+            str(emails[j].get("subject") or "").strip() or str(emails[j].get("body") or "").strip()
+            for j in missing_indices
+        )
+        if any_missing_text and new_subj_dim == 0 and new_body_dim == 0:
+            raise RuntimeError(
+                "SBERT embedding computation returned no vectors (model import/encode failed or "
+                "sentence-transformers not installed) while some emails have non-empty subject/body. "
+                "Fix the environment (e.g. `pip install sentence-transformers`), then retry. "
+                "The embeddings cache was not updated to avoid overwriting a good cache with empty rows."
+            )
         if cache_subj_dim or cache_body_dim:
             if (new_subj_dim and new_subj_dim != cache_subj_dim) or (new_body_dim and new_body_dim != cache_body_dim):
                 raise ValueError(

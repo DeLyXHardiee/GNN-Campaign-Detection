@@ -34,6 +34,37 @@ def _resolve_path(project_root: Path, raw: str | Path) -> Path:
     return p
 
 
+def _default_graph_meta_json_from_pipeline(project_root: Path) -> Path | None:
+    """
+    When experiment config omits setup.paths.pair_training.graph_meta_json,
+    use the hetero .meta.json alongside pipeline_config graph_pt_path_override /
+    default_hetero_graph_pt_path so pair training email indices stay aligned with the GNN graph.
+    """
+    try:
+        import sys
+
+        core_root = project_root / "core"
+        if str(core_root) not in sys.path:
+            sys.path.insert(0, str(core_root))
+        from config.pipeline_config import default_hetero_graph_pt_path
+
+        pt = Path(default_hetero_graph_pt_path(project_root=project_root))
+        meta = pt.with_suffix(".meta.json")
+        return meta.resolve()
+    except Exception:
+        return None
+
+
+def _reliable_negative_pool_from_pipeline(project_root: Path) -> dict[str, Any] | None:
+    """Load ``pair_training.reliable_negative_pool`` from repo-root ``pipeline_config.json``."""
+    p = (project_root / "pipeline_config.json").resolve()
+    if not p.is_file():
+        return None
+    cfg = _read_json(p)
+    pool = (cfg.get("pair_training") or {}).get("reliable_negative_pool")
+    return dict(pool) if isinstance(pool, dict) else None
+
+
 def _resolve_latest_stage_dir(stage_root: Path, stage_prefix: str) -> Path:
     if not stage_root.is_dir():
         raise FileNotFoundError(f"Stage root not found: {stage_root}")
@@ -651,9 +682,13 @@ def run_graph_setup(
             component_actions["pair_training"] = "reused_existing"
         else:
             p_graph_meta = pair_training_cfg.get("graph_meta_json")
-            graph_meta_path = _resolve_path(project_root, p_graph_meta) if p_graph_meta else None
+            if str(p_graph_meta or "").strip():
+                graph_meta_path = _resolve_path(project_root, p_graph_meta)
+            else:
+                graph_meta_path = _default_graph_meta_json_from_pipeline(project_root)
             pt_out_dir = bundle["pair_training_root"] / graph_id
             pt_out_dir.mkdir(parents=True, exist_ok=True)
+            rn_pool = _reliable_negative_pool_from_pipeline(project_root)
             outputs["pair_training"] = build_pair_training_dataset(
                 seed_edges_all_csv=p_seed_all,
                 candidate_union_csv=p_candidate_union,
@@ -661,6 +696,7 @@ def run_graph_setup(
                 graph_meta_json=graph_meta_path,
                 graph_id=graph_id,
                 project_root=project_root,
+                reliable_negative_pool=rn_pool,
             )
             component_actions["pair_training"] = "built"
     else:

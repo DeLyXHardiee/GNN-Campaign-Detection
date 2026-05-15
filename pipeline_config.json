@@ -2,7 +2,7 @@
   "preprocessing": {
     "incidents_csv_path": "data/incidents/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "data/misp/incidents-lake-misp.dedup_strict.json",
+    "misp_json_path": "data/misp/incidents-lake-misp.json",
     "limit": 0,
     "category_allowlist": [
       "phishing",
@@ -21,17 +21,17 @@
     ]
   },
   "datasets": {
-    "misp_json_path": "data/misp/incidents-lake-misp.dedup_strict.json",
-    "ground_truth_json": "data/groundtruth/ground_truth.dedup_strict.json",
-    "featureset_base_name": "incidents-lake-misp-dedup-strict"
+    "misp_json_path": "data/misp/incidents-lake-misp.dedup_task_identity.json",
+    "ground_truth_json": "data/groundtruth/ground_truth.dedup_task_identity.json",
+    "featureset_base_name": "incidents-lake-misp-dedup-task-identity"
   },
   "graph": {
-    "misp_json_path": "data/misp/incidents-lake-misp.dedup_strict.json",
-    "hetero_graph_stem": "main_gnn_pu_1_no_ts_dedup_strict_uplift",
+    "misp_json_path": "data/misp/incidents-lake-misp.dedup_task_identity.json",
+    "hetero_graph_stem": "main_gnn_pu_1_no_ts_dedup_task_identity",
     "zero_email_timestamps": true,
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "graph_pt_path_override": "core/graph/output/main_gnn_pu_1_no_ts_dedup_strict_uplift_hetero.pt",
+    "graph_pt_path_override": "core/graph/output/main_gnn_pu_1_no_ts_dedup_task_identity_hetero.pt",
     "exclude_node_types": [],
     "degree_node_filter": {
       "enabled": false,
@@ -53,6 +53,14 @@
       "clear": true,
       "create_indexes": true
     }
+  },
+  "semantic_supernode": {
+    "enabled": false,
+    "clusters_csv": "output/analysis/semantic_supernode_cos097/semantic_supernode_clusters.csv",
+    "source_embeddings_json": "core/utils/embeddings/output/embeddings.json",
+    "hetero_graph_stem": null,
+    "embeddings_overlay_parent_dir": null,
+    "l2_normalize_mean_bert": false
   },
   "featureset-creation": {
     "feature_sets": [
@@ -104,7 +112,7 @@
   },
   "device": "cpu",
   "to_undirected": true,
-  "run_id": "main_gnn_pu_1_no_ts_dedup_strict_uplift",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -121,7 +129,7 @@
     "training_objective": "pair_supervision",
     "torch_seed": 42,
     "primary_ntype": "email",
-    "hidden": 144,
+    "hidden": 128,
     "out_dim": 128,
     "layers": 2,
     "dropout": 0.0,
@@ -134,7 +142,7 @@
     "test_ratio": 0.1,
     "epochs": 15,
     "lr": 0.0002,
-    "wd": 2e-05,
+    "wd": 0.00002,
     "early_stopping_patience": 7,
     "lr_reduce_patience": 4,
     "lr_reduce_factor": 0.5,
@@ -145,7 +153,7 @@
     "supervised_edge_types": []
   },
   "pair_training": {
-    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_strict_uplift/pair_training/main_gnn_pu_1_no_ts_dedup_strict_uplift/pair_training_dataset.csv",
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity/pair_training_dataset.csv",
     "pair_batch_size": 64,
     "pair_fanout": [
       25,
@@ -160,15 +168,14 @@
     "pair_skip_graph_batch_if_any_endpoint_missing": false,
     "pair_log_mapping_misses": true,
     "pair_tqdm_batches": true,
-    "pair_loss_type": "nnpu_with_reliable_negatives",
-    "reliable_negative_loss_weight": 0.1,
+    "pair_loss_type": "nnpu",
     "pu_class_prior": 0.1,
     "pu_non_negative": true,
     "pair_eval_threshold": 0.5,
     "pair_placeholder_loss_mode": "bce_pos_vs_unlabeled_as_neg",
     "pair_scorer_type": "email_pair_mlp",
     "pair_scorer_use_explicit_features": true,
-    "pair_scorer_hidden_dim": 320,
+    "pair_scorer_hidden_dim": 256,
     "pair_scorer_dropout": 0.2,
     "hard_positive_emphasis": {
       "enabled": false,
@@ -193,11 +200,11 @@
     },
     "easy_positive_capping": {
       "enabled": false,
-      "downsample_fraction": 0.8,
+      "downsample_fraction": 0.35,
       "same_seed_component_only": true,
-      "min_semantic_cosine": 0.95,
+      "min_semantic_cosine": 0.97,
       "min_source_count": 2,
-      "or_rule_across_conditions": false,
+      "or_rule_across_conditions": true,
       "shuffle_each_epoch": true
     },
     "reliable_negative_pool": {
@@ -217,6 +224,31 @@
     "reliable_negative_emphasis": {
       "enabled": false,
       "oversample_factor": 1.5,
+      "shuffle_each_epoch": true
+    },
+    "semantic_cluster_sampling": {
+      "enabled": false,
+      "mapping_csv": "output/analysis/semantic_supernode_cos097/semantic_supernode_clusters.csv",
+      "email_column": "email_id",
+      "cluster_column": "cluster_id"
+    },
+    "cluster_split_hygiene": {
+      "enabled": false,
+      "group_source": "semantic_cluster",
+      "cross_split_pair_policy": "drop",
+      "cluster_split_assignment_strategy": "greedy_label_aware_balanced"
+    },
+    "cluster_redundancy_control": {
+      "enabled": false,
+      "max_rows_per_cluster_pair_per_epoch": 3,
+      "max_rows_per_single_cluster_per_epoch": null,
+      "sampling_mode": "cap_then_balance",
+      "shuffle_each_epoch": true
+    },
+    "train_balance": {
+      "enabled": false,
+      "mode": "target_pos_to_unl_ratio",
+      "target_pos_to_unl_ratio": 3.0,
       "shuffle_each_epoch": true
     }
   },
@@ -263,7 +295,7 @@
     },
     "config": {
       "dbscan": {
-        "enabled": true,
+        "enabled": false,
         "epsilon_values": [
           0.01,
           0.05,
@@ -299,7 +331,7 @@
         "n_samples": 500
       },
       "hdbscan": {
-        "enabled": true,
+        "enabled": false,
         "min_cluster_size_values": [
           2
         ],

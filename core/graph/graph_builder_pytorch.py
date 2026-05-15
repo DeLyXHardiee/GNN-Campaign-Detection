@@ -2,7 +2,8 @@
 Graph builder for PyTorch Geometric Heterogeneous graphs from MISP JSON.
 
 Capabilities:
-- Accepts input either as an in-memory list of MISP events or from a JSON file path.
+- Accepts input either as an in-memory list of MISP events, from a JSON file path,
+  or as ``parsed_emails`` (normalized email dicts, e.g. semantic supernode collapse).
 - Builds a HeteroData graph with email nodes as central hubs connected to component nodes.
 - Node types: 'email', 'sender', 'receiver', 'url', 'domain', 'stem', 'email_domain', 'attachment'.
 - Edges:
@@ -29,14 +30,14 @@ import json
 import os
 import sys
 from collections.abc import Sequence
-from typing import Dict, List, Optional, Tuple, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Tuple, Any, TYPE_CHECKING
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProjectionSettings
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
-from .assembler import assemble_misp_graph_ir
+from .assembler import assemble_misp_graph_ir, assemble_misp_graph_ir_from_parsed_emails
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
 from .normalizer import normalize_graph
 from .feature_projection import (
@@ -222,8 +223,9 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
 
 
 def build_hetero_graph_from_misp(
-    misp_events: List[dict],
+    misp_events: Optional[List[dict]] = None,
     *,
+    parsed_emails: Optional[List[dict]] = None,
     schema: Optional[GraphSchema] = None,
     exclude_nodes: Optional[Sequence[NodeType | str]] = None,
     degree_node_filter: Optional[DegreeNodeFilterSettings] = None,
@@ -257,12 +259,22 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
-    ir = assemble_misp_graph_ir(
-        misp_events,
-        schema=schema,
-        embeddings_output_dir=embeddings_output_dir,
-        zero_email_timestamps=zero_email_timestamps,
-    )
+    if parsed_emails is not None:
+        ir = assemble_misp_graph_ir_from_parsed_emails(
+            parsed_emails,
+            schema=schema,
+            embeddings_output_dir=embeddings_output_dir,
+            zero_email_timestamps=zero_email_timestamps,
+        )
+    else:
+        if not misp_events:
+            raise ValueError("build_hetero_graph_from_misp: provide misp_events or parsed_emails")
+        ir = assemble_misp_graph_ir(
+            misp_events,
+            schema=schema,
+            embeddings_output_dir=embeddings_output_dir,
+            zero_email_timestamps=zero_email_timestamps,
+        )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
     if degree_node_filter and degree_node_filter.enabled and degree_node_filter.strength > 0:
@@ -317,6 +329,7 @@ def build_graph(
     *,
     misp_events: Optional[List[dict]] = None,
     misp_json_path: Optional[str] = None,
+    parsed_emails: Optional[List[dict]] = None,
     out_dir: str = "results",
     out_name: Optional[str] = None,
     schema: Optional[GraphSchema] = None,
@@ -327,34 +340,49 @@ def build_graph(
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
     zero_email_timestamps: bool = False,
 ) -> Tuple[Any, str, str]:
-   
-    if misp_events is None and misp_json_path is None:
-        raise ValueError("Provide either misp_events (in-memory) or misp_json_path (file path).")
+    if parsed_emails is not None:
+        graph, metadata = build_hetero_graph_from_misp(
+            None,
+            parsed_emails=parsed_emails,
+            schema=schema,
+            exclude_nodes=exclude_nodes,
+            degree_node_filter=degree_node_filter,
+            embeddings_output_dir=embeddings_output_dir,
+            email_feature_projection=email_feature_projection,
+            zero_email_timestamps=zero_email_timestamps,
+        )
+        if out_name is None:
+            out_name = "semantic_supernode_hetero.pt"
+    else:
+        if misp_events is None and misp_json_path is None:
+            raise ValueError(
+                "Provide misp_events / misp_json_path, or parsed_emails for semantic supernode build."
+            )
 
-    if misp_events is None:
-        if misp_json_path is None:
-            raise ValueError("misp_json_path must be set when misp_events is not provided.")
-        misp_events = _load_misp_json(misp_json_path)
+        if misp_events is None:
+            if misp_json_path is None:
+                raise ValueError("misp_json_path must be set when misp_events is not provided.")
+            misp_events = _load_misp_json(misp_json_path)
 
-    if max_misp_events is not None and max_misp_events > 0:
-        misp_events = misp_events[:max_misp_events]
+        if max_misp_events is not None and max_misp_events > 0:
+            misp_events = misp_events[:max_misp_events]
 
-    graph, metadata = build_hetero_graph_from_misp(
-        misp_events,
-        schema=schema,
-        exclude_nodes=exclude_nodes,
-        degree_node_filter=degree_node_filter,
-        embeddings_output_dir=embeddings_output_dir,
-        email_feature_projection=email_feature_projection,
-        zero_email_timestamps=zero_email_timestamps,
-    )
+        graph, metadata = build_hetero_graph_from_misp(
+            misp_events,
+            schema=schema,
+            exclude_nodes=exclude_nodes,
+            degree_node_filter=degree_node_filter,
+            embeddings_output_dir=embeddings_output_dir,
+            email_feature_projection=email_feature_projection,
+            zero_email_timestamps=zero_email_timestamps,
+        )
 
-    if out_name is None:
-        if misp_json_path:
-            base = os.path.splitext(os.path.basename(misp_json_path))[0]
-            out_name = f"{base}_hetero.pt"
-        else:
-            out_name = "hetero_graph.pt"
+        if out_name is None:
+            if misp_json_path:
+                base = os.path.splitext(os.path.basename(misp_json_path))[0]
+                out_name = f"{base}_hetero.pt"
+            else:
+                out_name = "hetero_graph.pt"
 
     graph_path, meta_path = save_graph(graph, metadata, out_dir=out_dir, out_name=out_name)
     return graph, graph_path, meta_path
