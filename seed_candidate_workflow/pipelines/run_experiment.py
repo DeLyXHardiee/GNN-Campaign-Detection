@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +21,10 @@ except Exception:  # pragma: no cover - optional dependency
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+# ``config`` / ``steps`` live under ``core/`` but are imported as top-level ``config`` / ``steps``.
+_CORE_ROOT = PROJECT_ROOT / "core"
+if str(_CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CORE_ROOT))
 
 from seed_candidate_workflow.utils.graph_scorer_registry import SCORER_REGISTRY, apply_scorer, validate_scorer_target
 from seed_candidate_workflow.pipelines.pipeline_helpers import runner_config as rcfg
@@ -28,6 +34,13 @@ from seed_candidate_workflow.pipelines.pipeline_helpers import runner_targets as
 
 DEFAULT_EXPERIMENT_CONFIG_PATH = (
     PROJECT_ROOT / "seed_candidate_workflow" / "configs" / "experiments" / "exp03.seedcand.setupscore.pu.json"
+)
+RELAXED_SEED_CANDIDATE_PU_EXPERIMENT_CONFIG_PATH = (
+    PROJECT_ROOT
+    / "seed_candidate_workflow"
+    / "configs"
+    / "experiments"
+    / "exp04.seedcand.relaxed_sem85.pu.json"
 )
 DEFAULT_GT_SETS_PATH = (
     PROJECT_ROOT / "seed_candidate_workflow" / "configs" / "experiments" / "gt_sets.json"
@@ -54,6 +67,58 @@ def _read_json(path: Path) -> dict[str, Any]:
     return rcfg.read_json(path)
 
 
+def _deep_str_replace_in_obj(obj: Any, old: str, new: str) -> None:
+    """Replace every occurrence of ``old`` in nested dict/list string leaves (in-place)."""
+    if not old or old == new:
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, str) and old in v:
+                obj[k] = v.replace(old, new)
+            else:
+                _deep_str_replace_in_obj(v, old, new)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            if isinstance(v, str) and old in v:
+                obj[i] = v.replace(old, new)
+            else:
+                _deep_str_replace_in_obj(v, old, new)
+
+
+def append_experiment_artifact_suffix(cfg: dict[str, Any], suffix: str) -> dict[str, str]:
+    """
+    Route bundle + scoring outputs to fresh directories so repeated runs do not overwrite
+    ``graph_bundles/<graph_id>/`` or ``scoring_runs/<scoring_run_id>/`` (including community).
+
+    Rewrites ``experiment.graph_id`` / ``experiment.scoring_run_id`` to ``{id}__{suffix}`` and
+    substitutes the old ids inside any path strings in the JSON (via placeholders so one id
+    never partially corrupts the other).
+
+    Returns a small map of old/new ids for logging.
+    """
+    suf = str(suffix).strip()
+    if not suf:
+        raise ValueError("suffix must be non-empty")
+    exp = cfg.setdefault("experiment", {})
+    og = str(exp.get("graph_id") or "").strip()
+    osid = str(exp.get("scoring_run_id") or "").strip()
+    if not og:
+        raise ValueError("experiment.graph_id is required")
+    if not osid:
+        raise ValueError("experiment.scoring_run_id is required")
+    ng = f"{og}__{suf}"
+    nsid = f"{osid}__{suf}"
+    ph_graph = "__<<EXPERIMENT_GRAPH_ID_PLACEHOLDER>>__"
+    ph_run = "__<<EXPERIMENT_SCORING_RUN_ID_PLACEHOLDER>>__"
+    _deep_str_replace_in_obj(cfg, osid, ph_run)
+    _deep_str_replace_in_obj(cfg, og, ph_graph)
+    _deep_str_replace_in_obj(cfg, ph_run, nsid)
+    _deep_str_replace_in_obj(cfg, ph_graph, ng)
+    exp["graph_id"] = ng
+    exp["scoring_run_id"] = nsid
+    return {"old_graph_id": og, "new_graph_id": ng, "old_scoring_run_id": osid, "new_scoring_run_id": nsid}
+
+
 def _resolve_path(raw: str | Path) -> Path:
     p = Path(str(raw)).expanduser()
     if not p.is_absolute():
@@ -61,6 +126,81 @@ def _resolve_path(raw: str | Path) -> Path:
     else:
         p = p.resolve()
     return p
+
+
+def _resolve_community_archive_gnn_run_dir(
+    *,
+    artifacts_cfg: dict[str, Any],
+    score_mode: str,
+    score_params: dict[str, Any],
+) -> Path | None:
+    """
+    Parent directory of GNN training run (e.g. ``output/runs/<run_id>``).
+
+    Prefer ``artifacts.archive_community_gnn_run_dir`` when set; otherwise infer
+    ``pu_run.run_dir`` from PU scorer params.
+    """
+    raw = str(artifacts_cfg.get("archive_community_gnn_run_dir") or "").strip()
+    if raw:
+        p = _resolve_path(raw)
+        return p if p.is_dir() else None
+    if str(score_mode or "").strip() != "seed_candidate_pu_v1":
+        return None
+    pu_run = dict(score_params.get("pu_run") or {})
+    rd = str(pu_run.get("run_dir") or "").strip()
+    if not rd:
+        return None
+    p = Path(rd).expanduser()
+    if not p.is_absolute():
+        p = (PROJECT_ROOT / p).resolve()
+    else:
+        p = p.resolve()
+    return p if p.is_dir() else None
+
+
+def _maybe_archive_seed_candidate_community_to_gnn_run(
+    *,
+    run_root: Path,
+    score_targets: list[str],
+    artifacts_cfg: dict[str, Any],
+    score_mode: str,
+    score_params: dict[str, Any],
+    dry_run: bool,
+    mode: str,
+) -> dict[str, Any] | None:
+    """
+    Copy ``<scoring_run>/seed_candidate/community`` → ``<gnn_run_dir>/community``
+    so fixed scoring paths do not lose history when re-running under the same
+    ``scoring_run_id``.
+    """
+    if dry_run or mode == "setup_only":
+        return None
+    if not bool(artifacts_cfg.get("archive_seed_candidate_community", True)):
+        return None
+    if "seed_candidate" not in score_targets:
+        return None
+    dest_parent = _resolve_community_archive_gnn_run_dir(
+        artifacts_cfg=artifacts_cfg,
+        score_mode=score_mode,
+        score_params=score_params,
+    )
+    if dest_parent is None:
+        return {
+            "skipped": True,
+            "reason": "no_gnn_run_dir",
+            "hint": "Set scoring.params.pu.pu_run.run_dir (PU mode) or artifacts.archive_community_gnn_run_dir",
+        }
+    src = (run_root / "seed_candidate" / "community").resolve()
+    if not src.is_dir():
+        return {"skipped": True, "reason": "source_missing", "source": str(src)}
+    dest = (dest_parent / "community").resolve()
+    shutil.copytree(src, dest, dirs_exist_ok=True)
+    return {
+        "archived": True,
+        "source": str(src),
+        "destination": str(dest),
+        "gnn_run_dir": str(dest_parent),
+    }
 
 
 def _resolve_bundle_dir(*, graph_bundle_root: Path, graph_id: str) -> Path:
@@ -297,8 +437,10 @@ def _run_semantic_shard_multi_gt_community_sweep(
 def _validate_experiment_config(cfg: dict[str, Any]) -> None:
     exp = dict(cfg.get("experiment") or {})
     mode = str(exp.get("mode") or "").strip().lower()
-    if mode not in {"setup_only", "score_only", "setup_and_score"}:
-        raise ValueError("experiment.mode must be one of: setup_only, score_only, setup_and_score")
+    if mode not in {"setup_only", "score_only", "setup_and_score", "setup_gnn_score"}:
+        raise ValueError(
+            "experiment.mode must be one of: setup_only, score_only, setup_and_score, setup_gnn_score"
+        )
     sel = dict(cfg.get("selection") or {})
     targets = sel.get("score_targets") or ["seed_candidate"]
     if not isinstance(targets, list) or not targets:
@@ -347,7 +489,10 @@ def _execute_anchor_like_target(
     comm_cfg["run"]["graph_id"] = graph_id
     comm_cfg["run"]["anchor_output_root"] = str(bundle_dir / "anchor")
     comm_cfg["run"]["custom_edges_csv"] = str(target_edges_csv)
-    comm_cfg["run"]["community_bundle_out_dir"] = str((target_root / "community").resolve())
+    sub = str(score_params.get("community_results_subdir") or "").strip()
+    community_dir = (target_root / "community" / sub) if sub else (target_root / "community")
+    community_root_dir = (target_root / "community_root" / sub) if sub else (target_root / "community_root")
+    comm_cfg["run"]["community_bundle_out_dir"] = str(community_dir.resolve())
     comm_cfg["run"]["seed_output_root"] = str(bundle_dir / "seed")
     sdir = _seed_stage_dir(bundle_dir, graph_id)
     if sdir:
@@ -356,7 +501,7 @@ def _execute_anchor_like_target(
     comm_cfg["sweep"]["score_params"] = score_params
     comm_cfg["sweep"]["diagnostics"] = diagnostics_cfg
     comm_cfg["ground_truth"]["paths"] = gt_paths
-    comm_cfg["output"]["output_root"] = str((target_root / "community_root").resolve())
+    comm_cfg["output"]["output_root"] = str(community_root_dir.resolve())
     comm_cfg["output"]["stage_name"] = "community_sweep"
     comm_cfg["sweep"].update(dict(community_cfg.get("sweep") or {}))
     for key in (
@@ -403,8 +548,221 @@ def _resolve_gt_paths(*, gt_set_name: str, gt_sets_path: Path) -> list[str]:
     return [str(v) for v in vals]
 
 
+def _path_relative_to_project(path: Path, *, project_root: Path) -> str:
+    path = path.expanduser().resolve()
+    root = project_root.resolve()
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _apply_pipeline_pu_paths_to_experiment_cfg(
+    cfg: dict[str, Any],
+    *,
+    project_root: Path,
+    pipeline_cfg: dict[str, Any] | None = None,
+    run_dir: str | Path | None = None,
+    runs_parent: str | Path | None = None,
+    graph_path: str | Path | None = None,
+    pair_backend_slug: str = "gnn",
+    split_community_artifacts: bool = False,
+) -> None:
+    """
+    Fill ``scoring.params.pu.pu_run`` and ``artifacts.archive_community_gnn_run_dir`` from
+    ``pipeline_config.json`` (GNN run directory, hetero graph .pt, checkpoint name, device),
+    so experiment JSON does not need hand-edited paths.
+    """
+    from config.pipeline_config import load_pipeline_config
+
+    pip = dict(pipeline_cfg if pipeline_cfg is not None else load_pipeline_config(project_root=project_root))
+    from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+
+    g = load_gnn_cfg(pip, project_root=project_root)
+    run_dir_str, _checkpoint_str, graph_path_str, _ = resolve_gnn_paths(
+        cfg=pip,
+        run_dir=run_dir,
+        runs_parent=runs_parent,
+        checkpoint_path=None,
+        graph_path=graph_path,
+        ground_truth_path=None,
+        require_ground_truth=False,
+        project_root=project_root,
+    )
+    ckpt_name = str(g["training_cfg"].get("model_save_name") or "best_model.pt")
+    device = str(pip.get("device") or "cpu")
+    no_to_undirected = not bool(pip.get("to_undirected", True))
+    method_run_dir = (Path(run_dir_str) / str(pair_backend_slug).strip().lower()).resolve()
+
+    scoring = dict(cfg.get("scoring") or {})
+    params = dict(scoring.get("params") or {})
+    pu = dict(params.get("pu") or {})
+    pu_run = dict(pu.get("pu_run") or {})
+    pu_run.update(
+        {
+            "run_dir": _path_relative_to_project(method_run_dir, project_root=project_root),
+            "graph_pt": _path_relative_to_project(Path(graph_path_str), project_root=project_root),
+            "checkpoint": ckpt_name,
+            "device": device,
+            "no_to_undirected": no_to_undirected,
+            "pair_dataset_csv": "",
+        }
+    )
+    pu["pu_run"] = pu_run
+    if split_community_artifacts:
+        pu["community_results_subdir"] = str(pair_backend_slug).strip().lower()
+    else:
+        pu.pop("community_results_subdir", None)
+    params["pu"] = pu
+    scoring["params"] = params
+    cfg["scoring"] = scoring
+
+    artifacts = dict(cfg.get("artifacts") or {})
+    artifacts["archive_community_gnn_run_dir"] = _path_relative_to_project(
+        Path(run_dir_str), project_root=project_root
+    )
+    cfg["artifacts"] = artifacts
+
+
+def _run_experiment_setup_gnn_score(cfg: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
+    """
+    setup_only → pair-supervised GNN training on the bundle pair CSV (train stage used by ``run_gnn``)
+    → score_only, with PU scorer paths taken from ``pipeline_config.json``.
+    """
+    ctx = rcfg.build_run_context(cfg=cfg, project_root=PROJECT_ROOT, default_gt_sets_path=DEFAULT_GT_SETS_PATH)
+    if str(ctx.score_mode or "").strip() != "seed_candidate_pu_v1":
+        raise ValueError(
+            "experiment.mode setup_gnn_score requires scoring.score_mode 'seed_candidate_pu_v1' "
+            f"(got {ctx.score_mode!r})."
+        )
+
+    cfg_setup = copy.deepcopy(cfg)
+    cfg_setup.setdefault("experiment", {})
+    cfg_setup["experiment"]["mode"] = "setup_only"
+    # Always rebuild bundle artifacts for this mode so runs are not silently tied to stale graphs.
+    setup_sec = dict(cfg_setup.get("setup") or {})
+    pol = dict(setup_sec.get("policy") or {})
+    pol["on_present"] = "rebuild"
+    setup_sec["policy"] = pol
+    cfg_setup["setup"] = setup_sec
+
+    out_setup = run_experiment(cfg_setup, dry_run=dry_run)
+
+    gnn_training: dict[str, Any]
+    if dry_run:
+        from config.pipeline_config import load_pipeline_config, pair_training_enabled_backend_slugs
+        from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+
+        pip = load_pipeline_config(project_root=PROJECT_ROOT)
+        g = load_gnn_cfg(pip, project_root=PROJECT_ROOT)
+        run_dir_str, _, graph_path_str, _ = resolve_gnn_paths(
+            cfg=pip,
+            run_dir=None,
+            runs_parent=None,
+            checkpoint_path=None,
+            graph_path=None,
+            ground_truth_path=None,
+            require_ground_truth=False,
+            project_root=PROJECT_ROOT,
+        )
+        bundle_guess = (ctx.graph_bundle_root / ctx.graph_id).resolve()
+        pair_guess = bundle_guess / "pair_training" / ctx.graph_id / "pair_training_dataset.csv"
+        be = pair_training_enabled_backend_slugs(pip)
+        gnn_training = {
+            "dry_run": True,
+            "planned_gnn_run_dir": run_dir_str,
+            "planned_graph_pt": graph_path_str,
+            "planned_pair_dataset_csv": str(pair_guess),
+            "checkpoint": str(g["training_cfg"].get("model_save_name") or "best_model.pt"),
+            "pair_training_backends": be,
+        }
+    else:
+        from config.pipeline_config import load_pipeline_config
+        from steps.gnn_pipeline_helpers import load_gnn_cfg, resolve_gnn_paths
+        from steps.train_stage import run_train_stage
+
+        graph_id = ctx.graph_id
+        bundle_dir = _resolve_bundle_dir(graph_bundle_root=ctx.graph_bundle_root, graph_id=graph_id)
+        pair_csv = (bundle_dir / "pair_training" / graph_id / "pair_training_dataset.csv").resolve()
+        if not pair_csv.is_file():
+            raise FileNotFoundError(f"Pair training CSV missing after setup: {pair_csv}")
+
+        pip = load_pipeline_config(project_root=PROJECT_ROOT)
+        g = load_gnn_cfg(pip, project_root=PROJECT_ROOT)
+        run_dir_str, _ck, graph_path_str, _ = resolve_gnn_paths(
+            cfg=pip,
+            run_dir=None,
+            runs_parent=None,
+            checkpoint_path=None,
+            graph_path=None,
+            ground_truth_path=None,
+            require_ground_truth=False,
+            project_root=PROJECT_ROOT,
+        )
+        run_path = Path(run_dir_str)
+        gnn_training = run_train_stage(
+            graph_path=graph_path_str,
+            runs_parent=run_path.parent,
+            run_id=run_path.name,
+            training_cfg=g["training_cfg"],
+            path_layout=g["path_layout"],
+            device_pref=g["device_pref"],
+            to_undirected=g["to_undirected"],
+            pair_training_overrides={"pair_dataset_csv": str(pair_csv)},
+        )
+
+    from config.pipeline_config import load_pipeline_config, pair_training_enabled_backend_slugs
+
+    pip_score = load_pipeline_config(project_root=PROJECT_ROOT)
+    score_backends = pair_training_enabled_backend_slugs(pip_score)
+    split_comm = len(score_backends) > 1
+    scoring_by_backend: list[dict[str, Any]] = []
+    out_score: dict[str, Any] = {}
+    for slug in score_backends:
+        cfg_score = copy.deepcopy(cfg)
+        cfg_score.setdefault("experiment", {})
+        cfg_score["experiment"]["mode"] = "score_only"
+        _apply_pipeline_pu_paths_to_experiment_cfg(
+            cfg_score,
+            project_root=PROJECT_ROOT,
+            pair_backend_slug=slug,
+            split_community_artifacts=split_comm,
+        )
+        out_score = run_experiment(cfg_score, dry_run=dry_run)
+        scoring_by_backend.append(
+            {
+                "pair_training_backend": slug,
+                "manifest_json": out_score.get("manifest_json"),
+                "community_results": out_score.get("community_results") or [],
+            }
+        )
+
+    manifest = out_score.get("manifest")
+    if isinstance(manifest, dict):
+        manifest["setup_gnn_score"] = {
+            "setup_manifest_json": out_setup.get("manifest_json"),
+            "gnn_training": gnn_training,
+            "forced_setup_policy": {"on_present": "rebuild"},
+            "pair_training_backends": score_backends,
+            "scoring_by_backend": scoring_by_backend,
+        }
+        out_score["manifest"] = manifest
+    out_score["setup_phase"] = out_setup
+    if split_comm and len(scoring_by_backend) > 1:
+        merged_comm: list[dict[str, Any]] = []
+        for block in scoring_by_backend:
+            for row in block.get("community_results") or []:
+                merged_comm.append({**row, "pair_training_backend": block["pair_training_backend"]})
+        out_score["community_results"] = merged_comm
+    return out_score
+
+
 def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str, Any]:
     cfg = dict(config)
+    exp_early = dict(cfg.get("experiment") or {})
+    if str(exp_early.get("mode") or "").strip().lower() == "setup_gnn_score":
+        return _run_experiment_setup_gnn_score(cfg, dry_run=dry_run)
+
     ctx = rcfg.build_run_context(cfg=cfg, project_root=PROJECT_ROOT, default_gt_sets_path=DEFAULT_GT_SETS_PATH)
     exp = dict(cfg.get("experiment") or {})
     setup = dict(cfg.get("setup") or {})
@@ -482,6 +840,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
             "setup_result": setup_result,
             "community_results": [],
             "community_results_legacy": [],
+            "community_gnn_run_archive": None,
         }
 
     target_results: list[dict[str, Any]] = []
@@ -540,6 +899,19 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
             }
         )
 
+    artifacts_cfg = dict(cfg.get("artifacts") or {})
+    community_archive = _maybe_archive_seed_candidate_community_to_gnn_run(
+        run_root=run_root,
+        score_targets=score_targets,
+        artifacts_cfg=artifacts_cfg,
+        score_mode=score_mode,
+        score_params=score_params,
+        dry_run=dry_run,
+        mode=mode,
+    )
+    if community_archive is not None:
+        run_manifest["community_gnn_run_archive"] = community_archive
+
     run_manifest["targets"] = target_results
     p_manifest = Path(rman.write_manifest(run_root, run_manifest))
     return {
@@ -549,6 +921,7 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
         "setup_result": setup_result,
         "community_results": target_results,
         "community_results_legacy": [rman.legacy_compatible_target_view(x) for x in target_results],
+        "community_gnn_run_archive": community_archive,
     }
 
 
@@ -565,7 +938,7 @@ def main() -> None:
         "--run-mode",
         type=str,
         default="",
-        help="Override experiment mode: setup_only|score_only|setup_and_score",
+        help="Override experiment mode: setup_only|score_only|setup_and_score|setup_gnn_score",
     )
     p.add_argument(
         "--mode-override",

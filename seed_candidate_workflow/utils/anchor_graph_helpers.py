@@ -1025,10 +1025,15 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         graph_pt = _resolve_input_path(inputs.get("graph_pt"), default_paths.graph_pt)
         if graph_pt is None:
             raise ValueError("graph_pt must be set in config inputs or resolvable by default.")
-        meta_json = Path(
-            inputs.get("meta_json")
-            or graph_pt.with_suffix(".meta.json")
-        ).expanduser().resolve()
+        # Resolve relative meta_json against project_root (not cwd); bare Path(...).resolve()
+        # duplicates "core/" when cwd is repo/core and config paths start with "core/...".
+        meta_json = _resolve_input_path(
+            inputs.get("meta_json"),
+            graph_pt.with_suffix(".meta.json"),
+        )
+        if meta_json is None:
+            meta_json = graph_pt.with_suffix(".meta.json")
+        meta_json = meta_json.resolve()
         embeddings_json = _resolve_input_path(inputs.get("embeddings_json"), None)
         popular_domains_path = _resolve_input_path(inputs.get("popular_domains_path"), None)
         web_hosting_domains_path = _resolve_input_path(inputs.get("web_hosting_domains_path"), None)

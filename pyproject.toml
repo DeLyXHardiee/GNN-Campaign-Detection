@@ -36,6 +36,7 @@ dependencies = [
     "pyarrow",
     "httpx",
     "wheel",  # Install before torch_scatter to avoid legacy setup.py install deprecation (torch_scatter has no pyproject.toml)
+    "optuna",
 ]
 
 [project.optional-dependencies]

@@ -114,6 +114,55 @@ class GnnPathLayout:
     stage_result_json: str = "stage_result.json"
 
 
+_DEFAULT_PAIR_TRAINING_BACKENDS: dict[str, bool] = {"gnn": True, "mlp": False}
+
+
+def pair_training_backends_dict(cfg: Mapping[str, Any] | dict[str, Any]) -> dict[str, bool]:
+    """
+    Read ``pair_training.backends`` (preferred) or legacy ``pair_training_backends`` top-level key.
+
+    When absent, defaults to GNN-only (``mlp`` false) for backward-compatible layouts.
+    """
+    out = dict(_DEFAULT_PAIR_TRAINING_BACKENDS)
+    pt = dict(cfg.get("pair_training") or {}) if isinstance(cfg, dict) else {}
+    raw = pt.get("backends")
+    if raw is None and isinstance(cfg, dict):
+        raw = cfg.get("pair_training_backends")
+    if isinstance(raw, dict):
+        for k in ("gnn", "mlp"):
+            if k in raw:
+                out[k] = bool(raw[k])
+    return out
+
+
+def pair_training_enabled_backend_slugs(cfg: Mapping[str, Any] | dict[str, Any]) -> list[str]:
+    """Stable order: ``gnn`` then ``mlp``; only backends explicitly enabled."""
+    d = pair_training_backends_dict(cfg)
+    return [slug for slug in ("gnn", "mlp") if d.get(slug, False)]
+
+
+def gnn_path_layout_for_pair_backend(layout: GnnPathLayout, backend_slug: str) -> GnnPathLayout:
+    """
+    Per-method artifact layout under a single run directory, e.g. ``gnn/models/``, ``mlp/models/``.
+
+    ``backend_slug`` must be ``gnn`` or ``mlp`` (pair-supervision training / checkpoints only).
+    """
+    b = str(backend_slug).strip().lower()
+    if b not in ("gnn", "mlp"):
+        raise ValueError(f"pair backend must be 'gnn' or 'mlp', got {backend_slug!r}")
+    return GnnPathLayout(
+        runs_parent=layout.runs_parent,
+        models_subdir=f"{b}/models",
+        metrics_csv=f"{b}/metrics.csv",
+        training_config_json=f"{b}/training_config.json",
+        eval_auroc_ap_subdir=layout.eval_auroc_ap_subdir,
+        eval_recall_at_k_subdir=layout.eval_recall_at_k_subdir,
+        clustering_subdir=layout.clustering_subdir,
+        clustering_plots_subdir=layout.clustering_plots_subdir,
+        stage_result_json=layout.stage_result_json,
+    )
+
+
 def gnn_path_layout_from_pipeline(
     cfg: dict[str, Any],
     *,

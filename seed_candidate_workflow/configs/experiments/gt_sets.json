@@ -12,12 +12,17 @@
     "data/groundtruth/ground_truth.dedup_strict.json"
   ],
   "default_multi_gt": [
+    "data/groundtruth/ground_truth_merged.json",
     "data/groundtruth/ground_truth.json"
   ],
   "merged_only": [
-    "data/groundtruth/ground_truth.json"
+    "data/groundtruth/ground_truth_merged.json"
   ],
   "merged_and_dedup": [
-    "data/groundtruth/ground_truth.json"
+    "data/groundtruth/ground_truth_dedup.json",
+    "data/groundtruth/ground_truth_merged.json"
+  ],
+  "merged": [
+    "data/groundtruth/ground_truth_merged.json"
   ]
 }
