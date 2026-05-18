@@ -1,18 +1,29 @@
 # MISP lake strict dedupe — downstream alignment
 
-This note lists what must change after running [`data/misp/collapse_misp_lake_strict_duplicates.py`](../data/misp/collapse_misp_lake_strict_duplicates.py) so the pipeline stays consistent.
+This note lists what must change after running [`scripts/misp_lake_dedup/collapse_misp_lake_strict_duplicates.py`](../scripts/misp_lake_dedup/collapse_misp_lake_strict_duplicates.py) so the pipeline stays consistent.
 
 ## 1. Produce artifacts
 
 From the repo root (example paths):
 
 ```powershell
-python data/misp/collapse_misp_lake_strict_duplicates.py `
+# strict_full_email collapse (dedup_strict stem)
+python scripts/misp_lake_dedup/collapse_misp_lake_strict_duplicates.py `
+  --collapse-signature-type strict_full_email `
   --input-json data/misp/incidents-lake-misp.json `
   --out-json data/misp/incidents-lake-misp.dedup_strict.json `
   --out-dir data/misp/misp_lake_dedup_strict `
   --ground-truth-in data/groundtruth/ground_truth.json `
   --ground-truth-out data/groundtruth/ground_truth.dedup_strict.json
+
+# task-grounded collapse (dedup_task_identity stem; current experiment track)
+python scripts/misp_lake_dedup/collapse_misp_lake_strict_duplicates.py `
+  --collapse-signature-type strict_task_message_identity `
+  --input-json data/misp/incidents-lake-misp.json `
+  --out-json data/misp/incidents-lake-misp.dedup_task_identity.json `
+  --out-dir data/misp/misp_lake_dedup_task_identity `
+  --ground-truth-in data/groundtruth/ground_truth.json `
+  --ground-truth-out data/groundtruth/ground_truth.dedup_task_identity.json
 ```
 
 Outputs:

@@ -18,6 +18,10 @@ Examples:
     --output data/groundtruth/ground_truth_dedup.json \\
     --max-hamming 13
 
+  # MISP lake + GT id remap for dedup_task_identity (current experiment track):
+  python scripts/misp_lake_dedup/collapse_misp_lake_strict_duplicates.py \\
+    --collapse-signature-type strict_task_message_identity
+
   # Stricter text agreement (~80% token overlap sense via ratio):
   python scripts/deduplicate_ground_truth.py -i in.json -o out.json \\
     --max-hamming 20 --min-fuzzy-ratio 0.8

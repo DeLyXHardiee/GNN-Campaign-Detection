@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-MISP_DIR = REPO / "data" / "misp"
-if str(MISP_DIR) not in sys.path:
-    sys.path.insert(0, str(MISP_DIR))
+DEDUP_SCRIPTS_DIR = REPO / "scripts" / "misp_lake_dedup"
+if str(DEDUP_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(DEDUP_SCRIPTS_DIR))
 
 import misp_email_identity as mei  # noqa: E402
 from collapse_misp_lake_strict_duplicates import remap_ground_truth_json, run_collapse  # noqa: E402
@@ -49,6 +49,7 @@ def test_collapse_merges_strict_dup_lexicographic_representative(tmp_path: Path)
         input_json=inp,
         out_json=out_json,
         out_dir=out_dir,
+        collapse_signature_type=mei.SIGNATURE_STRICT_FULL_EMAIL,
         max_events=None,
         top_k=5,
         ground_truth_in=None,
