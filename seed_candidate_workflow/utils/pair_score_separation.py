@@ -39,6 +39,18 @@ from seed_candidate_workflow.utils.scorer_diagnostics_core import (
     quantiles_dict as _quantiles_dict_core,
     safe_auroc as _safe_auroc_core,
 )
+from seed_candidate_workflow.utils.pair_inspection_admitting_evidence import (
+    enrich_inspection_with_admitting_evidence,
+    load_admitting_evidence_index,
+    resolve_candidate_generation_dir,
+    resolve_seed_generation_dir,
+)
+from seed_candidate_workflow.utils.pair_low_band_twohop_channel import (
+    build_channel_summary_table,
+    build_twohop_channel_recommendations,
+    extend_bool_terms_for_low_band_channels,
+    low_band_twohop_joint_rule_names,
+)
 from seed_candidate_workflow.utils.scorer_diagnostics_rules import (
     BINARY_CONDITION_RULES_DEFAULT,
     CANDIDATE_RULES_DEFAULT,
@@ -328,6 +340,8 @@ def _load_anchor_nodes_by_email(
         "sender_email_domain_set",
         "domain_set",
         "stem_set",
+        "html_structure_fingerprint_set",
+        "received_host_set",
     ]
     keep = [c for c in shared_cols if c in nodes_df.columns]
     if "external_id" not in nodes_df.columns or not keep:
@@ -918,6 +932,8 @@ def _build_band_joint_separator_for_gt(
     extra_joint_rules: tuple[str, ...] = (),
     marginal_sep: dict[str, Any] | None = None,
     include_recommendations: bool = False,
+    twohop_channel_analysis: bool = False,
+    evidence_index: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Joint separator analysis between same- and cross-campaign pairs within a score band.
@@ -975,6 +991,8 @@ def _build_band_joint_separator_for_gt(
     has_shared_url = np.zeros(n, dtype=bool)
     has_shared_attachment = np.zeros(n, dtype=bool)
     has_shared_domain = np.zeros(n, dtype=bool)
+    has_shared_received_host = np.zeros(n, dtype=bool)
+    has_shared_html_fp = np.zeros(n, dtype=bool)
     for i, r in enumerate(df_eval.itertuples(index=False)):
         a = str(getattr(r, "email_i"))
         b = str(getattr(r, "email_j"))
@@ -990,6 +1008,13 @@ def _build_band_joint_separator_for_gt(
         has_shared_url[i] = bool((na.get("url_set") or set()) & (nb.get("url_set") or set()))
         has_shared_attachment[i] = bool((na.get("attachment_set") or set()) & (nb.get("attachment_set") or set()))
         has_shared_domain[i] = bool((na.get("domain_set") or set()) & (nb.get("domain_set") or set()))
+        has_shared_received_host[i] = bool(
+            (na.get("received_host_set") or set()) & (nb.get("received_host_set") or set())
+        )
+        has_shared_html_fp[i] = bool(
+            (na.get("html_structure_fingerprint_set") or set())
+            & (nb.get("html_structure_fingerprint_set") or set())
+        )
 
     n_core = (
         has_shared_sender.astype(np.int8)
@@ -998,6 +1023,8 @@ def _build_band_joint_separator_for_gt(
         + has_shared_url.astype(np.int8)
         + has_shared_attachment.astype(np.int8)
         + has_shared_domain.astype(np.int8)
+        + has_shared_received_host.astype(np.int8)
+        + has_shared_html_fp.astype(np.int8)
     )
 
     same_band = same_band_mask_eval.astype(bool)
@@ -1022,9 +1049,23 @@ def _build_band_joint_separator_for_gt(
         "shared_url": has_shared_url,
         "shared_attachment": has_shared_attachment,
         "shared_domain": has_shared_domain,
+        "shared_received_host": has_shared_received_host,
+        "shared_html_fp": has_shared_html_fp,
         "semantic_ge_0_90": sem_ge_90,
         "n_shared_core_channels_ge_1": n_core_ge_1,
     }
+    sc = pd.to_numeric(df_eval.get("source_count"), errors="coerce")
+    bool_terms["source_count_eq_1"] = sc.eq(1).fillna(False).to_numpy(dtype=bool)
+    bool_terms["source_count_ge_2"] = sc.ge(2).fillna(False).to_numpy(dtype=bool)
+
+    if twohop_channel_analysis and band_kind == "low":
+        bool_terms = extend_bool_terms_for_low_band_channels(
+            bool_terms,
+            df_eval,
+            nodes_by_email=nodes_by_email,
+            evidence_index=evidence_index,
+        )
+        extra_joint_rules = tuple(extra_joint_rules) + low_band_twohop_joint_rule_names()
 
     def _eval_rule(expr: str) -> np.ndarray:
         toks = expr.split("_AND_")
@@ -1179,6 +1220,13 @@ def _build_band_joint_separator_for_gt(
         for e in ranked_entries:
             e["same_low_value"] = e.get(value_key_same)
             e["cross_low_value"] = e.get(value_key_cross)
+        if twohop_channel_analysis:
+            out["twohop_channel_joint_comparisons"] = {
+                k: v for k, v in bin_out.items() if str(k).startswith("twohop_via_")
+            }
+            out["twohop_channel_joint_ranked_top15"] = [
+                e for e in ranked_entries if str(e.get("condition_name") or "").startswith("twohop_via_")
+            ][:15]
 
     if include_recommendations:
         out["recommendations"] = _generate_high_band_recommendations(
@@ -1196,6 +1244,7 @@ def _build_low_band_joint_separator_for_gt(
     cross_low_mask_eval: np.ndarray,
     low_max: float,
     nodes_by_email: dict[str, dict[str, set[str]]],
+    evidence_index: dict[tuple[str, str], list[dict[str, Any]]] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return _build_band_joint_separator_for_gt(
         gt_path=gt_path,
@@ -1207,7 +1256,9 @@ def _build_low_band_joint_separator_for_gt(
         nodes_by_email=nodes_by_email,
         value_key_same="same_low_value",
         value_key_cross="cross_low_value",
-        focus="all_pairs_in_band",
+        focus="unlabeled_only",
+        twohop_channel_analysis=True,
+        evidence_index=evidence_index,
     )
 
 
@@ -1245,6 +1296,8 @@ _PAIR_SHARED_CHANNEL_DEFS: tuple[tuple[str, str], ...] = (
     ("stem_set", "stem"),
     ("domain_set", "domain"),
     ("attachment_set", "attachment"),
+    ("html_structure_fingerprint_set", "html_fp"),
+    ("received_host_set", "received_host"),
 )
 
 _INSPECTION_PROVENANCE_COLS: tuple[str, ...] = (
@@ -1300,7 +1353,16 @@ def _pair_shared_evidence_detail(
         out[bool_col] = shared
         out[count_col] = int(len(inter))
         out[values_col] = _format_shared_values(inter)
-        if shared and short in {"sender", "sender_domain", "url", "stem", "domain", "attachment"}:
+        if shared and short in {
+            "sender",
+            "sender_domain",
+            "url",
+            "stem",
+            "domain",
+            "attachment",
+            "html_fp",
+            "received_host",
+        }:
             n_core += 1
     out["n_shared_core_channels"] = int(n_core)
     return out
@@ -1486,13 +1548,98 @@ def _classify_high_score_fp_regime(row: pd.Series) -> str:
     return "other_shared_artifacts"
 
 
+def _classify_low_band_review_regime(row: pd.Series) -> str:
+    """
+    Sidebar filter key for low-band manual review HTML.
+
+    Primary split: same-campaign vs cross-campaign unlabeled low-score pairs.
+    Sub-suffix marks exact-zero scores (common collapse mode).
+    """
+    rel = str(row.get("gt_relation") or "")
+    if rel == "same_campaign":
+        base = "same_campaign_low"
+    elif rel == "cross_campaign":
+        base = "cross_campaign_low"
+    else:
+        base = "unknown_low"
+    score = pd.to_numeric(row.get("score"), errors="coerce")
+    if pd.notna(score) and float(score) <= 0.0:
+        return f"{base}__score_zero"
+    return base
+
+
+def _low_band_review_prompt(row: pd.Series) -> str:
+    rel = str(row.get("gt_relation") or "")
+    if rel == "same_campaign":
+        return (
+            "GT same campaign but model score is in the low band. "
+            "What signal could pull this pair up without lifting cross-campaign low pairs?"
+        )
+    if rel == "cross_campaign":
+        return (
+            "GT cross campaign with low model score (desired). "
+            "Confirm this pair should stay near the bottom."
+        )
+    return "Low-score unlabeled pair — inspect whether the score matches GT."
+
+
 def _shared_artifacts_brief(row: pd.Series) -> str:
+    """Legacy brief; prefer shared_evidence_brief when admitting evidence is attached."""
+    brief = str(row.get("shared_evidence_brief") or "").strip()
+    if brief:
+        return brief
     parts: list[str] = []
     for _anchor_col, short in _PAIR_SHARED_CHANNEL_DEFS:
         if bool(row.get(f"has_shared_{short}")):
             vals = str(row.get(f"shared_{short}_values") or "").strip()
             parts.append(f"{short}={vals}" if vals else short)
     return "; ".join(parts) if parts else "none"
+
+
+def _warning_badges_html(flags_raw: Any) -> str:
+    flags = str(flags_raw or "").strip()
+    if not flags:
+        return ""
+    badges = [
+        f'<span class="badge warn-flag">{html.escape(w.strip())}</span>'
+        for w in flags.split("|")
+        if w.strip()
+    ]
+    return " ".join(badges)
+
+
+def _evidence_list_html(block_label: str, lines_raw: str) -> str:
+    lines = [ln.strip() for ln in str(lines_raw or "").split("\n") if ln.strip()]
+    if not lines:
+        return ""
+    items = "".join(f"<li>{html.escape(ln)}</li>" for ln in lines)
+    return (
+        '<div class="evidence-block">'
+        f'<div class="evidence-label">{html.escape(block_label)}</div>'
+        f'<ul class="evidence-list">{items}</ul>'
+        "</div>"
+    )
+
+
+def _admitting_evidence_section_html(row: pd.Series) -> str:
+    direct_blk = _evidence_list_html("Direct shared artifacts", str(row.get("direct_shared_evidence_lines") or ""))
+    admit_blk = _evidence_list_html(
+        "Candidate-family admitting evidence", str(row.get("admitting_evidence_lines") or "")
+    )
+    if not direct_blk and not admit_blk:
+        prov = html.escape(str(row.get("provenance_combo") or "none"))
+        return (
+            '<section class="admitting-evidence">'
+            "<h4>Shared evidence / admitting evidence</h4>"
+            f'<p class="evidence-empty">No direct overlap or source rows loaded (provenance: {prov}).</p>'
+            "</section>"
+        )
+    return (
+        '<section class="admitting-evidence">'
+        "<h4>Shared evidence / admitting evidence</h4>"
+        f"{direct_blk}{admit_blk}"
+        "</section>"
+    )
 
 
 def _resolve_embeddings_json_for_review(project_root: Path) -> Path | None:
@@ -1600,13 +1747,17 @@ def _enrich_pairs_with_email_text(
     *,
     email_text_by_eid: dict[str, dict[str, str]],
     preview_chars: int,
+    regime_fn: Any | None = None,
+    review_prompt_fn: Any | None = None,
 ) -> pd.DataFrame:
     if df_pairs.empty:
         return df_pairs.copy()
 
+    classify_regime = regime_fn or _classify_high_score_fp_regime
     out = df_pairs.copy()
     regimes: list[str] = []
     briefs: list[str] = []
+    review_notes: list[str] = []
     subj_i: list[str] = []
     subj_j: list[str] = []
     body_prev_i: list[str] = []
@@ -1617,8 +1768,10 @@ def _enrich_pairs_with_email_text(
     miss_j: list[bool] = []
 
     for _, r in out.iterrows():
-        regimes.append(_classify_high_score_fp_regime(r))
+        regimes.append(classify_regime(r))
         briefs.append(_shared_artifacts_brief(r))
+        if review_prompt_fn is not None:
+            review_notes.append(str(review_prompt_fn(r)))
         ei = str(r["email_i"])
         ej = str(r["email_j"])
         ti = email_text_by_eid.get(ei) or {}
@@ -1638,6 +1791,8 @@ def _enrich_pairs_with_email_text(
 
     out["fp_regime"] = regimes
     out["shared_artifacts_brief"] = briefs
+    if review_prompt_fn is not None:
+        out["gt_review_note"] = review_notes
     out["email_i_subject"] = subj_i
     out["email_j_subject"] = subj_j
     out["email_i_body_preview"] = body_prev_i
@@ -1693,7 +1848,20 @@ def _write_pairs_for_review_jsonl(
                 "semantic_cosine_source": r.get("semantic_cosine_source"),
                 "embedding_cosine_subj_body_cache": r.get("embedding_cosine_subj_body_cache"),
                 "shared_artifacts_brief": r.get("shared_artifacts_brief"),
+                "shared_evidence_brief": r.get("shared_evidence_brief"),
+                "direct_shared_evidence_lines": r.get("direct_shared_evidence_lines"),
+                "admitting_evidence_lines": r.get("admitting_evidence_lines"),
+                "admitting_evidence_json": r.get("admitting_evidence_json"),
+                "inspection_warning_flags": r.get("inspection_warning_flags"),
                 "from_semantic": r.get("from_semantic"),
+                "from_2hop": r.get("from_2hop"),
+                "from_rare_artifact": r.get("from_rare_artifact"),
+                "from_component": r.get("from_component"),
+                "from_seed": r.get("from_seed"),
+                "source_count": r.get("source_count"),
+                "twohop_rarity_max": r.get("twohop_rarity_max"),
+                "rare_artifact_rarity_max": r.get("rare_artifact_rarity_max"),
+                "component_cosine_max": r.get("component_cosine_max"),
                 "n_shared_core_channels": r.get("n_shared_core_channels"),
                 "email_i": {
                     "external_id": ei,
@@ -1771,6 +1939,12 @@ def _pair_card_html(
     review_prompt: str = "Do these look like the same phishing campaign?",
     gt_note: str = "labeled cross",
 ) -> str:
+    row_prompt = str(row.get("gt_review_note") or "").strip()
+    if row_prompt:
+        review_prompt = row_prompt
+    rel = str(row.get("gt_relation") or "").strip()
+    if rel:
+        gt_note = rel.replace("_", " ")
     regime_raw = str(row.get("fp_regime") or "")
     regime = html.escape(regime_raw)
     score = row.get("score")
@@ -1810,10 +1984,22 @@ def _pair_card_html(
         campaign=row.get("gt_campaign_j"),
         email_text_by_eid=email_text_by_eid,
     )
+    warn_html = _warning_badges_html(row.get("inspection_warning_flags"))
+    ch_badges = str(row.get("twohop_channel_badges") or "").strip()
+    if ch_badges:
+        ch_html = " ".join(
+            f'<span class="badge channel-badge">{html.escape(b.strip())}</span>'
+            for b in ch_badges.split("|")
+            if b.strip()
+        )
+        warn_html = f"{warn_html} {ch_html}".strip()
+    evidence_html = _admitting_evidence_section_html(row)
+    gt_rel_attr = html.escape(str(row.get("gt_relation") or ""))
     return f"""
-    <section class="pair-card regime-{regime_class}" id="pair-{pair_idx}" data-regime="{html.escape(filter_regime)}">
+    <section class="pair-card regime-{regime_class}" id="pair-{pair_idx}" data-regime="{html.escape(filter_regime)}" data-gt-relation="{gt_rel_attr}">
       <header class="pair-header">
         <h2>Pair {pair_idx + 1}</h2>
+        <div class="warning-badges">{warn_html}</div>
         <div class="meta-grid">
           <span><strong>Model score</strong> {score_s}</span>
           <span><strong>Semantic cos</strong> {sem_s}{sem_src_html}</span>
@@ -1822,9 +2008,10 @@ def _pair_card_html(
           <span><strong>Pair time-gap</strong> {html.escape(tgap_s)} <span class="cosine-src">(time_gap_seconds_min)</span></span>
           <span><strong>Regime</strong> <code>{regime}</code></span>
           <span><strong>Provenance</strong> {prov}</span>
-          <span><strong>Shared artifacts</strong> {shared}</span>
+          <span><strong>Evidence summary</strong> {shared}</span>
         </div>
         <p class="review-prompt">{html.escape(review_prompt)}</p>
+        {evidence_html}
       </header>
       <div class="pair-columns">
         {pane_i}
@@ -2004,6 +2191,63 @@ def _write_pairs_for_review_html(
       background: #2a2218;
       border-left: 3px solid var(--warn);
       font-size: 0.9rem;
+    }}
+    .warning-badges {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.5rem;
+    }}
+    .badge.warn-flag {{
+      background: #3d2a14;
+      color: #f5c878;
+      border: 1px solid #8a5a18;
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+    }}
+    .badge.channel-badge {{
+      background: #1e2a3d;
+      color: #9fd4ff;
+      border: 1px solid #3a6ea8;
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      margin-right: 0.2rem;
+    }}
+    .admitting-evidence {{
+      margin: 0.75rem 0 1rem;
+      padding: 0.65rem 0.85rem;
+      background: #141c28;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }}
+    .admitting-evidence h4 {{
+      margin: 0 0 0.5rem;
+      font-size: 0.9rem;
+      color: var(--accent);
+    }}
+    .evidence-block {{
+      margin-bottom: 0.5rem;
+    }}
+    .evidence-label {{
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }}
+    .evidence-list {{
+      margin: 0;
+      padding-left: 1.25rem;
+      color: var(--text);
+    }}
+    .evidence-list li {{
+      margin-bottom: 0.2rem;
+      word-break: break-word;
+    }}
+    .evidence-empty {{
+      color: var(--muted);
+      margin: 0;
     }}
     .pair-columns {{
       display: grid;
@@ -2201,6 +2445,135 @@ def _export_high_band_pairs_for_manual_review(
         "notes": notes,
         "email_text_catalog": email_text_meta,
         "fp_regime_counts": {str(k): int(v) for k, v in regime_counts.items()},
+        "n_pairs_with_both_email_texts": int(
+            ((~df_review["email_i_text_missing"]) & (~df_review["email_j_text_missing"])).sum()
+        ),
+    }
+
+
+def _export_low_band_pairs_for_manual_review(
+    *,
+    df_low_band: pd.DataFrame,
+    out_dir: Path,
+    email_text_by_eid: dict[str, dict[str, str]],
+    email_text_meta: dict[str, Any],
+    preview_chars: int,
+    wrap_width: int,
+    low_score_max: float,
+) -> dict[str, Any]:
+    """CSV/JSONL/HTML for low-score unlabeled same-campaign vs cross-campaign pairs."""
+    paths: dict[str, str] = {}
+    notes: list[str] = []
+
+    if df_low_band.empty:
+        notes.append("no_low_band_unlabeled_pairs_to_export")
+        html_path = out_dir / "pair_low_band_unlabeled_pairs_for_review.html"
+        _write_pairs_for_review_html(
+            df_low_band,
+            out_path=html_path,
+            email_text_by_eid=email_text_by_eid,
+            title="Low-score unlabeled pairs (manual review)",
+            subtitle=(
+                f"No GT-covered unlabeled pairs in score band [0, {float(low_score_max)}] "
+                "for the current GT file(s)."
+            ),
+        )
+        paths["low_band_unlabeled_pairs_for_review_html"] = str(html_path)
+        return {"paths": paths, "notes": notes, "email_text_catalog": email_text_meta}
+
+    df_review = _enrich_pairs_with_email_text(
+        df_low_band,
+        email_text_by_eid=email_text_by_eid,
+        preview_chars=preview_chars,
+        regime_fn=_classify_low_band_review_regime,
+        review_prompt_fn=_low_band_review_prompt,
+    )
+    df_review = df_review.sort_values(
+        ["gt_relation", "score", "email_i", "email_j"],
+        ascending=[True, True, True, True],
+        na_position="last",
+    ).reset_index(drop=True)
+
+    stem = "pair_low_band_unlabeled_pairs_for_review"
+    csv_path = out_dir / f"{stem}.csv"
+    df_review.to_csv(csv_path, index=False)
+    paths["low_band_unlabeled_pairs_for_review_csv"] = str(csv_path)
+
+    jsonl_path = out_dir / f"{stem}.jsonl"
+    _write_pairs_for_review_jsonl(
+        df_review,
+        out_path=jsonl_path,
+        email_text_by_eid=email_text_by_eid,
+        wrap_width=wrap_width,
+    )
+    paths["low_band_unlabeled_pairs_for_review_jsonl"] = str(jsonl_path)
+
+    html_path = out_dir / f"{stem}.html"
+    _write_pairs_for_review_html(
+        df_review,
+        out_path=html_path,
+        email_text_by_eid=email_text_by_eid,
+        title="Low-score unlabeled pairs (manual review)",
+        subtitle=(
+            f"GT-covered unlabeled pairs with model score in [0, {float(low_score_max)}]. "
+            "Filter by same-campaign vs cross-campaign; inspect score-zero collapses."
+        ),
+        review_prompt=(
+            "Compare low-score same-campaign pairs (should often be rescuable) "
+            "vs low-score cross-campaign pairs (should stay low)."
+        ),
+        gt_note="low-band unlabeled",
+    )
+    paths["low_band_unlabeled_pairs_for_review_html"] = str(html_path)
+
+    df_same = df_review[df_review["gt_relation"].astype(str) == "same_campaign"]
+    if not df_same.empty:
+        same_csv = out_dir / "pair_low_band_same_campaign_unlabeled_pairs_for_review.csv"
+        df_same.to_csv(same_csv, index=False)
+        paths["low_band_same_campaign_unlabeled_pairs_for_review_csv"] = str(same_csv)
+        same_html = out_dir / "pair_low_band_same_campaign_unlabeled_pairs_for_review.html"
+        _write_pairs_for_review_html(
+            df_same,
+            out_path=same_html,
+            email_text_by_eid=email_text_by_eid,
+            title="Low-score same-campaign unlabeled pairs",
+            subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should move up.",
+            review_prompt=(
+                "Same GT campaign but low model score. What evidence is missing from the scorer?"
+            ),
+            gt_note="same_campaign unlabeled",
+        )
+        paths["low_band_same_campaign_unlabeled_pairs_for_review_html"] = str(same_html)
+
+    df_cross = df_review[df_review["gt_relation"].astype(str) == "cross_campaign"]
+    if not df_cross.empty:
+        cross_csv = out_dir / "pair_low_band_cross_campaign_unlabeled_pairs_for_review.csv"
+        df_cross.to_csv(cross_csv, index=False)
+        paths["low_band_cross_campaign_unlabeled_pairs_for_review_csv"] = str(cross_csv)
+        cross_html = out_dir / "pair_low_band_cross_campaign_unlabeled_pairs_for_review.html"
+        _write_pairs_for_review_html(
+            df_cross,
+            out_path=cross_html,
+            email_text_by_eid=email_text_by_eid,
+            title="Low-score cross-campaign unlabeled pairs",
+            subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should stay low.",
+            review_prompt="Cross GT campaigns with low score — confirm these should remain separated.",
+            gt_note="cross_campaign unlabeled",
+        )
+        paths["low_band_cross_campaign_unlabeled_pairs_for_review_html"] = str(cross_html)
+
+    if not email_text_by_eid:
+        notes.append("email_text_catalog_empty_subjects_and_bodies_will_be_blank")
+
+    regime_counts = df_review["fp_regime"].value_counts().to_dict()
+    return {
+        "paths": paths,
+        "notes": notes,
+        "email_text_catalog": email_text_meta,
+        "fp_regime_counts": {str(k): int(v) for k, v in regime_counts.items()},
+        "n_pairs": int(len(df_review)),
+        "n_same_campaign": int((df_review["gt_relation"].astype(str) == "same_campaign").sum()),
+        "n_cross_campaign": int((df_review["gt_relation"].astype(str) == "cross_campaign").sum()),
         "n_pairs_with_both_email_texts": int(
             ((~df_review["email_i_text_missing"]) & (~df_review["email_j_text_missing"])).sum()
         ),
@@ -2552,6 +2925,12 @@ def run_pair_score_separation_analysis(
         project_root=project_root,
         explicit_anchor_run_dir=anchor_run_dir,
     )
+    cand_gen_dir = resolve_candidate_generation_dir(pair_training_csv=pair_csv)
+    seed_gen_dir = resolve_seed_generation_dir(pair_training_csv=pair_csv)
+    admitting_evidence_index, admitting_evidence_meta = load_admitting_evidence_index(
+        candidate_generation_dir=cand_gen_dir,
+        seed_generation_dir=seed_gen_dir,
+    )
 
     per_gt: list[dict[str, Any]] = []
     band_rows: list[dict[str, Any]] = []
@@ -2566,6 +2945,7 @@ def run_pair_score_separation_analysis(
     high_fp_inspection_frames: list[pd.DataFrame] = []
     high_tp_inspection_frames: list[pd.DataFrame] = []
     cross_pos_inspection_frames: list[pd.DataFrame] = []
+    low_band_inspection_frames: list[pd.DataFrame] = []
     for gt_path in gt_paths:
         gt_path = Path(gt_path).resolve()
         label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)
@@ -2748,13 +3128,17 @@ def run_pair_score_separation_analysis(
         low = df_eval["score"].ge(0.0) & df_eval["score"].le(float(low_score_max))
         same_low_eval = same_eval & low.to_numpy(dtype=bool, copy=False)
         cross_low_eval = cross_eval & low.to_numpy(dtype=bool, copy=False)
+        unl_eval = unl_mask[(both & scored)]
+        same_low_unl_eval = same_low_eval & unl_eval
+        cross_low_unl_eval = cross_low_eval & unl_eval
         low_joint, low_joint_table = _build_low_band_joint_separator_for_gt(
             gt_path=gt_path,
             df_eval=df_eval,
-            same_low_mask_eval=same_low_eval,
-            cross_low_mask_eval=cross_low_eval,
+            same_low_mask_eval=same_low_unl_eval,
+            cross_low_mask_eval=cross_low_unl_eval,
             low_max=low_score_max,
             nodes_by_email=nodes_by_email,
+            evidence_index=admitting_evidence_index,
         )
         low_joint_per_gt.append(low_joint)
         low_joint_rows.extend(low_joint_table)
@@ -2824,6 +3208,29 @@ def run_pair_score_separation_analysis(
         if not df_cross_pos.empty:
             cross_pos_inspection_frames.append(df_cross_pos)
 
+        df_same_low = _build_high_band_inspection_dataframe(
+            df_eval=df_eval,
+            row_mask=same_low_unl_eval,
+            gt_path=gt_path,
+            label_map=label_map,
+            gt_relation="same_campaign",
+            nodes_by_email=nodes_by_email,
+            cohort="low_score_same_campaign_unlabeled",
+        )
+        df_cross_low = _build_high_band_inspection_dataframe(
+            df_eval=df_eval,
+            row_mask=cross_low_unl_eval,
+            gt_path=gt_path,
+            label_map=label_map,
+            gt_relation="cross_campaign",
+            nodes_by_email=nodes_by_email,
+            cohort="low_score_cross_campaign_unlabeled",
+        )
+        if not df_same_low.empty:
+            low_band_inspection_frames.append(df_same_low)
+        if not df_cross_low.empty:
+            low_band_inspection_frames.append(df_cross_low)
+
         for row in csv_rows:
             band_rows.append(
                 {"gt_path": str(gt_path.resolve()), "gt_name": gt_path.name, **row}
@@ -2840,6 +3247,7 @@ def run_pair_score_separation_analysis(
             "high_score_band": [float(high_score_min), 1.0],
         },
         "shared_evidence_context": shared_ctx,
+        "admitting_evidence_catalog": admitting_evidence_meta,
         "per_gt": per_gt,
         "n_pair_rows_scored": int(len(df_work)),
         "n_finite_scores": int(scored_mask.sum()),
@@ -2937,6 +3345,60 @@ def run_pair_score_separation_analysis(
         if cross_pos_inspection_frames
         else pd.DataFrame()
     )
+    df_low_band_all = (
+        pd.concat(low_band_inspection_frames, ignore_index=True)
+        if low_band_inspection_frames
+        else pd.DataFrame()
+    )
+
+    def _enrich_inspection_for_review(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+        return enrich_inspection_with_admitting_evidence(
+            df, evidence_index=admitting_evidence_index
+        )
+
+    df_high_fp = _enrich_inspection_for_review(df_high_fp)
+    df_high_tp = _enrich_inspection_for_review(df_high_tp)
+    df_cross_pos_all = _enrich_inspection_for_review(df_cross_pos_all)
+    df_low_band_all = _enrich_inspection_for_review(df_low_band_all)
+
+    twohop_channel_rows, twohop_channel_meta = build_channel_summary_table(df_low_band_all)
+    twohop_channel_recs = build_twohop_channel_recommendations(
+        twohop_channel_rows,
+        joint_payload=low_joint_per_gt[0] if low_joint_per_gt else None,
+    )
+    twohop_channel_summary_path = out_dir / "pair_low_band_twohop_channel_summary.json"
+    twohop_channel_payload = {
+        "run_dir": str(run_dir),
+        "pair_csv": str(pair_csv),
+        "band_config": {"low_score_band": [0.0, float(low_score_max)]},
+        "meta": twohop_channel_meta,
+        "per_channel": twohop_channel_rows,
+        "twohop_channel_recommendations": twohop_channel_recs,
+        "admitting_evidence_catalog": admitting_evidence_meta,
+    }
+    with open(twohop_channel_summary_path, "w", encoding="utf-8") as f:
+        json.dump(twohop_channel_payload, f, indent=2, default=str)
+    twohop_channel_csv_path = out_dir / "pair_low_band_twohop_channel_summary.csv"
+    pd.DataFrame(twohop_channel_rows).to_csv(twohop_channel_csv_path, index=False)
+    if low_joint_per_gt:
+        for entry in low_joint_per_gt:
+            entry["twohop_channel_recommendations"] = twohop_channel_recs
+    low_joint_payload["twohop_channel_summary_path"] = str(twohop_channel_summary_path)
+    low_joint_payload["twohop_channel_csv_path"] = str(twohop_channel_csv_path)
+    low_joint_payload["twohop_channel_recommendations"] = twohop_channel_recs
+    low_joint_payload["twohop_channel_per_channel"] = twohop_channel_rows
+    with open(low_joint_summary_path, "w", encoding="utf-8") as f:
+        json.dump(low_joint_payload, f, indent=2, default=str)
+    payload["twohop_channel_summary_path"] = str(twohop_channel_summary_path)
+    payload["twohop_channel_csv_path"] = str(twohop_channel_csv_path)
+    payload["twohop_channel_recommendations"] = twohop_channel_recs
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+
+    low_band_pairs_path = out_dir / "pair_low_band_unlabeled_pairs.csv"
+    df_low_band_all.to_csv(low_band_pairs_path, index=False)
     high_fp_pairs_path = out_dir / "pair_high_band_false_positive_pairs.csv"
     df_high_fp.to_csv(high_fp_pairs_path, index=False)
     high_tp_pairs_path = out_dir / "pair_high_band_true_positive_pairs.csv"
@@ -2961,8 +3423,10 @@ def run_pair_score_separation_analysis(
 
     manual_review_export: dict[str, Any] = {"skipped": True}
     cross_positive_review_export: dict[str, Any] = {"skipped": True}
+    low_band_review_export: dict[str, Any] = {"skipped": True}
     review_paths: dict[str, str] = {}
     cross_positive_review_paths: dict[str, str] = {}
+    low_band_review_paths: dict[str, str] = {}
     if not skip_email_text_export:
         resolved_misp = misp_json_path
         if resolved_misp is not None and not resolved_misp.is_absolute():
@@ -3004,9 +3468,25 @@ def run_pair_score_separation_analysis(
         high_fp_json["cross_campaign_positive_manual_review_export"] = cross_positive_review_export
         with open(high_fp_json_path, "w", encoding="utf-8") as f:
             json.dump(high_fp_json, f, indent=2, default=str)
+
+        low_band_review_export = _export_low_band_pairs_for_manual_review(
+            df_low_band=df_low_band_all,
+            out_dir=out_dir,
+            email_text_by_eid=email_catalog,
+            email_text_meta=email_catalog_meta,
+            preview_chars=int(email_text_preview_chars),
+            wrap_width=int(email_text_wrap_width),
+            low_score_max=float(low_score_max),
+        )
+        low_band_review_paths = low_band_review_export.get("paths") or {}
+        payload["low_band_unlabeled_manual_review_export"] = low_band_review_export
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, default=str)
     else:
         cross_positive_review_export = {"skipped": True, "reason": "skip_email_text_export"}
         cross_positive_review_paths = {}
+        low_band_review_export = {"skipped": True, "reason": "skip_email_text_export"}
+        low_band_review_paths = {}
 
     return {
         "output_dir": str(out_dir),
@@ -3048,6 +3528,24 @@ def run_pair_score_separation_analysis(
         "cross_campaign_positive_semantic_only_pairs_for_review_html_path": (
             cross_positive_review_paths.get("cross_campaign_positive_semantic_only_pairs_for_review_html")
         ),
+        "low_band_unlabeled_pairs_csv_path": str(low_band_pairs_path),
+        "low_band_unlabeled_pairs_for_review_csv_path": low_band_review_paths.get(
+            "low_band_unlabeled_pairs_for_review_csv"
+        ),
+        "low_band_unlabeled_pairs_for_review_jsonl_path": low_band_review_paths.get(
+            "low_band_unlabeled_pairs_for_review_jsonl"
+        ),
+        "low_band_unlabeled_pairs_for_review_html_path": low_band_review_paths.get(
+            "low_band_unlabeled_pairs_for_review_html"
+        ),
+        "low_band_same_campaign_unlabeled_pairs_for_review_html_path": low_band_review_paths.get(
+            "low_band_same_campaign_unlabeled_pairs_for_review_html"
+        ),
+        "low_band_cross_campaign_unlabeled_pairs_for_review_html_path": low_band_review_paths.get(
+            "low_band_cross_campaign_unlabeled_pairs_for_review_html"
+        ),
+        "low_band_twohop_channel_summary_json_path": str(twohop_channel_summary_path),
+        "low_band_twohop_channel_summary_csv_path": str(twohop_channel_csv_path),
         "payload": payload,
     }
 
@@ -3220,6 +3718,22 @@ def main(argv: list[str] | None = None) -> None:
                 ),
                 "cross_campaign_positive_semantic_only_pairs_for_review_html": out.get(
                     "cross_campaign_positive_semantic_only_pairs_for_review_html_path"
+                ),
+                "low_band_unlabeled_pairs_csv": out.get("low_band_unlabeled_pairs_csv_path"),
+                "low_band_twohop_channel_summary_json": out.get(
+                    "low_band_twohop_channel_summary_json_path"
+                ),
+                "low_band_twohop_channel_summary_csv": out.get(
+                    "low_band_twohop_channel_summary_csv_path"
+                ),
+                "low_band_unlabeled_pairs_for_review_html": out.get(
+                    "low_band_unlabeled_pairs_for_review_html_path"
+                ),
+                "low_band_same_campaign_unlabeled_pairs_for_review_html": out.get(
+                    "low_band_same_campaign_unlabeled_pairs_for_review_html_path"
+                ),
+                "low_band_cross_campaign_unlabeled_pairs_for_review_html": out.get(
+                    "low_band_cross_campaign_unlabeled_pairs_for_review_html_path"
                 ),
                 "plots_under": str(Path(out["output_dir"]) / "plots"),
             },
