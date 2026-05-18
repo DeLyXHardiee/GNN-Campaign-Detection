@@ -9,16 +9,31 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Iterator
 
 import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
+
+# Ensure imports from core/* work in standalone analysis entry points.
+_CORE_ROOT = Path(__file__).resolve().parents[2]
+if str(_CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CORE_ROOT))
+
+from preprocessing.email_similarity_dedup import (
+    FlatItem,
+    canonical_similarity_string,
+    dedup_flat,
+    simhash_64,
+)
 
 from .model import HeteroSAGE
 from .model_io import select_device
@@ -40,6 +55,22 @@ from .pu_loss import (
 # Legacy config string (used only when ``pair_loss_type`` is omitted / inferred).
 PLACEHOLDER_LOSS_BCE_POS_VS_UNLABELED_AS_NEG = "bce_pos_vs_unlabeled_as_neg"
 
+# Pair encoder: full hetero message passing vs raw ``email.x`` only (no neighborhoods).
+PAIR_ENCODER_GNN = "gnn"
+PAIR_ENCODER_MLP_RAW_EMAIL_X = "mlp_raw_email_x"
+
+
+def resolve_pair_encoder_backend(training_cfg: dict[str, Any]) -> str:
+    v = str(training_cfg.get("pair_encoder_backend") or "").strip().lower()
+    if v in ("", "gnn", "hetero", "heterosage", "sage"):
+        return PAIR_ENCODER_GNN
+    if v in (PAIR_ENCODER_MLP_RAW_EMAIL_X, "mlp_raw", "mlp"):
+        return PAIR_ENCODER_MLP_RAW_EMAIL_X
+    raise ValueError(
+        f"Unsupported pair_encoder_backend={training_cfg.get('pair_encoder_backend')!r}; "
+        f"use {PAIR_ENCODER_GNN!r} or {PAIR_ENCODER_MLP_RAW_EMAIL_X!r}."
+    )
+
 PAIR_FEATURE_BOOL_COLS = [
     "from_seed",
     "from_rare_artifact",
@@ -56,7 +87,6 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "rare_artifact_rarity_max",
     "twohop_rarity_max",
     "component_cosine_max",
-    "time_gap_seconds_min",
 ]
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
@@ -158,6 +188,263 @@ def split_pairs_train_val_test(
     i_val = idx[n_test : n_test + n_val]
     i_train = idx[n_test + n_val :]
     return df.iloc[i_train].reset_index(drop=True), df.iloc[i_val].reset_index(drop=True), df.iloc[i_test].reset_index(drop=True)
+
+
+# Mirrors core/graph/assembler.py EMAIL_BOOL_ATTR_KEYS + AUTH_ATTR_KEYS for meta.json email_attrs rows.
+_GRAPH_META_BOOL_ATTR_KEYS = (
+    "cyrillic_domain",
+    "contains_symbols",
+    "body_has_tracking_url",
+    "body_has_tracking_image",
+    "body_has_tracking_pixel",
+    "body_has_unsubscribe_link",
+    "domain_is_common_webprovided",
+)
+_GRAPH_META_AUTH_ATTR_KEYS = ("auth_spf", "auth_dkim", "auth_dmarc")
+
+
+def _meta_email_row_to_similarity_dict(
+    email_attrs: dict[str, Any],
+    idx: int,
+    *,
+    x_text_max_dims: int,
+    x_text_precision: int,
+    x_html_css_max_dims: int,
+) -> dict[str, Any]:
+    """
+    Build a record compatible with :func:`canonical_similarity_string` from one graph
+    ``.meta.json`` ``email_attrs`` row (no ground truth).
+    Uses scalar attrs, auth strings, boolean flags, HTML/CSS feature vector, and optional ``x_text`` embeddings.
+    """
+
+    def at(key: str, default: Any = None) -> Any:
+        lst = email_attrs.get(key)
+        if not isinstance(lst, list) or idx < 0 or idx >= len(lst):
+            return default
+        return lst[idx]
+
+    ts = at("ts", 0.0)
+    len_sub = at("len_subject", 0) or 0
+    len_b = at("len_body", 0) or 0
+    n_urls = at("n_urls", 0) or 0
+    ext = str(at("external_id", "") or "")
+
+    auth_parts: list[str] = []
+    for k in _GRAPH_META_AUTH_ATTR_KEYS:
+        v = at(k, "")
+        if v:
+            auth_parts.append(f"{k}={v}")
+    sender = "|".join(auth_parts)
+
+    bool_parts: list[str] = []
+    for k in _GRAPH_META_BOOL_ATTR_KEYS:
+        lst = email_attrs.get(k)
+        if isinstance(lst, list) and 0 <= idx < len(lst):
+            bool_parts.append(f"{k}={lst[idx]}")
+
+    xh = at("x_html_css", [])
+    html_tok = ""
+    if isinstance(xh, list) and xh:
+        lim = xh[: max(0, x_html_css_max_dims)]
+        html_tok = " ".join(f"{float(v):.4f}" for v in lim)
+
+    xt = at("x_text", [])
+    emb_tok = ""
+    if isinstance(xt, list) and xt:
+        lim = xt[: max(0, x_text_max_dims)]
+        emb_tok = " ".join(f"{float(d):.{x_text_precision}f}" for d in lim)
+
+    date = str(float(ts)) if ts is not None else ""
+    subject = f"ls={int(len_sub)}"
+    body = " ".join([f"lb={int(len_b)}", *bool_parts, html_tok, emb_tok]).strip()
+
+    return {
+        "sender": sender,
+        "receiver": "",
+        "date": date,
+        "subject": subject,
+        "body": body,
+        "urls": str(int(n_urls)),
+        "attachments": ext,
+    }
+
+
+def _trim_val_pairs_to_train_split_ratio(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    *,
+    val_ratio: float,
+    test_ratio: float,
+    split_seed: int,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Subsample validation rows so n_val / n_train matches val_ratio / (1 - val_ratio - test_ratio).
+    """
+    train_frac = 1.0 - float(val_ratio) - float(test_ratio)
+    stats: dict[str, Any] = {
+        "trim_val_to_split": True,
+        "train_fraction_implied": train_frac,
+        "n_val_before": int(len(val_df)),
+    }
+    if train_frac <= 0 or len(val_df) == 0 or len(train_df) == 0:
+        stats["n_val_after"] = int(len(val_df))
+        stats["target_val_pairs"] = int(len(val_df))
+        return val_df, stats
+
+    target = int(math.floor(len(train_df) * float(val_ratio) / train_frac))
+    target = max(0, min(target, len(val_df)))
+    stats["target_val_pairs"] = target
+    if target >= len(val_df):
+        stats["n_val_after"] = int(len(val_df))
+        return val_df, stats
+
+    rng = np.random.default_rng(int(split_seed) + 999_001)
+    pick = rng.choice(len(val_df), size=target, replace=False)
+    out = val_df.iloc[sorted(int(x) for x in pick)].reset_index(drop=True)
+    stats["n_val_after"] = int(len(out))
+    return out, stats
+
+
+def apply_train_near_duplicate_email_filter(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    *,
+    graph_meta_json: Path,
+    training_cfg: dict[str, Any],
+    val_ratio: float,
+    test_ratio: float,
+    split_seed: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """
+    Drop train and validation pairs whose endpoints were removed by SimHash + Hamming near-duplicate
+    grouping (same core routine as ``scripts/deduplicate_ground_truth.py``), using only rows from
+    the graph companion ``.meta.json`` ``email_attrs`` (no ground-truth file).
+
+    Near-duplicate detection runs over the **union** of email nodes touched by train or validation
+    rows, so val-only near duplicates are merged the same way as train-only ones; then any pair
+    (train or val) with an endpoint not in the kept set is removed.
+
+    Optionally shrink val to match the nominal train/val ratio implied by val_ratio and test_ratio
+    (after dedup).
+    """
+    dedup_cfg: dict[str, Any] = dict(training_cfg.get("pair_train_near_duplicate_dedup") or {})
+    out_stats: dict[str, Any] = {"enabled": True, "config": dedup_cfg, "similarity_source": "graph_meta_json"}
+
+    if not graph_meta_json.is_file():
+        raise FileNotFoundError(
+            f"pair_train_near_duplicate_dedup requires graph companion metadata at {graph_meta_json}"
+        )
+
+    with graph_meta_json.open("r", encoding="utf-8") as f:
+        meta = json.load(f)
+    email_attrs = meta.get("email_attrs")
+    if not isinstance(email_attrs, dict):
+        raise ValueError(f"Metadata at {graph_meta_json} has no email_attrs object")
+
+    ext_list = email_attrs.get("external_id")
+    if not isinstance(ext_list, list) or len(ext_list) == 0:
+        raise ValueError(f"Metadata at {graph_meta_json} has no email_attrs.external_id list")
+
+    n_email = len(ext_list)
+    max_hamming = int(dedup_cfg.get("max_hamming", 13))
+    min_fuzzy = dedup_cfg.get("min_fuzzy_ratio", None)
+    min_fuzzy_ratio = float(min_fuzzy) if min_fuzzy is not None else None
+    body_max_chars = dedup_cfg.get("body_max_chars", None)
+    body_max_i = int(body_max_chars) if body_max_chars is not None else None
+    scope_requested = str(dedup_cfg.get("scope", "global")).lower().strip()
+    trim_val = bool(dedup_cfg.get("trim_val_to_split", True))
+    x_text_max_dims = int(dedup_cfg.get("x_text_max_dims", 128))
+    x_text_precision = int(dedup_cfg.get("x_text_precision", 4))
+    x_html_css_max_dims = int(dedup_cfg.get("x_html_css_max_dims", 32))
+
+    if scope_requested != "global":
+        print(
+            f"[pair_supervision] pair_train_near_duplicate_dedup: scope={scope_requested!r} is ignored "
+            "(ground-truth-free dedup); using global dedup over train ∪ val endpoint emails.",
+            flush=True,
+        )
+    out_stats["scope_requested"] = scope_requested
+    out_stats["scope_effective"] = "global"
+    out_stats["dedup_endpoint_scope"] = "train_union_val"
+
+    gi_tr = train_df["graph_email_idx_i"].to_numpy(dtype=np.int64, copy=False)
+    gj_tr = train_df["graph_email_idx_j"].to_numpy(dtype=np.int64, copy=False)
+    gi_va = val_df["graph_email_idx_i"].to_numpy(dtype=np.int64, copy=False)
+    gj_va = val_df["graph_email_idx_j"].to_numpy(dtype=np.int64, copy=False)
+    scope_indices = {int(x) for x in np.unique(np.concatenate([gi_tr, gj_tr, gi_va, gj_va]))}
+
+    flat: list[FlatItem] = []
+    for pos, graph_idx in enumerate(sorted(scope_indices)):
+        if graph_idx < 0 or graph_idx >= n_email:
+            continue
+        ext = str(ext_list[graph_idx] or "").strip()
+        sim_d = _meta_email_row_to_similarity_dict(
+            email_attrs,
+            graph_idx,
+            x_text_max_dims=x_text_max_dims,
+            x_text_precision=x_text_precision,
+            x_html_css_max_dims=x_html_css_max_dims,
+        )
+        norm = canonical_similarity_string(sim_d, body_max_chars=body_max_i)
+        flat.append(
+            FlatItem(
+                cluster_key="global",
+                index_in_cluster=pos,
+                email={"graph_email_idx": graph_idx, "external_id": ext},
+                norm=norm,
+                simh=simhash_64(norm),
+            )
+        )
+
+    out_stats["n_unique_scope_emails_before"] = len(flat)
+    # Backward-compatible alias (scope is train ∪ val endpoints, not train-only).
+    out_stats["n_unique_train_emails_before"] = len(flat)
+
+    flat.sort(key=lambda x: int(x.email["graph_email_idx"]))
+    if len(flat) < 2:
+        kept_graph = {int(fi.email["graph_email_idx"]) for fi in flat}
+        out_stats["near_duplicate_emails_removed"] = 0
+    else:
+        keep_pos, removed = dedup_flat(
+            flat,
+            max_hamming=max_hamming,
+            min_fuzzy_ratio=min_fuzzy_ratio,
+        )
+        out_stats["near_duplicate_emails_removed"] = int(removed)
+        kept_graph = {int(flat[i].email["graph_email_idx"]) for i in keep_pos}
+
+    out_stats["n_unique_scope_emails_after"] = len(kept_graph)
+    out_stats["n_unique_train_emails_after"] = len(kept_graph)
+    out_stats["graph_meta_json"] = str(graph_meta_json)
+    out_stats["max_hamming"] = max_hamming
+    out_stats["min_fuzzy_ratio"] = min_fuzzy_ratio
+
+    n_train_before = int(len(train_df))
+    kept_i = train_df["graph_email_idx_i"].isin(kept_graph)
+    kept_j = train_df["graph_email_idx_j"].isin(kept_graph)
+    train_out = train_df.loc[kept_i & kept_j].reset_index(drop=True)
+    out_stats["n_train_pairs_before"] = n_train_before
+    out_stats["n_train_pairs_after"] = int(len(train_out))
+
+    n_val_before = int(len(val_df))
+    vki = val_df["graph_email_idx_i"].isin(kept_graph)
+    vkj = val_df["graph_email_idx_j"].isin(kept_graph)
+    val_out = val_df.loc[vki & vkj].reset_index(drop=True)
+    out_stats["n_val_pairs_before_dedup"] = n_val_before
+    out_stats["n_val_pairs_after_dedup"] = int(len(val_out))
+
+    trim_stats: dict[str, Any] = {}
+    if trim_val:
+        val_out, trim_stats = _trim_val_pairs_to_train_split_ratio(
+            train_out,
+            val_df,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            split_seed=split_seed,
+        )
+    out_stats["val_trim"] = trim_stats
+
+    return train_out, val_out, out_stats
 
 
 @dataclass
@@ -570,6 +857,67 @@ def forward_encoder_and_pair_logits(
     return logits, ok_mask_t, diag, cov
 
 
+def _email_raw_feature_matrix(data_cpu: Any) -> torch.Tensor:
+    """Full-graph ``(N_email, F)`` tensor on CPU; required for MLP-only pair path."""
+    if "email" not in data_cpu.node_types:
+        raise KeyError("HeteroData has no 'email' node type; cannot use mlp_raw_email_x pair encoder.")
+    x = getattr(data_cpu["email"], "x", None)
+    if x is None:
+        raise ValueError(
+            "pair_encoder_backend=mlp_raw_email_x requires data['email'].x on the hetero graph checkpoint."
+        )
+    if x.dim() != 2:
+        raise ValueError(f"Expected data['email'].x to be 2D, got shape {tuple(x.shape)}")
+    return x
+
+
+def forward_raw_email_pair_logits(
+    pair_scorer: EmailPairMLPScorer,
+    data_cpu: Any,
+    gi: np.ndarray,
+    gj: np.ndarray,
+    pair_feats: torch.Tensor | None,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, PairBatchDiag, Any]:
+    """
+    Gather raw ``email.x`` at global indices; same MLP head as GNN path but without message passing.
+
+    Out-of-range indices are clamped for the forward; ``pair_ok_mask`` marks in-range rows only.
+    """
+    x_cpu = _email_raw_feature_matrix(data_cpu)
+    n = int(x_cpu.size(0))
+    gi_t = torch.as_tensor(gi, dtype=torch.long, device=device)
+    gj_t = torch.as_tensor(gj, dtype=torch.long, device=device)
+    ok_mask_t = (gi_t >= 0) & (gi_t < n) & (gj_t >= 0) & (gj_t < n)
+    li = gi_t.clamp(min=0, max=max(n - 1, 0))
+    lj = gj_t.clamp(min=0, max=max(n - 1, 0))
+    x = x_cpu.to(device)
+    h_i = x[li]
+    h_j = x[lj]
+    if pair_scorer.use_explicit_pair_features:
+        logits = pair_scorer(h_i, h_j, pair_feats.to(device) if pair_feats is not None else None)
+    else:
+        logits = pair_scorer(h_i, h_j, None)
+    n_pairs = int(gi_t.numel())
+    n_ok = int(ok_mask_t.sum().item())
+    diag = PairBatchDiag(
+        n_pairs=n_pairs,
+        n_unique_emails=int(len(set(int(gi[i]) for i in range(len(gi))) | set(int(gj[i]) for i in range(len(gj))))),
+        n_pairs_mapped_ok=n_ok,
+        n_pairs_missing_endpoint=n_pairs - n_ok,
+    )
+
+    cov = SimpleNamespace(
+        n_pairs_requested=n_pairs,
+        n_both_endpoints_present=n_ok,
+        n_missing_i_only=0,
+        n_missing_j_only=0,
+        n_missing_both_endpoints=n_pairs - n_ok,
+        frac_usable_pairs=float(n_ok / max(n_pairs, 1)),
+    )
+    return logits, ok_mask_t, diag, cov
+
+
 def _quantile_dict(scores: list[float], *, prefix: str) -> dict[str, float]:
     if not scores:
         return {f"{prefix}_q10": float("nan"), f"{prefix}_q50": float("nan"), f"{prefix}_q90": float("nan")}
@@ -714,6 +1062,261 @@ def metrics_row_pair_training(
         g(train_agg, "n_effective_reliable_negative_rows_epoch"),
         g(train_agg, "n_reliable_negative_oversample_extra_rows_epoch"),
     ]
+
+
+def train_pair_epoch_raw(
+    *,
+    pair_scorer: EmailPairMLPScorer,
+    optimizer: torch.optim.Optimizer,
+    data_cpu: Any,
+    df: pd.DataFrame,
+    device: torch.device,
+    pair_batch_size: int,
+    max_unique_emails: int,
+    pair_loss_type: str,
+    pi_p: float,
+    pu_non_negative: bool,
+    reliable_negative_loss_weight: float = 1.0,
+    pair_assert_full_endpoint_coverage: bool = False,
+    pair_skip_graph_batch_if_any_endpoint_missing: bool = False,
+    pair_log_mapping_misses: bool = True,
+    pair_tqdm: bool = True,
+    tqdm_total_batches: int | None = None,
+    tqdm_desc: str = "train pairs (raw x)",
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    """Pair supervision without GNN: gather ``email.x`` at pair endpoints only."""
+    pair_scorer.train()
+    total_loss = 0.0
+    n_batches = 0
+    batch_pu_diags: list[dict[str, Any]] = []
+    sum_unique = 0.0
+    sum_mapped = 0.0
+    sum_pairs = 0.0
+    recover_fracs: list[float] = []
+    n_skipped_incomplete = 0
+    n_miss_rows = 0
+    catastrophic = False
+    logged_miss = False
+
+    batch_iter = iter_pair_batches(df, pair_batch_size, max_unique_emails)
+    if pair_tqdm:
+        batch_iter = tqdm(
+            batch_iter,
+            total=tqdm_total_batches,
+            desc=tqdm_desc,
+            unit="batch",
+            leave=False,
+            mininterval=0.3,
+        )
+    for chunk, gi, gj in batch_iter:
+        feats: torch.Tensor | None = None
+        if pair_scorer.use_explicit_pair_features:
+            feats = torch.from_numpy(build_pair_feature_matrix(chunk))
+        is_pos = torch.tensor(chunk["is_positive"].values, dtype=torch.bool, device=device)
+        is_unl = torch.tensor(chunk["is_unlabeled"].values, dtype=torch.bool, device=device)
+        if "is_reliable_negative" in chunk.columns:
+            is_neg = torch.tensor(chunk["is_reliable_negative"].values, dtype=torch.bool, device=device)
+        else:
+            is_neg = torch.zeros(len(chunk), dtype=torch.bool, device=device)
+
+        logits, ok_m, diag, cov = forward_raw_email_pair_logits(
+            pair_scorer, data_cpu, gi, gj, feats, device
+        )
+        if pair_assert_full_endpoint_coverage and cov.n_both_endpoints_present < cov.n_pairs_requested:
+            raise AssertionError(
+                "pair_assert_full_endpoint_coverage (raw x): "
+                f"ok={cov.n_both_endpoints_present}/{cov.n_pairs_requested}"
+            )
+        if pair_skip_graph_batch_if_any_endpoint_missing and cov.n_both_endpoints_present < cov.n_pairs_requested:
+            n_skipped_incomplete += 1
+            continue
+        if pair_log_mapping_misses and not logged_miss and cov.n_pairs_requested > cov.n_both_endpoints_present:
+            print(
+                f"[pair_supervision][mapping][raw_x] example batch: requested_pairs={cov.n_pairs_requested} "
+                f"both_present={cov.n_both_endpoints_present} (fraction_usable={cov.frac_usable_pairs:.4f})",
+                flush=True,
+            )
+            logged_miss = True
+        n_miss_rows += cov.n_pairs_requested - cov.n_both_endpoints_present
+        if cov.frac_usable_pairs == 0.0 and cov.n_pairs_requested > 0:
+            catastrophic = True
+        if not ok_m.any():
+            continue
+
+        optimizer.zero_grad()
+        loss, batch_diag = compute_pair_loss(
+            logits[ok_m],
+            is_pos[ok_m],
+            is_unl[ok_m],
+            pair_loss_type,
+            pi_p=pi_p,
+            pu_non_negative=pu_non_negative,
+            is_reliable_negative=is_neg[ok_m],
+            reliable_negative_loss_weight=reliable_negative_loss_weight,
+        )
+        loss.backward()
+        optimizer.step()
+
+        total_loss += float(loss.item())
+        n_batches += 1
+        batch_pu_diags.append(batch_diag)
+        sum_unique += diag.n_unique_emails
+        sum_mapped += diag.n_pairs_mapped_ok / max(1, diag.n_pairs)
+        sum_pairs += diag.n_pairs
+        recover_fracs.append(float(cov.frac_usable_pairs))
+
+    def _mean(xs: list[float]) -> float:
+        return float(sum(xs) / len(xs)) if xs else 0.0
+
+    agg: dict[str, float | bool | int] = {
+        "avg_unique_emails_per_batch": float(sum_unique / max(n_batches, 1)),
+        "avg_pair_endpoint_map_rate": float(sum_mapped / max(n_batches, 1)),
+        "avg_pairs_per_batch": float(sum_pairs / max(n_batches, 1)),
+        "avg_unique_seed_emails_per_graph_batch": 0.0,
+        "avg_sampled_hetero_total_nodes": 0.0,
+        "avg_sampled_hetero_total_edges": 0.0,
+        "avg_n_email_nodes_in_sampled_batch": 0.0,
+        "avg_recoverable_pair_fraction": _mean(recover_fracs),
+        "min_recoverable_pair_fraction": float(min(recover_fracs)) if recover_fracs else 0.0,
+        "max_recoverable_pair_fraction": float(max(recover_fracs)) if recover_fracs else 0.0,
+        "n_graph_batches_with_grad": int(n_batches),
+        "n_skipped_batches_incomplete_endpoints": int(n_skipped_incomplete),
+        "n_pair_rows_missing_endpoint_across_epoch": int(n_miss_rows),
+        "any_catastrophic_batch": bool(catastrophic),
+    }
+    pu_epoch = aggregate_epoch_pu_stats(batch_pu_diags, pair_loss_type)
+    return total_loss / max(n_batches, 1), pu_epoch, agg
+
+
+@torch.no_grad()
+def eval_pair_epoch_raw(
+    *,
+    pair_scorer: EmailPairMLPScorer,
+    data_cpu: Any,
+    df: pd.DataFrame,
+    device: torch.device,
+    pair_batch_size: int,
+    max_unique_emails: int,
+    pair_loss_type: str,
+    pi_p: float,
+    pu_non_negative: bool,
+    reliable_negative_loss_weight: float = 1.0,
+    pair_eval_threshold: float = 0.5,
+    pair_assert_full_endpoint_coverage: bool = False,
+    pair_skip_graph_batch_if_any_endpoint_missing: bool = False,
+    pair_tqdm: bool = True,
+    tqdm_total_batches: int | None = None,
+    tqdm_desc: str = "eval pairs (raw x)",
+) -> tuple[float, dict[str, float], dict[str, float]]:
+    pair_scorer.eval()
+    total_loss = 0.0
+    n_batches = 0
+    batch_pu_diags: list[dict[str, Any]] = []
+    all_pos_scores: list[float] = []
+    all_unl_scores: list[float] = []
+    sum_unique = 0.0
+    sum_mapped = 0.0
+    sum_pairs = 0.0
+    recover_fracs: list[float] = []
+    catastrophic = False
+
+    batch_iter = iter_pair_batches(df, pair_batch_size, max_unique_emails)
+    if pair_tqdm:
+        batch_iter = tqdm(
+            batch_iter,
+            total=tqdm_total_batches,
+            desc=tqdm_desc,
+            unit="batch",
+            leave=False,
+            mininterval=0.3,
+        )
+    for chunk, gi, gj in batch_iter:
+        feats: torch.Tensor | None = None
+        if pair_scorer.use_explicit_pair_features:
+            feats = torch.from_numpy(build_pair_feature_matrix(chunk))
+        is_pos = torch.tensor(chunk["is_positive"].values, dtype=torch.bool, device=device)
+        is_unl = torch.tensor(chunk["is_unlabeled"].values, dtype=torch.bool, device=device)
+        if "is_reliable_negative" in chunk.columns:
+            is_neg = torch.tensor(chunk["is_reliable_negative"].values, dtype=torch.bool, device=device)
+        else:
+            is_neg = torch.zeros(len(chunk), dtype=torch.bool, device=device)
+
+        logits, ok_m, diag, cov = forward_raw_email_pair_logits(
+            pair_scorer, data_cpu, gi, gj, feats, device
+        )
+        if pair_assert_full_endpoint_coverage and cov.n_both_endpoints_present < cov.n_pairs_requested:
+            raise AssertionError(
+                "pair_assert_full_endpoint_coverage (eval raw x): "
+                f"ok={cov.n_both_endpoints_present}/{cov.n_pairs_requested}"
+            )
+        if pair_skip_graph_batch_if_any_endpoint_missing and cov.n_both_endpoints_present < cov.n_pairs_requested:
+            continue
+        if cov.frac_usable_pairs == 0.0 and cov.n_pairs_requested > 0:
+            catastrophic = True
+        if not ok_m.any():
+            continue
+        loss, batch_diag = compute_pair_loss(
+            logits[ok_m],
+            is_pos[ok_m],
+            is_unl[ok_m],
+            pair_loss_type,
+            pi_p=pi_p,
+            pu_non_negative=pu_non_negative,
+            is_reliable_negative=is_neg[ok_m],
+            reliable_negative_loss_weight=reliable_negative_loss_weight,
+        )
+        total_loss += float(loss.item())
+        n_batches += 1
+        batch_pu_diags.append(batch_diag)
+        probs = torch.sigmoid(logits[ok_m])
+        pk, uk = exclusive_pair_masks(is_pos[ok_m], is_unl[ok_m])
+        if pk.any():
+            all_pos_scores.extend(probs[pk].detach().cpu().tolist())
+        if uk.any():
+            all_unl_scores.extend(probs[uk].detach().cpu().tolist())
+        sum_unique += diag.n_unique_emails
+        sum_mapped += diag.n_pairs_mapped_ok / max(1, diag.n_pairs)
+        sum_pairs += diag.n_pairs
+        recover_fracs.append(float(cov.frac_usable_pairs))
+
+    def _mean(xs: list[float]) -> float:
+        return float(sum(xs) / len(xs)) if xs else 0.0
+
+    agg: dict[str, float | bool | int] = {
+        "avg_unique_emails_per_batch": float(sum_unique / max(n_batches, 1)),
+        "avg_pair_endpoint_map_rate": float(sum_mapped / max(n_batches, 1)),
+        "avg_pairs_per_batch": float(sum_pairs / max(n_batches, 1)),
+        "avg_unique_seed_emails_per_graph_batch": 0.0,
+        "avg_sampled_hetero_total_nodes": 0.0,
+        "avg_sampled_hetero_total_edges": 0.0,
+        "avg_n_email_nodes_in_sampled_batch": 0.0,
+        "avg_recoverable_pair_fraction": _mean(recover_fracs),
+        "min_recoverable_pair_fraction": float(min(recover_fracs)) if recover_fracs else 0.0,
+        "max_recoverable_pair_fraction": float(max(recover_fracs)) if recover_fracs else 0.0,
+        "n_graph_batches": int(n_batches),
+        "any_catastrophic_batch": bool(catastrophic),
+    }
+    pu_epoch = aggregate_epoch_pu_stats(batch_pu_diags, pair_loss_type)
+    pu_epoch.update(_quantile_dict(all_pos_scores, prefix="val_pos_score"))
+    pu_epoch.update(_quantile_dict(all_unl_scores, prefix="val_unl_score"))
+    thr = float(pair_eval_threshold)
+    if all_pos_scores:
+        ap = np.asarray(all_pos_scores, dtype=np.float64)
+        pu_epoch["val_frac_pos_above_threshold"] = float((ap >= thr).mean())
+    else:
+        pu_epoch["val_frac_pos_above_threshold"] = float("nan")
+    if all_unl_scores:
+        au = np.asarray(all_unl_scores, dtype=np.float64)
+        pu_epoch["val_frac_unl_above_threshold"] = float((au >= thr).mean())
+    else:
+        pu_epoch["val_frac_unl_above_threshold"] = float("nan")
+    fp = pu_epoch.get("val_frac_pos_above_threshold", float("nan"))
+    fu = pu_epoch.get("val_frac_unl_above_threshold", float("nan"))
+    if fp == fp and fu == fu:
+        pu_epoch["val_separation_at_threshold"] = float(fp - fu)
+    else:
+        pu_epoch["val_separation_at_threshold"] = float("nan")
+    return total_loss / max(n_batches, 1), pu_epoch, agg
 
 
 def train_pair_epoch(
@@ -1002,6 +1605,41 @@ def eval_pair_epoch(
 
 
 @torch.no_grad()
+def probe_pair_raw_forward_shapes(
+    pair_scorer: EmailPairMLPScorer,
+    data_cpu: Any,
+    df: pd.DataFrame,
+    device: torch.device,
+    pair_batch_size: int,
+    max_unique_emails: int,
+) -> dict[str, Any]:
+    """Validate raw ``email.x`` gather + pair MLP on the first non-empty batch."""
+    if len(df) == 0:
+        return {"error": "empty_dataframe"}
+    pair_scorer.eval()
+    for chunk, gi, gj in iter_pair_batches(df, pair_batch_size, max_unique_emails):
+        feats: torch.Tensor | None = None
+        if pair_scorer.use_explicit_pair_features:
+            feats = torch.from_numpy(build_pair_feature_matrix(chunk))
+        logits, ok_m, _diag, cov = forward_raw_email_pair_logits(
+            pair_scorer, data_cpu, gi, gj, feats, device
+        )
+        meta_shape = list(feats.shape) if feats is not None else None
+        return {
+            "pair_encoder_backend": PAIR_ENCODER_MLP_RAW_EMAIL_X,
+            "probe_n_pair_rows": int(len(gi)),
+            "logits_shape": list(logits.shape),
+            "n_usable_pairs": int(ok_m.sum().item()),
+            "pair_metadata_tensor_shape": meta_shape,
+            "raw_email_feature_dim": int(pair_scorer.embed_dim),
+            "scorer_mlp_input_dim": int(pair_scorer.input_feature_dim),
+            "recoverable_pair_fraction_this_batch": float(cov.frac_usable_pairs),
+            "pair_ok_mask_shape": list(ok_m.shape),
+        }
+    return {"error": "no_batches"}
+
+
+@torch.no_grad()
 def probe_pair_forward_shapes(
     model: HeteroSAGE,
     pair_scorer: EmailPairMLPScorer,
@@ -1043,7 +1681,7 @@ def save_pair_training_checkpoint(
     *,
     save_dir: Path,
     filename: str,
-    model: HeteroSAGE,
+    model: HeteroSAGE | None,
     pair_scorer: EmailPairMLPScorer,
     optimizer: torch.optim.Optimizer,
     epoch: int,
@@ -1054,17 +1692,19 @@ def save_pair_training_checkpoint(
     pair_training_config: dict[str, Any],
     patience_counter: int,
     best_val: float,
-    best_model_state: dict,
-    best_pair_scorer_state: dict,
+    best_model_state: dict[str, Any],
+    best_pair_scorer_state: dict[str, Any],
     training_params: dict[str, Any],
 ) -> Path:
     save_dir.mkdir(parents=True, exist_ok=True)
     path = save_dir / filename
+    enc_be = str(encoder_config.get("pair_encoder_backend") or PAIR_ENCODER_GNN)
     payload = {
         "training_objective": "pair_supervision",
         "epoch": int(epoch),
         "val_loss": float(val_loss),
-        "model_state_dict": model.state_dict(),
+        "pair_encoder_backend": enc_be,
+        "model_state_dict": model.state_dict() if model is not None else {},
         "pair_scorer_state_dict": pair_scorer.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "encoder_config": encoder_config,
@@ -1103,6 +1743,8 @@ def run_pair_training(
     run_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = run_dir / models_subdir
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    setup_summary_path = (run_dir / Path(training_config_json).parent / "pair_training_setup_summary.json").resolve()
+    setup_summary_path.parent.mkdir(parents=True, exist_ok=True)
 
     root = project_root or _project_root_from_here()
     raw_csv = training_cfg.get("pair_dataset_csv")
@@ -1218,6 +1860,43 @@ def run_pair_training(
     train_df, val_df, test_df = split_pairs_train_val_test(
         df, val_ratio=val_ratio, test_ratio=test_ratio, split_seed=split_seed
     )
+    pair_train_dedup_stats: dict[str, Any] | None = None
+    _dedup_cfg = training_cfg.get("pair_train_near_duplicate_dedup") or {}
+    if bool(_dedup_cfg.get("enabled", False)):
+        gp = training_cfg.get("graph_path")
+        if not gp:
+            raise ValueError(
+                "pair_train_near_duplicate_dedup.enabled requires graph_path in training_cfg "
+                "(injected by train_stage from the graph .pt path)."
+            )
+        meta_json = Path(str(gp)).expanduser().resolve().with_suffix(".meta.json")
+        train_df, val_df, pair_train_dedup_stats = apply_train_near_duplicate_email_filter(
+            train_df,
+            val_df,
+            graph_meta_json=meta_json,
+            training_cfg=training_cfg,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            split_seed=split_seed,
+        )
+        print(
+            "[pair_supervision] pair_train_near_duplicate_dedup | "
+            f"train pairs {pair_train_dedup_stats['n_train_pairs_before']} -> {pair_train_dedup_stats['n_train_pairs_after']} | "
+            f"val pairs {pair_train_dedup_stats.get('n_val_pairs_before_dedup', 'n/a')} -> "
+            f"{pair_train_dedup_stats.get('n_val_pairs_after_dedup', 'n/a')} | "
+            f"unique scope emails (train∪val) {pair_train_dedup_stats.get('n_unique_scope_emails_before', pair_train_dedup_stats['n_unique_train_emails_before'])} -> "
+            f"{pair_train_dedup_stats.get('n_unique_scope_emails_after', pair_train_dedup_stats['n_unique_train_emails_after'])} "
+            f"(merged {pair_train_dedup_stats['near_duplicate_emails_removed']})",
+            flush=True,
+        )
+        vt = pair_train_dedup_stats.get("val_trim") or {}
+        if vt.get("n_val_before") != vt.get("n_val_after"):
+            print(
+                "[pair_supervision] val pairs trimmed to match train/val split ratio | "
+                f"{vt.get('n_val_before')} -> {vt.get('n_val_after')} (target {vt.get('target_val_pairs')})",
+                flush=True,
+            )
+
     hard_pos_mask_train = _hard_positive_mask(
         train_df,
         cross_seed_component_only=hpe_cross_seed_component_only,
@@ -1257,33 +1936,56 @@ def run_pair_training(
 
     data_cpu = data.to("cpu")
     metadata = data_cpu.metadata()
-    sampling_diagnostics = collect_pair_sampling_diagnostics(
-        data_cpu,
-        train_df,
-        pair_batch_iter=iter_pair_batches,
-        pair_batch_size=pair_batch_size,
-        max_unique_emails=max_unique,
-        fanout=fanout,
-        max_batches=pair_sampling_diag_max_batches,
-        assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
-    )
+    pair_encoder_backend = resolve_pair_encoder_backend(training_cfg)
 
-    model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(DEVICE)
-    pair_scorer = build_email_pair_mlp_scorer(
-        embed_dim=out_dim,
-        pair_feat_dim=pair_feat_dim_for_scorer,
-        training_cfg=training_cfg,
-    ).to(DEVICE)
-    probe_shapes = probe_pair_forward_shapes(
-        model,
-        pair_scorer,
-        data_cpu,
-        train_df,
-        DEVICE,
-        pair_batch_size,
-        max_unique,
-        fanout,
-    )
+    if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+        sampling_diagnostics: dict[str, Any] = {
+            "pair_encoder_backend": PAIR_ENCODER_MLP_RAW_EMAIL_X,
+            "note": "No hetero subgraph sampling; pair logits from global email.x gathers only.",
+        }
+        raw_x = _email_raw_feature_matrix(data_cpu)
+        raw_dim = int(raw_x.size(1))
+        model: HeteroSAGE | None = None
+        pair_scorer = build_email_pair_mlp_scorer(
+            embed_dim=raw_dim,
+            pair_feat_dim=pair_feat_dim_for_scorer,
+            training_cfg=training_cfg,
+        ).to(DEVICE)
+        probe_shapes = probe_pair_raw_forward_shapes(
+            pair_scorer,
+            data_cpu,
+            train_df,
+            DEVICE,
+            pair_batch_size,
+            max_unique,
+        )
+    else:
+        sampling_diagnostics = collect_pair_sampling_diagnostics(
+            data_cpu,
+            train_df,
+            pair_batch_iter=iter_pair_batches,
+            pair_batch_size=pair_batch_size,
+            max_unique_emails=max_unique,
+            fanout=fanout,
+            max_batches=pair_sampling_diag_max_batches,
+            assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+        )
+        model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(DEVICE)
+        pair_scorer = build_email_pair_mlp_scorer(
+            embed_dim=out_dim,
+            pair_feat_dim=pair_feat_dim_for_scorer,
+            training_cfg=training_cfg,
+        ).to(DEVICE)
+        probe_shapes = probe_pair_forward_shapes(
+            model,
+            pair_scorer,
+            data_cpu,
+            train_df,
+            DEVICE,
+            pair_batch_size,
+            max_unique,
+            fanout,
+        )
     scorer_type = str(training_cfg.get("pair_scorer_type", "email_pair_mlp")).lower().strip()
     scorer_param_count = count_scorer_parameters(pair_scorer)
 
@@ -1292,6 +1994,7 @@ def run_pair_training(
             "created_at_utc": datetime.now().isoformat(timespec="seconds"),
             "pair_dataset_csv": str(csv_path),
             "load_stats": load_stats,
+            "pair_encoder_backend": pair_encoder_backend,
         },
         "split": {
             "pair_val_ratio": val_ratio,
@@ -1313,6 +2016,7 @@ def run_pair_training(
                 "Train/val/test use one shuffled index permutation over all rows (positives, unlabeled, "
                 "reliable_negative together). Counts above show how many reliable negatives landed in each split."
             ),
+            "pair_train_near_duplicate_dedup": pair_train_dedup_stats,
         },
         "batching": {
             "pair_batch_size": pair_batch_size,
@@ -1436,7 +2140,8 @@ def run_pair_training(
         "pair_feature_dim_passed_to_scorer": pair_feat_dim_for_scorer,
         "pair_feature_missing_policy": "numeric NaN -> 0.0; bool unknown -> 0",
         "pair_feature_note": (
-            "Explicit pair features exclude raw seed_component_i/j (identifier-like). "
+            "Explicit pair features exclude timestamp-derived fields and raw seed_component_i/j "
+            "(identifier-like). "
             "Flags same_seed_component_flag / cross_seed_component_flag are retained."
         ),
         "loss_objective": {
@@ -1473,31 +2178,44 @@ def run_pair_training(
             "pair_scorer_hidden_dim": int(training_cfg.get("pair_scorer_hidden_dim", 256)),
             "pair_scorer_dropout": float(training_cfg.get("pair_scorer_dropout", 0.2)),
             "pair_scorer_use_explicit_features": use_explicit_pair_feats,
-            "encoder_email_embed_dim": out_dim,
+            "encoder_email_embed_dim": int(pair_scorer.embed_dim),
         },
         "scorer_parameter_count": scorer_param_count,
         "scorer_input_shapes": probe_shapes,
-        "notes": [
-            "Substep 3: neighborhoods sampled with torch_geometric.NeighborLoader on hetero data, "
-            "seeded at unique email endpoints from the pair batch.",
-            "Substep 4: EmailPairMLPScorer combines z_i, z_j, |z_i-z_j|, z_i*z_j, and optional metadata.",
-            "PU: default pair_loss_type=nnpu (Kiryo-style non-negative risk); unlabeled rows are not negatives.",
-            "Per-epoch train rows (when enabled): easy_positive_capping (retain fraction of easy positives) -> "
-            "hard_positive oversample extras -> hard_unlabeled oversample extras -> "
-            "reliable_negative oversample extras -> optional shuffle.",
-            "Reliable-negative rows are never treated as unlabeled for nnPU; optional reliable_negative_emphasis "
-            "duplicates N rows after hard-unlabeled extras.",
-        ],
+        "notes": (
+            [
+                "pair_encoder_backend=mlp_raw_email_x: no NeighborLoader; logits from raw data['email'].x "
+                "at pair endpoints plus the same EmailPairMLP head (and optional CSV pair metadata).",
+                "PU: default pair_loss_type=nnpu (Kiryo-style non-negative risk); unlabeled rows are not negatives.",
+                "Per-epoch train rows (when enabled): easy_positive_capping -> hard_positive extras -> "
+                "hard_unlabeled extras -> reliable_negative extras -> optional shuffle.",
+            ]
+            if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X
+            else [
+                "Substep 3: neighborhoods sampled with torch_geometric.NeighborLoader on hetero data, "
+                "seeded at unique email endpoints from the pair batch.",
+                "Substep 4: EmailPairMLPScorer combines z_i, z_j, |z_i-z_j|, z_i*z_j, and optional metadata.",
+                "PU: default pair_loss_type=nnpu (Kiryo-style non-negative risk); unlabeled rows are not negatives.",
+                "Per-epoch train rows (when enabled): easy_positive_capping (retain fraction of easy positives) -> "
+                "hard_positive oversample extras -> hard_unlabeled oversample extras -> "
+                "reliable_negative oversample extras -> optional shuffle.",
+                "Reliable-negative rows are never treated as unlabeled for nnPU; optional reliable_negative_emphasis "
+                "duplicates N rows after hard-unlabeled extras.",
+            ]
+        ),
     }
-    (run_dir / "pair_training_setup_summary.json").write_text(
+    setup_summary_path.write_text(
         json.dumps(setup_summary, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
-    opt = torch.optim.AdamW(
-        list(model.parameters()) + list(pair_scorer.parameters()),
-        lr=lr,
-        weight_decay=wd,
-    )
+    if model is not None:
+        opt = torch.optim.AdamW(
+            list(model.parameters()) + list(pair_scorer.parameters()),
+            lr=lr,
+            weight_decay=wd,
+        )
+    else:
+        opt = torch.optim.AdamW(list(pair_scorer.parameters()), lr=lr, weight_decay=wd)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         opt,
         mode="min",
@@ -1507,6 +2225,7 @@ def run_pair_training(
     )
 
     encoder_config = {
+        "pair_encoder_backend": pair_encoder_backend,
         "hidden": hidden,
         "out_dim": out_dim,
         "layers": layers,
@@ -1522,6 +2241,8 @@ def run_pair_training(
         "pair_eval_threshold": pair_eval_threshold,
         "reliable_negative_loss_weight": float(reliable_negative_loss_weight),
     }
+    if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+        encoder_config["raw_email_feature_dim"] = int(pair_scorer.embed_dim)
     pair_training_config = {
         "pair_dataset_csv": str(csv_path),
         "pair_batch_size": pair_batch_size,
@@ -1579,6 +2300,8 @@ def run_pair_training(
             "shuffle_each_epoch": bool(rne_shuffle_each_epoch),
         },
         "reliable_negative_loss_weight": float(reliable_negative_loss_weight),
+        "pair_train_near_duplicate_dedup_stats": pair_train_dedup_stats,
+        "pair_encoder_backend": pair_encoder_backend,
     }
     training_params = {
         "lr": lr,
@@ -1611,7 +2334,10 @@ def run_pair_training(
     patience_counter = 0
     best_state: dict[str, Any] | None = None
 
-    print(f"[pair_supervision] Starting pair training | pair_loss_type={pair_loss_type} pi_p={pi_p}")
+    print(
+        f"[pair_supervision] Starting pair training | backend={pair_encoder_backend} | "
+        f"pair_loss_type={pair_loss_type} pi_p={pi_p}"
+    )
     print(f"[pair_supervision] train/val/test pairs: {len(train_df)}/{len(val_df)}/{len(test_df)}")
     print(
         f"[pair_supervision] reliable_negative (train/val/test): "
@@ -1735,27 +2461,48 @@ def run_pair_training(
                 require_from_semantic_false=hue_require_from_semantic_false,
             ).sum()
         )
-        tr_loss, tr_pu, tr_agg = train_pair_epoch(
-            model=model,
-            pair_scorer=pair_scorer,
-            optimizer=opt,
-            data_cpu=data_cpu,
-            df=train_df_epoch,
-            device=DEVICE,
-            pair_batch_size=pair_batch_size,
-            max_unique_emails=max_unique,
-            fanout=fanout,
-            pair_loss_type=pair_loss_type,
-            pi_p=pi_p,
-            pu_non_negative=pu_non_negative,
-            reliable_negative_loss_weight=reliable_negative_loss_weight,
-            pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
-            pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
-            pair_log_mapping_misses=pair_log_mapping_misses,
-            pair_tqdm=pair_tqdm,
-            tqdm_total_batches=n_train_batches_epoch,
-            tqdm_desc=f"train {epoch}/{epochs}",
-        )
+        if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+            tr_loss, tr_pu, tr_agg = train_pair_epoch_raw(
+                pair_scorer=pair_scorer,
+                optimizer=opt,
+                data_cpu=data_cpu,
+                df=train_df_epoch,
+                device=DEVICE,
+                pair_batch_size=pair_batch_size,
+                max_unique_emails=max_unique,
+                pair_loss_type=pair_loss_type,
+                pi_p=pi_p,
+                pu_non_negative=pu_non_negative,
+                reliable_negative_loss_weight=reliable_negative_loss_weight,
+                pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+                pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+                pair_log_mapping_misses=pair_log_mapping_misses,
+                pair_tqdm=pair_tqdm,
+                tqdm_total_batches=n_train_batches_epoch,
+                tqdm_desc=f"train {epoch}/{epochs}",
+            )
+        else:
+            tr_loss, tr_pu, tr_agg = train_pair_epoch(
+                model=model,
+                pair_scorer=pair_scorer,
+                optimizer=opt,
+                data_cpu=data_cpu,
+                df=train_df_epoch,
+                device=DEVICE,
+                pair_batch_size=pair_batch_size,
+                max_unique_emails=max_unique,
+                fanout=fanout,
+                pair_loss_type=pair_loss_type,
+                pi_p=pi_p,
+                pu_non_negative=pu_non_negative,
+                reliable_negative_loss_weight=reliable_negative_loss_weight,
+                pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+                pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+                pair_log_mapping_misses=pair_log_mapping_misses,
+                pair_tqdm=pair_tqdm,
+                tqdm_total_batches=n_train_batches_epoch,
+                tqdm_desc=f"train {epoch}/{epochs}",
+            )
         tr_agg["n_effective_train_rows_epoch"] = int(len(train_df_epoch))
         tr_agg["n_effective_positive_rows_epoch"] = int(n_pos_epoch)
         tr_agg["n_effective_reliable_negative_rows_epoch"] = int(n_rn_epoch)
@@ -1783,26 +2530,46 @@ def run_pair_training(
         )
         tr_agg["reliable_negative_emphasis_enabled"] = bool(rne_enabled)
         tr_agg["reliable_negative_oversample_factor"] = float(rne_oversample_factor)
-        va_loss, va_pu, va_agg = eval_pair_epoch(
-            model=model,
-            pair_scorer=pair_scorer,
-            data_cpu=data_cpu,
-            df=val_df,
-            device=DEVICE,
-            pair_batch_size=pair_batch_size,
-            max_unique_emails=max_unique,
-            fanout=fanout,
-            pair_loss_type=pair_loss_type,
-            pi_p=pi_p,
-            pu_non_negative=pu_non_negative,
-            reliable_negative_loss_weight=reliable_negative_loss_weight,
-            pair_eval_threshold=pair_eval_threshold,
-            pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
-            pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
-            pair_tqdm=pair_tqdm,
-            tqdm_total_batches=n_val_batches,
-            tqdm_desc=f"val {epoch}/{epochs}",
-        )
+        if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+            va_loss, va_pu, va_agg = eval_pair_epoch_raw(
+                pair_scorer=pair_scorer,
+                data_cpu=data_cpu,
+                df=val_df,
+                device=DEVICE,
+                pair_batch_size=pair_batch_size,
+                max_unique_emails=max_unique,
+                pair_loss_type=pair_loss_type,
+                pi_p=pi_p,
+                pu_non_negative=pu_non_negative,
+                reliable_negative_loss_weight=reliable_negative_loss_weight,
+                pair_eval_threshold=pair_eval_threshold,
+                pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+                pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+                pair_tqdm=pair_tqdm,
+                tqdm_total_batches=n_val_batches,
+                tqdm_desc=f"val {epoch}/{epochs}",
+            )
+        else:
+            va_loss, va_pu, va_agg = eval_pair_epoch(
+                model=model,
+                pair_scorer=pair_scorer,
+                data_cpu=data_cpu,
+                df=val_df,
+                device=DEVICE,
+                pair_batch_size=pair_batch_size,
+                max_unique_emails=max_unique,
+                fanout=fanout,
+                pair_loss_type=pair_loss_type,
+                pi_p=pi_p,
+                pu_non_negative=pu_non_negative,
+                reliable_negative_loss_weight=reliable_negative_loss_weight,
+                pair_eval_threshold=pair_eval_threshold,
+                pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+                pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+                pair_tqdm=pair_tqdm,
+                tqdm_total_batches=n_val_batches,
+                tqdm_desc=f"val {epoch}/{epochs}",
+            )
         sep_t = tr_pu.get("epoch_score_separation", float("nan"))
         sep_v = va_pu.get("epoch_score_separation", float("nan"))
         sep_ts = f"{sep_t:.4f}" if isinstance(sep_t, float) and sep_t == sep_t else "n/a"
@@ -1868,7 +2635,7 @@ def run_pair_training(
             best_val = va_loss
             patience_counter = 0
             best_state = {
-                "model": model.state_dict(),
+                "model": model.state_dict() if model is not None else {},
                 "pair_scorer": pair_scorer.state_dict(),
             }
             save_pair_training_checkpoint(
@@ -1899,28 +2666,49 @@ def run_pair_training(
             break
 
     if best_state:
-        model.load_state_dict(best_state["model"])
+        if model is not None and best_state.get("model"):
+            model.load_state_dict(best_state["model"])
         pair_scorer.load_state_dict(best_state["pair_scorer"])
-    te_loss, te_pu, te_agg = eval_pair_epoch(
-        model=model,
-        pair_scorer=pair_scorer,
-        data_cpu=data_cpu,
-        df=test_df,
-        device=DEVICE,
-        pair_batch_size=pair_batch_size,
-        max_unique_emails=max_unique,
-        fanout=fanout,
-        pair_loss_type=pair_loss_type,
-        pi_p=pi_p,
-        pu_non_negative=pu_non_negative,
-        reliable_negative_loss_weight=reliable_negative_loss_weight,
-        pair_eval_threshold=pair_eval_threshold,
-        pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
-        pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
-        pair_tqdm=pair_tqdm,
-        tqdm_total_batches=n_test_batches,
-        tqdm_desc="test",
-    )
+    if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+        te_loss, te_pu, te_agg = eval_pair_epoch_raw(
+            pair_scorer=pair_scorer,
+            data_cpu=data_cpu,
+            df=test_df,
+            device=DEVICE,
+            pair_batch_size=pair_batch_size,
+            max_unique_emails=max_unique,
+            pair_loss_type=pair_loss_type,
+            pi_p=pi_p,
+            pu_non_negative=pu_non_negative,
+            reliable_negative_loss_weight=reliable_negative_loss_weight,
+            pair_eval_threshold=pair_eval_threshold,
+            pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+            pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+            pair_tqdm=pair_tqdm,
+            tqdm_total_batches=n_test_batches,
+            tqdm_desc="test",
+        )
+    else:
+        te_loss, te_pu, te_agg = eval_pair_epoch(
+            model=model,
+            pair_scorer=pair_scorer,
+            data_cpu=data_cpu,
+            df=test_df,
+            device=DEVICE,
+            pair_batch_size=pair_batch_size,
+            max_unique_emails=max_unique,
+            fanout=fanout,
+            pair_loss_type=pair_loss_type,
+            pi_p=pi_p,
+            pu_non_negative=pu_non_negative,
+            reliable_negative_loss_weight=reliable_negative_loss_weight,
+            pair_eval_threshold=pair_eval_threshold,
+            pair_assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
+            pair_skip_graph_batch_if_any_endpoint_missing=pair_skip_graph_batch_if_any_endpoint_missing,
+            pair_tqdm=pair_tqdm,
+            tqdm_total_batches=n_test_batches,
+            tqdm_desc="test",
+        )
     def _fmt4(x: Any) -> str:
         if isinstance(x, float) and x == x:
             return f"{x:.4f}"
@@ -1938,7 +2726,7 @@ def run_pair_training(
         "test_sampling_diag": te_agg,
         "train_val_forward_ok": True,
     }
-    (run_dir / "pair_training_setup_summary.json").write_text(
+    setup_summary_path.write_text(
         json.dumps(setup_summary, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
@@ -1948,5 +2736,5 @@ def run_pair_training(
         "pair_scorer": pair_scorer,
         "run_dir": str(run_dir),
         "best_checkpoint_path": str(ckpt_dir / model_save_name),
-        "setup_summary_path": str(run_dir / "pair_training_setup_summary.json"),
+        "setup_summary_path": str(setup_summary_path),
     }

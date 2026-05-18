@@ -32,7 +32,7 @@ def load_pair_supervision_for_inference(
     from src.load_graph_data import load_hetero_pt
     from src.model import HeteroSAGE
     from src.pair_scorer import build_email_pair_mlp_scorer
-    from src.pair_train import PAIR_FEATURE_COLUMNS
+    from src.pair_train import PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_FEATURE_COLUMNS
 
     run_dir = Path(run_dir).resolve()
     graph_pt = Path(graph_pt).resolve()
@@ -56,19 +56,28 @@ def load_pair_supervision_for_inference(
     # map_location must be a device PyTorch can deserialize to (CPU if CUDA checkpoint on CPU-only host)
     ckpt = torch.load(str(ckpt_path), map_location=dev, weights_only=False)  # nosemgrep
     enc = train_cfg
+    pair_backend = str(ckpt.get("pair_encoder_backend") or enc.get("pair_encoder_backend") or "").strip().lower()
+    is_mlp_raw = pair_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X
+
     hidden = int(enc.get("hidden", 128))
     out_dim = int(enc.get("out_dim", 128))
     layers = int(enc.get("layers", 2))
     dropout = float(enc.get("dropout", 0.0))
 
-    model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(dev)
-    model.load_state_dict(ckpt["model_state_dict"], strict=True)
+    model: HeteroSAGE | None
+    if is_mlp_raw:
+        model = None
+    else:
+        gnn_model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(dev)
+        gnn_model.load_state_dict(ckpt["model_state_dict"], strict=True)
+        model = gnn_model
 
     pair_feat_dim = int(enc.get("pair_feature_dim_passed_to_scorer") or len(PAIR_FEATURE_COLUMNS))
     use_exp = bool(enc.get("pair_scorer_use_explicit_features", True))
     if not use_exp:
         pair_feat_dim = 0
-    pair_scorer = build_email_pair_mlp_scorer(out_dim, pair_feat_dim, train_cfg).to(dev)
+    scorer_embed_dim = int(enc.get("raw_email_feature_dim") or out_dim)
+    pair_scorer = build_email_pair_mlp_scorer(scorer_embed_dim, pair_feat_dim, train_cfg).to(dev)
     pair_scorer.load_state_dict(ckpt["pair_scorer_state_dict"], strict=True)
 
     return {
@@ -82,13 +91,14 @@ def load_pair_supervision_for_inference(
         "device": dev,
         "checkpoint_path": str(ckpt_path),
         "training_config_path": str(cfg_path),
+        "pair_encoder_backend": PAIR_ENCODER_MLP_RAW_EMAIL_X if is_mlp_raw else "gnn",
     }
 
 
 @torch.no_grad()
 def score_pair_rows(
     *,
-    model: HeteroSAGE,
+    model: Any,
     pair_scorer: torch.nn.Module,
     data_cpu: Any,
     df_work: pd.DataFrame,
@@ -98,26 +108,34 @@ def score_pair_rows(
     max_unique_emails: int,
     with_logits: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-    from src.pair_graph_sampling import sample_hetero_around_pair_endpoints
     from src.pair_train import (
         build_pair_feature_matrix,
         forward_encoder_and_pair_logits,
+        forward_raw_email_pair_logits,
         iter_pair_batches,
     )
 
-    model.eval()
+    if model is not None:
+        from src.pair_graph_sampling import sample_hetero_around_pair_endpoints
+
+        model.eval()
     pair_scorer.eval()
     n = len(df_work)
     scores = np.full(n, np.nan, dtype=np.float64)
     logits_out = np.full(n, np.nan, dtype=np.float64) if with_logits else None
     for chunk, gi, gj in iter_pair_batches(df_work, pair_batch_size, max_unique_emails):
-        sample = sample_hetero_around_pair_endpoints(data_cpu, gi, gj, fanout)
         feats: torch.Tensor | None = None
         if pair_scorer.use_explicit_pair_features:
             feats = torch.from_numpy(build_pair_feature_matrix(chunk))
-        logits, ok_m, _, _ = forward_encoder_and_pair_logits(
-            model, pair_scorer, sample, feats, device
-        )
+        if model is not None:
+            sample = sample_hetero_around_pair_endpoints(data_cpu, gi, gj, fanout)
+            logits, ok_m, _, _ = forward_encoder_and_pair_logits(
+                model, pair_scorer, sample, feats, device
+            )
+        else:
+            logits, ok_m, _, _ = forward_raw_email_pair_logits(
+                pair_scorer, data_cpu, gi, gj, feats, device
+            )
         probs = torch.sigmoid(logits).detach().cpu().numpy()
         log_np = logits.detach().cpu().numpy().reshape(-1)
         ok_np = ok_m.cpu().numpy().astype(bool)

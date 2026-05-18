@@ -133,6 +133,21 @@ Semantic shard mode semantics:
 - `--graph-id` (override `experiment.graph_id`)
 - `--gt-set`
 
+## Hyperparameter tuning
+
+For adaptive search across seed/candidate/anchor knobs:
+
+`python seed_candidate_workflow/scripts/run_hyperparam_tuning.py --study-name <id>`
+
+- Optuna TPE samples params per trial; results stream to a JSONL that also acts as the resume checkpoint.
+- Default base config: `seed_candidate_workflow/configs/experiments/exp04.seedcand.relaxed_sem85.pu.json`.
+- Default JSONL: `seed_candidate_workflow/output/tuning/<study>.jsonl`.
+- Bundles + GNN runs are keyed by `bundle_hash` so changes to scoring/community knobs reuse an existing bundle (mode auto-flips to `score_only`); changes to anchor/seed/candidate knobs trigger `setup_gnn_score`.
+- Per-trial GNN run isolation uses the `PIPELINE_RUN_OUTPUT_DIR` env var (no edits to `pipeline_config.json`).
+- Ctrl+C stops gracefully after the current trial; rerun the same command to resume.
+- `--list-params` prints the current search space; edit `seed_candidate_workflow/scripts/tuning/search_space.py` to extend it.
+- `--keep-top-k N` prunes non-top-K bundle/GNN/scoring dirs after each trial.
+
 ## Breaking changes and migration notes
 
 - `run_manifest.json` target rows changed shape (now normalized with `inputs/artifacts/metrics`).

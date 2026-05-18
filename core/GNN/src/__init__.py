@@ -1,5 +1,29 @@
 """Utilities for GNN training and evaluation."""
 
+import os
+import warnings
+
+# PyG emits this UserWarning *every time* a NeighborSampler/NeighborLoader is
+# constructed (once per batch in pair_supervision training). With thousands of
+# batches per epoch this drowns the actual training output. The runtime falls
+# back to torch-sparse automatically, so the warning is purely cosmetic. We
+# install a narrow filter here (and propagate via PYTHONWARNINGS so DataLoader
+# worker processes inherit it) instead of installing pyg-lib.
+_NEIGHBOR_SAMPLER_WARNING = (
+    "Using 'NeighborSampler' without a 'pyg-lib' installation is deprecated"
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*" + _NEIGHBOR_SAMPLER_WARNING + r".*",
+    category=UserWarning,
+)
+_pyw_directive = f"ignore:{_NEIGHBOR_SAMPLER_WARNING}:UserWarning"
+_existing_pyw = os.environ.get("PYTHONWARNINGS", "")
+if _pyw_directive not in _existing_pyw:
+    os.environ["PYTHONWARNINGS"] = (
+        (_existing_pyw + ",") if _existing_pyw else ""
+    ) + _pyw_directive
+
 from .load_graph_data import load_hetero_pt, load_imdb
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 

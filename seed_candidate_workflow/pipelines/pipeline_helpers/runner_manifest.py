@@ -29,6 +29,11 @@ def print_experiment_cli_summary(out: dict[str, Any]) -> None:
     sm = m.get("score_mode")
     if sm:
         print(f"  score_mode: {sm}", flush=True)
+    arch = out.get("community_gnn_run_archive") or (m.get("community_gnn_run_archive") if isinstance(m, dict) else None)
+    if isinstance(arch, dict) and arch.get("archived"):
+        dest = str(arch.get("destination") or "").strip()
+        if dest:
+            print(f"  community archived to GNN run dir: {dest}", flush=True)
     for row in out.get("community_results") or []:
         tgt = str(row.get("target") or "").strip() or "(target)"
         cr = row.get("community_result") or {}
