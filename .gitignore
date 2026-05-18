@@ -4,6 +4,7 @@ output/runs/
 # Ignore data files
 *.csv
 *misp.json
+core/preprocessing/output/incidents-misp-lake-urls-fixed.json
 *misp-large.json
 *clusters.json
 core/GNN/data
