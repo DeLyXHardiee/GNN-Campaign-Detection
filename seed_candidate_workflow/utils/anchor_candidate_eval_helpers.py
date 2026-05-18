@@ -752,11 +752,25 @@ def run_candidate_evaluation_report(
 
     # Optional sources
     p_rare = out_dir / "candidates_rare_artifact.csv"
+    p_stem_hi = out_dir / "candidates_shared_stem_highconf.csv"
+    p_mid_sender = out_dir / "candidates_mid_sender.csv"
+    if not p_mid_sender.is_file():
+        p_mid_sender = out_dir / "candidates_semantic_mid_sender_support.csv"
+    p_mid_core = out_dir / "candidates_mid_core.csv"
+    if not p_mid_core.is_file():
+        p_mid_core = out_dir / "candidates_semantic_mid_core_support.csv"
+    p_mid_stem = out_dir / "candidates_mid_stem.csv"
+    if not p_mid_stem.is_file():
+        p_mid_stem = out_dir / "candidates_semantic_mid_stem_support.csv"
     p_sem = out_dir / "candidates_semantic.csv"
     p_comp = out_dir / "candidates_component_expanded.csv"
     p_2hop = out_dir / "candidates_2hop.csv"
 
     df_rare = _read_optional_csv(p_rare)
+    df_stem_hi = _read_optional_csv(p_stem_hi)
+    df_mid_sender = _read_optional_csv(p_mid_sender)
+    df_mid_core = _read_optional_csv(p_mid_core)
+    df_mid_stem = _read_optional_csv(p_mid_stem)
     df_sem = _read_optional_csv(p_sem)
     df_comp = _read_optional_csv(p_comp)
     df_2hop = _read_optional_csv(p_2hop)
@@ -790,6 +804,10 @@ def run_candidate_evaluation_report(
     source_pairs: dict[str, set[tuple[str, str]]] = {
         "seed": set(seed_pairs),
         "rare_artifact": set(),
+        "shared_stem_highconf": set(),
+        "semantic_mid_sender_support": set(),
+        "semantic_mid_core_support": set(),
+        "semantic_mid_stem_support": set(),
         "semantic": set(),
         "component": set(),
         "2hop": set(),
@@ -800,6 +818,14 @@ def run_candidate_evaluation_report(
             source_pairs["seed"].add(p)
         if bool(r.get("from_rare_artifact", False)):
             source_pairs["rare_artifact"].add(p)
+        if bool(r.get("from_shared_stem_highconf", False)):
+            source_pairs["shared_stem_highconf"].add(p)
+        if bool(r.get("from_semantic_mid_sender_support", False)):
+            source_pairs["semantic_mid_sender_support"].add(p)
+        if bool(r.get("from_semantic_mid_core_support", False)):
+            source_pairs["semantic_mid_core_support"].add(p)
+        if bool(r.get("from_semantic_mid_stem_support", False)):
+            source_pairs["semantic_mid_stem_support"].add(p)
         if bool(r.get("from_semantic", False)):
             source_pairs["semantic"].add(p)
         if bool(r.get("from_component", False)):
@@ -828,6 +854,10 @@ def run_candidate_evaluation_report(
         "candidate_input_paths": {
             "candidate_union_csv": str(candidate_union_csv),
             "candidates_rare_artifact_csv": str(p_rare) if p_rare.is_file() else None,
+            "candidates_shared_stem_highconf_csv": str(p_stem_hi) if p_stem_hi.is_file() else None,
+            "candidates_semantic_mid_sender_support_csv": str(p_mid_sender) if p_mid_sender.is_file() else None,
+            "candidates_semantic_mid_core_support_csv": str(p_mid_core) if p_mid_core.is_file() else None,
+            "candidates_semantic_mid_stem_support_csv": str(p_mid_stem) if p_mid_stem.is_file() else None,
             "candidates_semantic_csv": str(p_sem) if p_sem.is_file() else None,
             "candidates_component_expanded_csv": str(p_comp) if p_comp.is_file() else None,
             "candidates_2hop_csv": str(p_2hop) if p_2hop.is_file() else None,
@@ -838,6 +868,10 @@ def run_candidate_evaluation_report(
             name
             for name, p in [
                 ("rare_artifact", p_rare),
+                ("shared_stem_highconf", p_stem_hi),
+                ("semantic_mid_sender_support", p_mid_sender),
+                ("semantic_mid_core_support", p_mid_core),
+                ("semantic_mid_stem_support", p_mid_stem),
                 ("semantic", p_sem),
                 ("component", p_comp),
                 ("2hop", p_2hop),
@@ -884,7 +918,17 @@ def run_candidate_evaluation_report(
 
     # per_source
     per_source: dict[str, dict[str, Any]] = {}
-    for src in ["seed", "rare_artifact", "semantic", "component", "2hop"]:
+    for src in [
+        "seed",
+        "rare_artifact",
+        "shared_stem_highconf",
+        "semantic_mid_sender_support",
+        "semantic_mid_core_support",
+        "semantic_mid_stem_support",
+        "semantic",
+        "component",
+        "2hop",
+    ]:
         pairs = source_pairs.get(src, set())
         touched = sorted(set(a for a, _ in pairs).union(set(b for _, b in pairs)))
         deg = _degrees_from_pairs(touched, pairs)
@@ -1463,6 +1507,10 @@ def run_candidate_evaluation_report(
                 for s, col in [
                     ("seed", "from_seed"),
                     ("rare_artifact", "from_rare_artifact"),
+                    ("shared_stem_highconf", "from_shared_stem_highconf"),
+                    ("semantic_mid_sender", "from_semantic_mid_sender_support"),
+                    ("semantic_mid_core", "from_semantic_mid_core_support"),
+                    ("semantic_mid_stem", "from_semantic_mid_stem_support"),
                     ("semantic", "from_semantic"),
                     ("component", "from_component"),
                     ("2hop", "from_2hop"),

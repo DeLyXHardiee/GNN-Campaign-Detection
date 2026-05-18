@@ -168,6 +168,10 @@ def _add_shared_attribute_pair_features(
             cnt = int(len(sa & sb))
             out.at[idx, f"shared_{base}_count"] = cnt
             out.at[idx, f"has_shared_{base}"] = bool(cnt > 0)
+    core_bool_cols = [f"has_shared_{base}" for _col, base in spec]
+    out["n_shared_core_channels"] = (
+        out[core_bool_cols].fillna(False).astype(bool).sum(axis=1).astype(int)
+    )
     return out
 
 
@@ -575,6 +579,9 @@ def build_pair_training_dataset(
             "has_shared_attachment": df["has_shared_attachment"].fillna(False).astype(bool),
             "has_shared_sender_domain": df["has_shared_sender_domain"].fillna(False).astype(bool),
             "has_shared_domain": df["has_shared_domain"].fillna(False).astype(bool),
+            "n_shared_core_channels": pd.to_numeric(
+                df["n_shared_core_channels"], errors="coerce"
+            ).fillna(0).astype(int),
             "seed_component_i": pd.to_numeric(df["seed_component_i"], errors="coerce"),
             "seed_component_j": pd.to_numeric(df["seed_component_j"], errors="coerce"),
             "same_seed_component_flag": df["same_seed_component_flag"].astype(bool),
@@ -630,6 +637,7 @@ def build_pair_training_dataset(
         "shared_attachment_count",
         "shared_sender_domain_count",
         "shared_domain_count",
+        "n_shared_core_channels",
         "has_shared_sender",
         "has_shared_stem",
         "has_shared_url",
@@ -644,6 +652,7 @@ def build_pair_training_dataset(
         "shared_attachment_count",
         "shared_sender_domain_count",
         "shared_domain_count",
+        "n_shared_core_channels",
     ]
     shared_bool_cols = [
         "has_shared_sender",

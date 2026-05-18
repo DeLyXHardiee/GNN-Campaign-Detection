@@ -349,14 +349,13 @@ def build_graph(
                 "Provide misp_events / misp_json_path, or parsed_emails for semantic supernode build."
             )
 
-    if misp_events is None:
-        if misp_json_path is None:
-            raise ValueError("misp_json_path must be set when misp_events is not provided.")
-        misp_events = _load_misp_json(misp_json_path)
+        if misp_events is None:
+            if misp_json_path is None:
+                raise ValueError("misp_json_path must be set when misp_events is not provided.")
+            misp_events = _load_misp_json(misp_json_path)
 
-    if max_misp_events is not None and max_misp_events > 0:
-        misp_events = misp_events[:max_misp_events]
-
+        if max_misp_events is not None and max_misp_events > 0:
+            misp_events = misp_events[:max_misp_events]
 
         graph, metadata = build_hetero_graph_from_misp(
             misp_events,

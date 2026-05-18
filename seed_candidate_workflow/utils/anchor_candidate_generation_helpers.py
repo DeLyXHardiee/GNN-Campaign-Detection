@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,14 @@ from seed_candidate_workflow.utils.anchor_candidate_component_expansion_helpers 
 from seed_candidate_workflow.utils.anchor_candidate_2hop_bounded_helpers import (
     generate_candidates_2hop_bounded_v1,
 )
+from seed_candidate_workflow.utils.anchor_candidate_shared_stem_highconf_helpers import (
+    generate_candidates_shared_stem_highconf_v1,
+)
+from seed_candidate_workflow.utils.anchor_candidate_semantic_mid_support_helpers import (
+    generate_semantic_mid_core_support_v1,
+    generate_semantic_mid_sender_support_v1,
+    generate_semantic_mid_stem_support_v1,
+)
 from seed_candidate_workflow.utils.anchor_candidate_eval_helpers import run_candidate_evaluation_report
 from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts, load_embedding_vectors
 
@@ -40,6 +49,27 @@ def _pair_key(a: str, b: str) -> tuple[str, str]:
 def _safe_float(x: Any) -> float:
     v = pd.to_numeric(x, errors="coerce")
     return float(v) if pd.notna(v) else float("nan")
+
+
+def _as_windows_extended_path(path: Path) -> str:
+    """Return a path string safe for open()/to_csv on Windows (MAX_PATH bypass)."""
+    resolved = path.resolve()
+    if os.name != "nt":
+        return str(resolved)
+    s = str(resolved)
+    if s.startswith("\\\\?\\"):
+        return s
+    if s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + s[2:]
+    return "\\\\?\\" + s
+
+
+def _write_candidate_csv(df: pd.DataFrame, path: Path) -> Path:
+    """Write candidate CSV, ensuring parent directory exists (Windows-safe)."""
+    p = Path(path).resolve()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(_as_windows_extended_path(p), index=False)
+    return p
 
 
 def _pairs_from_df(df: pd.DataFrame) -> set[tuple[str, str]]:
@@ -154,6 +184,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_dir = (out_root / graph_id / f"{stage_name}_{stamp}").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    _write_probe = out_dir / ".write_probe"
+    _write_probe.write_text("", encoding="utf-8")
+    _write_probe.unlink(missing_ok=True)
 
     if not isinstance(generators, list) or not generators:
         raise ValueError("candidates.generators must be a non-empty list")
@@ -196,6 +229,10 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     pair_sources: dict[str, set[tuple[str, str]]] = {
         "seed": set(seed_pairs),
         "rare_artifact": set(),
+        "shared_stem_highconf": set(),
+        "semantic_mid_sender": set(),
+        "semantic_mid_core": set(),
+        "semantic_mid_stem": set(),
         "semantic": set(),
         "component": set(),
         "twohop": set(),
@@ -231,7 +268,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             rows = [{"email_i": a, "email_j": b, "source": "seed_backbone"} for a, b in sorted(seed_pairs)]
             df = pd.DataFrame(rows)
             p = out_dir / "candidates_seed_backbone.csv"
-            df.to_csv(p, index=False)
+            _write_candidate_csv(df, p)
             pairs = _pairs_from_df(df)
             union_pairs |= pairs
             per_gen_outputs.append({"name": name, "enabled": True, "csv": str(p), "n_rows": int(len(df)), "n_pairs": int(len(pairs))})
@@ -247,7 +284,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 generator_cfg=cfg,
             )
             p = out_dir / "candidates_rare_artifact.csv"
-            df.to_csv(p, index=False)
+            _write_candidate_csv(df, p)
             pairs = _pairs_from_df(df)
             union_pairs |= pairs
             pair_sources["rare_artifact"] |= pairs
@@ -256,6 +293,114 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             for k, v in tmin.items():
                 pair_time_gap_min[k] = min(pair_time_gap_min.get(k, float("inf")), v)
             per_gen_outputs.append({"name": name, "enabled": True, "csv": str(p), "n_rows": int(len(df)), "n_pairs": int(len(pairs)), "diagnostics": diag})
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if name == "shared_stem_highconf_v1":
+            df, diag = generate_candidates_shared_stem_highconf_v1(
+                nodes_df=nodes_df,
+                edges_df=edges_df,
+                seed_pairs=None,
+                generator_cfg=cfg,
+            )
+            p = out_dir / "candidates_shared_stem_highconf.csv"
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources["shared_stem_highconf"] |= pairs
+            rare_rarity_max.update(_aggregate_pair_metric_max(df, "rarity_score"))
+            tmin = _aggregate_pair_metric_min(df, "time_gap_seconds")
+            for k, v in tmin.items():
+                pair_time_gap_min[k] = min(pair_time_gap_min.get(k, float("inf")), v)
+            per_gen_outputs.append(
+                {
+                    "name": name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if name == "semantic_mid_sender_support_v1":
+            df, diag = generate_semantic_mid_sender_support_v1(
+                nodes_df=nodes_df,
+                id_to_vec=id_to_vec,
+                generator_cfg=cfg,
+            )
+            p = out_dir / "candidates_mid_sender.csv"
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources["semantic_mid_sender"] |= pairs
+            semantic_cosine_max.update(_aggregate_pair_metric_max(df, "cosine"))
+            per_gen_outputs.append(
+                {
+                    "name": name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if name == "semantic_mid_core_support_v1":
+            df, diag = generate_semantic_mid_core_support_v1(
+                nodes_df=nodes_df,
+                id_to_vec=id_to_vec,
+                generator_cfg=cfg,
+            )
+            p = out_dir / "candidates_mid_core.csv"
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources["semantic_mid_core"] |= pairs
+            semantic_cosine_max.update(_aggregate_pair_metric_max(df, "cosine"))
+            per_gen_outputs.append(
+                {
+                    "name": name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if name == "semantic_mid_stem_support_v1":
+            df, diag = generate_semantic_mid_stem_support_v1(
+                nodes_df=nodes_df,
+                id_to_vec=id_to_vec,
+                generator_cfg=cfg,
+            )
+            p = out_dir / "candidates_mid_stem.csv"
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources["semantic_mid_stem"] |= pairs
+            semantic_cosine_max.update(_aggregate_pair_metric_max(df, "cosine"))
+            per_gen_outputs.append(
+                {
+                    "name": name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
             if pbar is not None:
                 pbar.update(1)
             continue
@@ -406,6 +551,10 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     for email_i, email_j in sorted(union_pairs):
         from_seed = (email_i, email_j) in pair_sources["seed"]
         from_rare = (email_i, email_j) in pair_sources["rare_artifact"]
+        from_stem_hi = (email_i, email_j) in pair_sources["shared_stem_highconf"]
+        from_mid_sender = (email_i, email_j) in pair_sources["semantic_mid_sender"]
+        from_mid_core = (email_i, email_j) in pair_sources["semantic_mid_core"]
+        from_mid_stem = (email_i, email_j) in pair_sources["semantic_mid_stem"]
         from_sem = (email_i, email_j) in pair_sources["semantic"]
         from_comp = (email_i, email_j) in pair_sources["component"]
         from_2hop = (email_i, email_j) in pair_sources["twohop"]
@@ -419,10 +568,28 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 "email_j": email_j,
                 "from_seed": bool(from_seed),
                 "from_rare_artifact": bool(from_rare),
+                "from_shared_stem_highconf": bool(from_stem_hi),
+                "from_semantic_mid_sender_support": bool(from_mid_sender),
+                "from_semantic_mid_core_support": bool(from_mid_core),
+                "from_semantic_mid_stem_support": bool(from_mid_stem),
                 "from_semantic": bool(from_sem),
                 "from_component": bool(from_comp),
                 "from_2hop": bool(from_2hop),
-                "source_count": int(sum([from_seed, from_rare, from_sem, from_comp, from_2hop])),
+                "source_count": int(
+                    sum(
+                        [
+                            from_seed,
+                            from_rare,
+                            from_stem_hi,
+                            from_mid_sender,
+                            from_mid_core,
+                            from_mid_stem,
+                            from_sem,
+                            from_comp,
+                            from_2hop,
+                        ]
+                    )
+                ),
                 "rare_artifact_rarity_max": rare_rarity_max.get((email_i, email_j), float("nan")),
                 "semantic_cosine_max": semantic_cosine_max.get((email_i, email_j), float("nan")),
                 "component_cosine_max": component_cosine_max.get((email_i, email_j), float("nan")),
@@ -436,7 +603,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         )
     candidate_union_df = pd.DataFrame(candidate_union_rows)
     p_candidate_union = out_dir / "candidate_union.csv"
-    candidate_union_df.to_csv(p_candidate_union, index=False)
+    _write_candidate_csv(candidate_union_df, p_candidate_union)
     if pbar is not None:
         pbar.update(1)
 
@@ -476,6 +643,24 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             "n_from_seed": int(candidate_union_df["from_seed"].sum()) if not candidate_union_df.empty else 0,
             "n_from_rare_artifact": int(candidate_union_df["from_rare_artifact"].sum()) if not candidate_union_df.empty else 0,
             "n_from_semantic": int(candidate_union_df["from_semantic"].sum()) if not candidate_union_df.empty else 0,
+            "n_from_semantic_mid_sender_support": int(
+                candidate_union_df["from_semantic_mid_sender_support"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_semantic_mid_sender_support" in candidate_union_df.columns
+            else 0,
+            "n_from_semantic_mid_core_support": int(
+                candidate_union_df["from_semantic_mid_core_support"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_semantic_mid_core_support" in candidate_union_df.columns
+            else 0,
+            "n_from_semantic_mid_stem_support": int(
+                candidate_union_df["from_semantic_mid_stem_support"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_semantic_mid_stem_support" in candidate_union_df.columns
+            else 0,
             "n_from_component": int(candidate_union_df["from_component"].sum()) if not candidate_union_df.empty else 0,
             "n_from_2hop": int(candidate_union_df["from_2hop"].sum()) if not candidate_union_df.empty else 0,
         },

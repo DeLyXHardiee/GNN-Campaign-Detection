@@ -1,0 +1,766 @@
+{
+  "nodes": {
+    "n_anchor_nodes": 4970,
+    "n_emails_with_slash_in_stem_set": 1445,
+    "pct_emails_with_slash_in_stem_set": 29.0744
+  },
+  "edges_unscored": {
+    "n_rows": 69074,
+    "n_cross_email_rows": 69074,
+    "n_self_email_rows": 0,
+    "n_cross_email_with_slash_in_stem_intersection": 21493,
+    "n_cross_email_stem_intersection_is_only_slash": 19057,
+    "n_cross_email_stem_intersection_has_slash_and_other_stems": 2436,
+    "pct_cross_email_with_slash_in_stem_intersection": 31.1159,
+    "n_rows_has_stem_overlap_true": 28646,
+    "n_rows_has_stem_overlap_mismatch_vs_recomputed": 0
+  },
+  "same_vs_cross_campaign_edges": {
+    "_comment": "Cross-email anchor edges only. Requires --gt-json.",
+    "stem_intersection_contains_slash": {
+      "n_same_campaign": 3561,
+      "n_cross_campaign": 110,
+      "n_partial_gt": 4044,
+      "n_no_gt": 13778,
+      "n_fully_labeled": 3671,
+      "pct_cross_campaign_of_fully_labeled": 2.9965
+    },
+    "stem_intersection_is_only_slash": {
+      "n_same_campaign": 2682,
+      "n_cross_campaign": 110,
+      "n_partial_gt": 3763,
+      "n_no_gt": 12502,
+      "n_fully_labeled": 2792,
+      "pct_cross_campaign_of_fully_labeled": 3.9398
+    }
+  },
+  "gt_stratified_cross_email_slash_in_stem_intersection": {
+    "n_same_campaign": 3561,
+    "n_cross_campaign": 110,
+    "n_partial_gt": 4044,
+    "n_no_gt": 13778,
+    "n_total_with_slash_in_intersection": 21493,
+    "pct_cross_campaign_among_fully_labeled": 2.9965
+  },
+  "gt_stratified_cross_email_slash_only_stem_intersection": {
+    "n_same_campaign": 2682,
+    "n_cross_campaign": 110,
+    "n_partial_gt": 3763,
+    "n_no_gt": 12502,
+    "n_total_slash_only_intersection": 19057,
+    "pct_cross_campaign_among_fully_labeled": 3.9398
+  },
+  "corroborated_weak_multi_proxy": {
+    "require_min_support_channels": 2,
+    "weak_overlap_columns_used": [
+      "has_sender_overlap",
+      "has_sender_email_domain_overlap",
+      "has_domain_overlap",
+      "has_stem_overlap"
+    ],
+    "n_cross_email_edges_weak_multi_original": 24049,
+    "n_cross_email_edges_weak_multi_ablate_slash_stem": 9285,
+    "n_cross_email_edges_weak_multi_lost_after_ablation": 14764,
+    "pct_cross_email_edges_lost_weak_multi": 21.3742
+  },
+  "seeds_optional": {
+    "n_hard_seed_edges_rare_exact_url_template_evidence_slash": 0,
+    "n_corroborated_seed_rows_total": 0
+  },
+  "sample_edges_slash_in_stem_intersection": [
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3JiAAAAA==",
+      "stem_intersection": [
+        "/",
+        "/26/bb/rkxmcevv_o.png"
+      ],
+      "stem_intersection_without_slash": [
+        "/26/bb/rkxmcevv_o.png"
+      ],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3LZwAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3LcwAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3LrwAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3LygAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADaV1a4gAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADade83QAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADade84wAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADcy0rMgAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADfXJq-wAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADm7X6CAAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpdAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADm7X6CQAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZplAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZpqAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZqOAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJA-291AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI-RZqOAAA=",
+      "email_b": "AQMkADRlZjU3OTNlLTg0YmUtNGVjMi04M2MzLWMyZjgxZGIzYzRiNwBGAAADtqt2vzy4E0qn_gnFnZoyOgcAoujdSKU_hE_VWZWuokHqkgAAAgEMAAAAoujdSKU_hE_VWZWuokHqkgADZq3KNQAAAA==",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO0AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO1AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO3AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO4AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO5AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WO6AAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOwAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI53WOxAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJ4U8KNAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJ4U8KPAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJ6dSx1AAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJ6dSxyAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJA-28kAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJUIrpMAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    },
+    {
+      "email_a": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAI87LlpAAA=",
+      "email_b": "AAMkADJkZmFmMzliLTg5MTItNDQ2My1hM2Y3LTBlYjJjN2FkZDViOQBGAAAAAABfotMHHH7tSZosKVtSM-EWBwDLFWG82DO5SZxCDBfRaVXNAAAAAAEMAADLFWG82DO5SZxCDBfRaVXNAAJUIrpNAAA=",
+      "stem_intersection": [
+        "/"
+      ],
+      "stem_intersection_without_slash": [],
+      "has_stem_overlap_column": true,
+      "gt_pair_bucket": "no_gt",
+      "gt_campaign_a": null,
+      "gt_campaign_b": null
+    }
+  ],
+  "interpretation_notes": [
+    "Look for same_vs_cross_campaign_edges (with --gt-json) for plain-language same vs cross campaign counts.",
+    "Self-email rows (email_a == email_b) are counted separately; corroborated rules skip self-pairs in seed generation.",
+    "Ablated stem overlap: treat stem weak channel as ON only when (stem_a intersect stem_b) - {'/'} is non-empty.",
+    "With --gt-json: gt_stratified_* counts only cross-email edges where '/' is in stem intersection; slash_only_stem_intersection means (stem_a intersect stem_b) is non-empty and is a subset of {'/'}.",
+    "With --seed-impact + --bundle-dir + --gt-json: seed_positive_slash_stem_removal_simulation reports canonical pair union losses (see canonical_seed_pair_union) and row-level aggregates only.",
+    "partial_gt: exactly one endpoint has a GT campaign label; no_gt: neither labeled."
+  ],
+  "inputs": {
+    "nodes_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\graph_bundles\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\anchor\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\anchor_graph_nodes.csv",
+    "edges_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\graph_bundles\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\anchor\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\anchor_graph_edges_unscored.csv",
+    "seed_dir_used": null,
+    "gt_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.dedup_task_identity.json",
+    "seed_impact": true
+  },
+  "seed_positive_slash_stem_removal_simulation": {
+    "seed_edges_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\graph_bundles\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\seed\\main_gnn_pu_1_no_ts_dedup_task_identity_4\\seed_generation_20260515T221734Z\\seed_edges_all.csv",
+    "seed_rules_and_channels_notes": {
+      "hard_v1_default_rules_other_than_rare_exact_url_template": [
+        "exact_attachment_hash (attachment channel)",
+        "exact_html_fingerprint (html_structure_fingerprint channel)",
+        "exact_normalized_url (url channel)"
+      ],
+      "slash_stem_simulation_targets": "Hard: only rows with rule_id rare_exact_url_template on stem channel where the shared stem token is literally '/'. Corroborated: rows that pass corroborated_v1-style weak/semantic rules before ablation but fail after treating stem overlap as OFF unless (stem_set_i intersect stem_set_j) - {'/'} is non-empty.",
+      "not_targeted_by_this_simulation": "semantic_strong and semantic_sender rows are never removed here; they can keep a canonical pair in the seed union even when all hard/corroborated rows for that pair are removed."
+    },
+    "n_seed_edges_all_rows_total": 72963,
+    "seed_tier_value_counts_all_rows": {
+      "hard": 20712,
+      "corroborated": 25030,
+      "semantic_strong": 16643,
+      "semantic_sender": 10578
+    },
+    "n_seed_rows_removed_by_slash_stem_simulation": 14484,
+    "n_seed_rows_unchanged": 58479,
+    "removed_row_reason_counts": {
+      "corroborated_rules_fail_after_stem_slash_ablation": 14484
+    },
+    "removed_rows_by_seed_tier_and_rule_id": {
+      "corroborated|semantic_plus_support": 17,
+      "corroborated|weak_multi": 14467
+    },
+    "canonical_seed_pair_union": {
+      "definition": "Distinct unordered email pairs appearing in seed_edges_all. After simulation, a pair counts as present if at least one CSV row for that pair is not removed. Fully lost = no row survives for that pair.",
+      "n_distinct_pairs_before": 35371,
+      "n_distinct_pairs_after": 24746,
+      "n_distinct_pairs_fully_lost": 10625,
+      "distinct_pairs_fully_lost_by_gt_pair_bucket": {
+        "cross_campaign": 110,
+        "no_gt": 7525,
+        "partial_gt": 2809,
+        "same_campaign": 181
+      },
+      "headline_pair_losses_using_gt_campaign_labels": {
+        "n_pairs_fully_lost_gt_same_campaign": 181,
+        "n_pairs_fully_lost_gt_cross_campaign": 110,
+        "n_pairs_fully_lost_gt_partial_or_unlabeled_combined": 10334
+      },
+      "n_distinct_pairs_had_removed_hard_or_corro_row_but_union_survives_other_seed_rule": 3859,
+      "rescued_pairs_by_gt_pair_bucket": {
+        "no_gt": 2679,
+        "partial_gt": 337,
+        "same_campaign": 843
+      },
+      "n_distinct_pairs_where_every_row_tier_is_hard_or_corroborated_only": 14878,
+      "n_distinct_pairs_fully_lost_and_only_ever_hard_or_corroborated_tiers": 10625
+    },
+    "hard_corroborated_seed_row_counts_by_gt_pair_bucket": {
+      "cross_campaign": {
+        "n_rows": 112,
+        "n_removed": 110,
+        "n_kept": 2
+      },
+      "no_gt": {
+        "n_rows": 31709,
+        "n_removed": 10204,
+        "n_kept": 21505
+      },
+      "partial_gt": {
+        "n_rows": 5323,
+        "n_removed": 3146,
+        "n_kept": 2177
+      },
+      "same_campaign": {
+        "n_rows": 8598,
+        "n_removed": 1024,
+        "n_kept": 7574
+      }
+    },
+    "interpretation": "Primary headline metrics are under canonical_seed_pair_union.headline_pair_losses_using_gt_campaign_labels: same_campaign pairs fully lost are GT-coherent edges removed from the seed union when no other seed row covers the pair; cross_campaign are GT-inconsistent pairs fully lost. hard_corroborated_seed_row_counts_* is row-level (multiple rows can map to one pair)."
+  }
+}

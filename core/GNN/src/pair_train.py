@@ -87,6 +87,7 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "shared_attachment_count",
     "shared_sender_domain_count",
     "shared_domain_count",
+    "n_shared_core_channels",
 ]
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 

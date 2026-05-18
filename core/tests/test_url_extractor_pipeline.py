@@ -5,6 +5,7 @@ from core.preprocessing.utils.url_extractor import (
     extract_urls_from_plain_and_html,
     extract_urls_from_text,
     normalize_http_url,
+    parse_url_components,
     refang_url_like_schemes,
 )
 
@@ -28,6 +29,11 @@ def test_real_domain_with_suffix_accepted():
 
 def test_normalize_rejects_javascript():
     assert normalize_http_url("javascript:alert(1)") is None
+
+
+def test_normalize_rejects_malformed_bracketed_host():
+    assert normalize_http_url("http://[.]/path") is None
+    assert normalize_http_url("[.]") is None
 
 
 def test_extract_urls_from_defanged_plain_text():
@@ -69,3 +75,45 @@ def test_dedupe_plain_vs_html():
     html = '<a href="https://dup.example.com/a">same</a>'
     urls = extract_urls_from_plain_and_html(plain, html)
     assert urls == ["https://dup.example.com/a"]
+
+
+def test_parse_url_components_defanged_https_regression():
+    """Must not prepend http:// to defanged URLs (would yield domain ``hxxps:``)."""
+    for raw in ("hxxps://lkos.de/", "hxxps://pfa.dk/"):
+        comp = parse_url_components(raw)
+        assert comp["domain"] == raw.split("//")[1].split("/")[0].lower(), raw
+        assert comp["domain"] != "hxxps"
+        assert "hxxps:" not in comp["domain"]
+        assert comp["stem"] == "/", raw
+        assert comp["full_url"].lower().startswith("https://")
+
+
+def test_parse_url_components_defanged_http_and_https_paths():
+    c_http = parse_url_components("hxxp://example.com/path")
+    assert c_http["domain"] == "example.com"
+    assert c_http["scheme"] == "http"
+    assert c_http["stem"] == "/path"
+    assert c_http["full_url"].startswith("http://example.com/path")
+
+    c_https = parse_url_components("hxxps://example.com/path?x=1")
+    assert c_https["domain"] == "example.com"
+    assert c_https["scheme"] == "https"
+    assert "/path" in c_https["stem"]
+    assert c_https["full_url"].startswith("https://example.com/")
+
+
+def test_parse_url_components_defanged_case_insensitive():
+    comp = parse_url_components("HXXPS://Example.COM/foo")
+    assert comp["domain"] == "example.com"
+    assert comp["full_url"].lower().startswith("https://example.com")
+
+
+def test_parse_url_host_defanged_yields_registrable_domain():
+    from core.feature_set_extraction.url_extraction_utils import (
+        parse_url_host_and_registrable_domain,
+    )
+
+    host, reg, ok = parse_url_host_and_registrable_domain("hxxps://lkos.de/path")
+    assert ok
+    assert host == "lkos.de"
+    assert reg == "lkos.de"

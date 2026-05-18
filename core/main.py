@@ -13,6 +13,8 @@ from config.pipeline_config import (
     graph_build_settings_from_pipeline,
     output_runs_parent_from_pipeline,
     resolve_project_path,
+    run_dir_for,
+    sanitize_run_id,
 )
 
 from metric_comparison import run_metric_comparison_for_run
@@ -83,6 +85,9 @@ def run_gnn(
 ):
     cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
+    if run_dir is None or str(run_dir).strip() == "":
+        runs_root = output_runs_parent_from_pipeline(cfg)
+        run_dir = str(run_dir_for(runs_root, sanitize_run_id(str(cfg.get("run_id") or ""))))
     run_dir_str, _checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
         cfg=cfg,
         run_dir=run_dir,
@@ -738,22 +743,54 @@ def run_pipeline():
     visualize_clusters()
 
 if __name__ == "__main__":
-    
-    # For individual stages of the pipeline, uncomment as needed:
-    # misp_path = run_preprocessing_lake()
-    # create_feature_sets()
-    # run_featureset_clustering()
+    import argparse
 
-    # Dedup-strict MISP hetero graph (see pipeline_config graph.* and datasets.*):
-    #   python core/main.py
-    # Uses graph.misp_json_path, hetero_graph_stem, graph_pt_path_override from pipeline_config.json.
-    #run_graph_creation(misp_json_path=None, to_memgraph=False)
-
-    run_gnn()
-    # run_gnn_evaluation()
-    #run_gnn_clustering()
-    #run_metric_comparison()
-    #visualize_clusters()
-    
-    # To run the entire pipeline, uncomment the line below:
-    # run_pipeline()
+    # Dedup MISP hetero graph: `python core/main.py graph`
+    # GNN train: `python core/main.py` or `python core/main.py gnn`
+    # Paths from repo-root pipeline_config.json (graph.*, pair_training.*, run_id, …).
+    _ap = argparse.ArgumentParser(
+        description="Core pipeline stages (reads repo-root pipeline_config.json). "
+        "With no positional argument, runs GNN training (gnn)."
+    )
+    _ap.add_argument(
+        "stage",
+        nargs="?",
+        default="gnn",
+        choices=[
+            "graph",
+            "gnn",
+            "gnn_eval",
+            "gnn_clustering",
+            "metric_comparison",
+            "feature_sets",
+            "featureset_clustering",
+            "preprocess_lake",
+            "visualize",
+            "full",
+        ],
+        help="Pipeline stage (default: gnn).",
+    )
+    _args = _ap.parse_args()
+    _stage = str(_args.stage or "gnn").strip().lower()
+    if _stage == "graph":
+        run_graph_creation(misp_json_path=None, to_memgraph=False)
+    elif _stage == "gnn":
+        run_gnn()
+    elif _stage == "gnn_eval":
+        run_gnn_evaluation()
+    elif _stage == "gnn_clustering":
+        run_gnn_clustering()
+    elif _stage == "metric_comparison":
+        run_metric_comparison()
+    elif _stage == "feature_sets":
+        create_feature_sets()
+    elif _stage == "featureset_clustering":
+        run_featureset_clustering()
+    elif _stage == "preprocess_lake":
+        run_preprocessing_lake()
+    elif _stage == "visualize":
+        visualize_clusters()
+    elif _stage == "full":
+        run_pipeline()
+    else:
+        raise SystemExit(f"Unhandled stage: {_stage!r}")

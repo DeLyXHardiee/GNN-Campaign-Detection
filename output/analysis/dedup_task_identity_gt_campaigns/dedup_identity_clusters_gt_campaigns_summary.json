@@ -1,0 +1,13 @@
+{
+  "ground_truth_file": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+  "collapse_clusters_file": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\misp\\misp_lake_dedup_task_identity\\collapsed_clusters.json",
+  "min_group_size": 2,
+  "n_collapse_clusters_size_ge_min": 557,
+  "n_collapse_clusters_with_any_gt_member": 128,
+  "n_collapse_clusters_crossing_gt_campaigns": 0,
+  "n_member_rows_in_clusters": 2920,
+  "n_member_rows_with_gt_label": 815,
+  "gt_coverage_fraction_in_clusters": 0.2791095890410959,
+  "fraction_gt_clusters_that_cross_campaigns": 0.0,
+  "n_gt_labeled_emails_in_full_gt": 1472
+}

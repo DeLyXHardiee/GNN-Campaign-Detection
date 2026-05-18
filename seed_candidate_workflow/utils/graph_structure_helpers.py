@@ -373,7 +373,9 @@ def stem_strings_for_url(
     from core.preprocessing.utils.url_extractor import parse_url_components
 
     fb = (parse_url_components(str(url_str).strip()).get("stem") or "").strip()
-    return [fb] if fb else []
+    if not fb or fb == "/":
+        return []
+    return [fb]
 
 
 def domain_strings_for_url(

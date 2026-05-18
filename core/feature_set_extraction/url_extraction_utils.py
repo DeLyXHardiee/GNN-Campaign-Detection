@@ -1,10 +1,13 @@
 import re
 import math
-import tldextract
-import idna
-from urllib.parse import urlparse
+from collections import Counter, defaultdict
 from datetime import datetime
-from collections import defaultdict, Counter
+from urllib.parse import urlparse
+
+import idna
+import tldextract
+
+from preprocessing.utils.url_extractor import refang_url_like_schemes
 
 # WHOIS import disabled — domain lookups are outcommented per request
 # try:
@@ -161,11 +164,11 @@ def _normalize_url_for_hostname_extraction(url: str) -> str:
         return s
     # Common defang patterns in MISP/email artifacts.
     s = s.replace("[.]", ".").replace("(.)", ".")
+    s = refang_url_like_schemes(s)
     low = s.lower()
     if low.startswith(("http://", "https://")):
         return s
-    # Preserve any explicit scheme to avoid corrupting host parsing
-    # (e.g. hxxps://... becoming http://hxxps://...).
+    # Non-http(s) schemes (e.g. ftp): do not prepend http:// — that would mash schemes.
     if "://" in s:
         return s
     if s.startswith("//"):

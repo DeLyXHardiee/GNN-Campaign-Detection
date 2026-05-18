@@ -41,6 +41,23 @@ def load_misp_events_list(misp_json_path: Path) -> list[dict[str, Any]]:
     return []
 
 
+def format_email_timestamp_utc(date_value: Any, *, project_root: Path) -> tuple[str, str]:
+    """Return (raw_date, human-readable UTC timestamp) for an email date field."""
+    raw = str(date_value or "").strip()
+    if not raw:
+        return "", ""
+    _ensure_core_on_syspath(project_root)
+    from datetime import datetime, timezone
+
+    from graph.common import to_unix_ts
+
+    ts = to_unix_ts(raw)
+    if ts is None or int(ts) <= 0:
+        return raw, raw
+    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+    return raw, dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
 def load_misp_subject_body_by_external_id(
     misp_json_path: Path, *, project_root: Path
 ) -> dict[str, dict[str, str]]:
@@ -55,9 +72,12 @@ def load_misp_subject_body_by_external_id(
         eid = str(ev.get("external_id") or "").strip()
         if not eid or eid in out:
             continue
+        date_raw, timestamp_utc = format_email_timestamp_utc(ev.get("date"), project_root=project_root)
         out[eid] = {
             "subject": str(ev.get("subject") or ""),
             "body": str(ev.get("body") or ""),
+            "date_raw": date_raw,
+            "timestamp_utc": timestamp_utc,
         }
     return out
 

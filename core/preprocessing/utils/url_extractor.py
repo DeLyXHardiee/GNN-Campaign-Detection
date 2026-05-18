@@ -108,6 +108,14 @@ def _element_local_tag(tag: Any) -> str:
     return tag.lower()
 
 
+def _safe_urlparse(url: str):
+    """``urlparse`` that returns ``None`` on malformed hosts (e.g. ``http://[.]/``)."""
+    try:
+        return urlparse(url)
+    except ValueError:
+        return None
+
+
 def _host_acceptable_for_http_url(host: str) -> bool:
     """
     Reject dotted garbage (e.g. ``td.padding`` from CSS) that ``urlparse`` treats as a host.
@@ -154,13 +162,14 @@ def normalize_http_url(raw: str) -> Optional[str]:
     if s.startswith("//"):
         s = "https:" + s
     else:
-        probe = urlparse(s)
+        probe = _safe_urlparse(s)
+        if probe is None:
+            return None
         if not probe.scheme:
             s = "https://" + s
 
-    try:
-        parsed = urlparse(s)
-    except ValueError:
+    parsed = _safe_urlparse(s)
+    if parsed is None:
         return None
 
     scheme = (parsed.scheme or "").lower()
@@ -310,16 +319,64 @@ def parse_url_components(url: str) -> Dict[str, Any]:
             "scheme": "",
         }
 
+    raw_in = str(url).strip()
+
     try:
-        parsing_url = url
-        if not url.lower().startswith(("http://", "https://")):
-            parsing_url = "http://" + url
+        # Refang before scheme checks; otherwise ``http://`` + ``hxxps://host`` yields
+        # netloc ``hxxps:`` and path ``//host/`` (urllib.parse bug-class on merged schemes).
+        s = _strip_wrapping_punct(refang_url_like_schemes(raw_in))
+        if not s:
+            return {
+                "full_url": "",
+                "domain": "",
+                "stem": "",
+                "scheme": "",
+            }
 
-        parsed = urlparse(parsing_url)
+        canonical = normalize_http_url(s)
 
-        domain = parsed.netloc.lower() if parsed.netloc else ""
+        if canonical:
+            parsed = urlparse(canonical)
+            full_url_out = canonical
+        else:
+            parsing_url = s
+            low = s.lower()
+            if not low.startswith(("http://", "https://")):
+                if s.startswith("//"):
+                    parsing_url = "https:" + s
+                else:
+                    parsing_url = "http://" + s
+            parsed = _safe_urlparse(parsing_url)
+            if parsed is None:
+                return {
+                    "full_url": raw_in,
+                    "domain": "",
+                    "stem": "",
+                    "scheme": "",
+                }
+            scheme_l = (parsed.scheme or "").lower()
+            nl = parsed.netloc.lower() if parsed.netloc else ""
+            normalized = urlunparse(
+                (
+                    scheme_l,
+                    nl,
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment,
+                )
+            )
+            full_url_out = normalized
 
-        stem_parts = []
+        try:
+            host = (parsed.hostname or "").strip().lower()
+        except ValueError:
+            host = ""
+        domain = host
+        if not domain and parsed.netloc:
+            domain = parsed.netloc.lower()
+
+        stem_parts: List[str] = []
         if parsed.path:
             stem_parts.append(parsed.path)
         if parsed.params:
@@ -331,26 +388,15 @@ def parse_url_components(url: str) -> Dict[str, Any]:
 
         stem = "".join(stem_parts) if stem_parts else "/"
 
-        normalized = urlunparse(
-            (
-                parsed.scheme.lower(),
-                domain,
-                parsed.path,
-                parsed.params,
-                parsed.query,
-                parsed.fragment,
-            )
-        )
-
         return {
-            "full_url": normalized,
+            "full_url": full_url_out,
             "domain": domain,
             "stem": stem,
-            "scheme": parsed.scheme.lower() if parsed.scheme else "",
+            "scheme": (parsed.scheme or "").lower() if parsed.scheme else "",
         }
     except Exception:
         return {
-            "full_url": url,
+            "full_url": raw_in,
             "domain": "",
             "stem": "",
             "scheme": "",

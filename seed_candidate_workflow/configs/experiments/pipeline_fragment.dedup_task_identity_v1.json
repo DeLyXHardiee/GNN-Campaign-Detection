@@ -1,0 +1,7 @@
+{
+  "_comment": "Merge into repo-root pipeline_config.json for baseline dedup_task_identity (exp14 graph bundle).",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity",
+  "pair_training": {
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity/pair_training_dataset.csv"
+  }
+}

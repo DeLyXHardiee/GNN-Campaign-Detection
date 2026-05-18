@@ -1,0 +1,87 @@
+{
+  "run": {
+    "graph_id": "main_gnn_pu_1_no_ts_dedup_task_identity_5"
+  },
+  "input": {
+    "min_edge_weight": null
+  },
+  "seeds": {
+    "generators": [
+      {
+        "name": "hard_v1",
+        "enabled": true,
+        "rules": [
+          {
+            "rule_id": "exact_attachment_hash",
+            "channel": "attachment",
+            "evidence_type": "exact_attachment_hash",
+            "max_artifact_df": 30
+          },
+          {
+            "rule_id": "exact_html_fingerprint",
+            "channel": "html_structure_fingerprint",
+            "evidence_type": "exact_html_fingerprint",
+            "max_artifact_df": 40
+          },
+          {
+            "rule_id": "exact_normalized_url",
+            "channel": "url",
+            "evidence_type": "exact_normalized_url",
+            "max_artifact_df": 20
+          },
+          {
+            "rule_id": "rare_exact_url_template",
+            "channel": "stem",
+            "evidence_type": "rare_exact_url_template",
+            "max_artifact_df": 8
+          }
+        ]
+      },
+      {
+        "name": "corroborated_v1",
+        "enabled": true,
+        "weak_channels": [
+          "sender",
+          "sender_email_domain",
+          "domain",
+          "stem",
+          "return_path_domain",
+          "received_host",
+          "origin_ip"
+        ],
+        "require_min_support_channels": 2,
+        "semantic_support": {
+          "enabled": true,
+          "min_semantic_score": 0.97,
+          "require_non_semantic_support": true,
+          "min_non_semantic_support_channels": 1
+        }
+      },
+      {
+        "name": "semantic_strong_v1",
+        "enabled": true,
+        "min_semantic_score": 0.93,
+        "rule_id": "semantic_ge_0_93"
+      },
+      {
+        "name": "semantic_sender_seed_v1",
+        "enabled": true,
+        "min_semantic_score": 0.9,
+        "sender_overlap_col": "has_sender_overlap",
+        "rule_id": "semantic_ge_0_90_and_shared_sender"
+      }
+    ]
+  },
+  "ground_truth": {
+    "paths": [
+      "data/groundtruth/ground_truth.dedup_task_identity.json"
+    ]
+  },
+  "seed_components": {
+    "include_all_nodes": true
+  },
+  "output": {
+    "stage_name": "seed_generation"
+  }
+}
+

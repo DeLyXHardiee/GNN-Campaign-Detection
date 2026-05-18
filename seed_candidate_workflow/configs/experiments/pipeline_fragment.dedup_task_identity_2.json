@@ -1,0 +1,7 @@
+{
+  "_comment": "Merge into repo-root pipeline_config.json before GNN train + pair separation for the GT-edge-rules _2 track (same hetero .pt as v1). Revert to pipeline_fragment.dedup_task_identity_v1.json for baseline.",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity_2",
+  "pair_training": {
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity_2/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity_2/pair_training_dataset.csv"
+  }
+}

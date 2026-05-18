@@ -1035,7 +1035,6 @@ def assemble_misp_graph_ir_from_parsed_emails(
         inline_substrings=url_skip_substrings,
     )
     registry = default_provider_registry(url_skip_patterns)
-    emails = parse_misp_events(misp_events)
     #iterate through emails and print urls if not empty
     '''
     for email in emails:

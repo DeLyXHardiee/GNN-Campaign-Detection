@@ -22,7 +22,7 @@ from seed_candidate_workflow.utils.pair_training_dataset_helpers import build_pa
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def _resolve_path(project_root: Path, raw: str | Path) -> Path:
