@@ -176,10 +176,23 @@ def extract_all_emails(text: str) -> List[str]:
 def _extract_urls_from_attr_value(value: Any) -> List[str]:
     """Extract URLs from scalar/list/dict MISP attribute values."""
     if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                import ast
+
+                parsed = ast.literal_eval(text)
+                if isinstance(parsed, (list, tuple)):
+                    urls: List[str] = []
+                    for item in parsed:
+                        urls.extend(_extract_urls_from_attr_value(item))
+                    return urls
+            except (ValueError, SyntaxError):
+                pass
         return extract_urls_from_text(value)
 
     if isinstance(value, list):
-        urls: List[str] = []
+        urls = []
         for item in value:
             urls.extend(_extract_urls_from_attr_value(item))
         return urls

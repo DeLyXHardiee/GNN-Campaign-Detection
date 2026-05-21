@@ -2,7 +2,7 @@
   "experiment": {
     "scoring_run_id": "run_seedcand_unweighted_scoreonly",
     "graph_id": "bundle_seedcand_pairtrain",
-    "mode": "score_only",
+    "mode": "setup_and_score",
     "graph_family": "seed_candidate"
   },
   "artifacts": {
@@ -11,14 +11,14 @@
   },
   "setup": {
     "enable": {
-      "anchor": false,
-      "seed": false,
-      "candidate": false,
-      "seed_candidate": false,
+      "anchor": true,
+      "seed": true,
+      "candidate": true,
+      "seed_candidate": true,
       "pair_training": false
     },
     "policy": {
-      "on_missing": "fail",
+      "on_missing": "build",
       "on_present": "reuse"
     },
     "paths": {
@@ -26,7 +26,7 @@
       "seed_config": "seed_candidate_workflow/configs/anchor_seed.default.json",
       "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.default.json",
       "pair_training": {
-        "graph_meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json"
+        "graph_meta_json": "core/graph/output/incidents-lake-misp-url-fixed_hetero.meta.json"
       }
     }
   },

@@ -1,9 +1,12 @@
-# Cluster visualization UI. Mount a run's visualization/ directory (contains data.json).
+# Cluster visualization UI. Mount the run directory that contains visualization/data.json.
 #
 # Usage from repo root (after visualize_clusters wrote data.json):
 #   RUN_DIR=/abs/path/to/output/runs/my_run \
 #   VIZ_PORT=8787 \
 #   docker compose -f docker-compose.visualization.yml up --build
+#
+# RUN_DIR must be the run folder (e.g. output/runs/visualization), not a subfolder that only
+# has campaigns*.json without visualization/data.json.
 #
 # Or rely on defaults: project-relative RUN_DIR and port 8787.
 

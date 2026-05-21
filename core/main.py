@@ -567,7 +567,7 @@ def visualize_clusters(
     - ``enabled`` (default True): run ``docker compose`` for :file:`docker-compose.visualization.yml`
     - ``port`` (default 8787): host port mapping
     - ``compose_file`` (default ``docker-compose.visualization.yml``): path relative to repo root
-    - ``include_attribute_similarity`` (default True): SBERT similarity vs campaign peer average
+    - ``include_attribute_similarity`` (default True): SBERT peer similarity per campaign (red→green)
     """
     from config.run_output_paths import resolve_session_run_output_dir
 
@@ -607,10 +607,14 @@ def visualize_clusters(
         include_attribute_similarity
     )
 
+    gt_raw = (cfg.get("datasets") or {}).get("ground_truth_json")
+    gt_path = resolve_project_path(gt_raw) if gt_raw else None
+
     out_json = write_visualization_data_json(
         run_dir=run_path,
         misp_json_path=str(misp_resolved),
         include_attribute_similarity=include_sim,
+        ground_truth_path=gt_path,
     )
     print(f"Visualization data written to: {out_json}")
 
@@ -757,14 +761,14 @@ if __name__ == "__main__":
     #create_feature_sets()
     #run_featureset_clustering()
     
-    #misp_path = "preprocessing/output/incidents-lake-misp.json"
+    #misp_path = "preprocessing/output/incidents-lake-misp-url-fixed.json"
     #run_graph_creation(misp_path, to_memgraph=False)
-    #run_seed_candidate_pu_pipeline(relaxed_semantics=True)   # uses exp04
+    #run_seed_candidate_pu_pipeline()   # uses exp04
     #run_gnn()
     #run_gnn_evaluation()
     #run_gnn_clustering()
     #run_metric_comparison()
-    visualize_clusters(run_id="visualization_run")
+    visualize_clusters(run_id="visualization")
     
     # To run the entire pipeline, uncomment the line below:
     # run_pipeline()

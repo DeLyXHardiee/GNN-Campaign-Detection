@@ -8,10 +8,16 @@
 </head>
 <body>
   <header class="header">
-    <h1>Campaign clusters</h1>
+    <div class="header-row">
+      <h1>Campaign clusters</h1>
+      <label class="header-toggle" id="evalMetricsToggleWrap" hidden>
+        <input type="checkbox" id="showEvalMetrics" />
+        Show H/C/V on campaigns
+      </label>
+    </div>
     <p class="muted" id="runInfo"></p>
     <p class="legend muted" id="simLegend">
-      Colors compare each field to peers in the <strong>same campaign</strong> (SBERT; red = lowest relative match, green = highest). Percentages are scaled per campaign so differences stay visible.
+      Colors compare each field and URL to peers in the <strong>same campaign</strong> (SBERT; red = lowest relative match, green = highest). Percentages are scaled per campaign so differences stay visible.
     </p>
   </header>
 
@@ -20,6 +26,7 @@
   <div class="layout">
     <aside class="panel campaigns">
       <h2>Campaigns</h2>
+      <p class="campaign-summary muted" id="campaignSummary" hidden></p>
       <ul id="campaignList"></ul>
     </aside>
     <aside class="panel emails">
@@ -29,11 +36,11 @@
     <main class="panel detail">
       <h2>Email</h2>
       <div id="emailDetail" class="email-container">
-        <p class="muted">Select an email.</p>
+        <p class="muted">Select a campaign, then an email.</p>
       </div>
     </main>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>

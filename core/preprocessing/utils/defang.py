@@ -19,6 +19,17 @@ def defang_url_string(text: str) -> str:
     return out
 
 
+def refang_url_string(text: str) -> str:
+    """Restore defanged URI schemes for extraction and display."""
+    if not text or not isinstance(text, str):
+        return text
+    out = re.sub(r"(?i)\bhxxps://", "https://", text)
+    out = re.sub(r"(?i)\bhxxp://", "http://", out)
+    out = re.sub(r"(?i)\bfxp://", "ftp://", out)
+    out = re.sub(r"(?i)\bmailt0:", "mailto:", out)
+    return out
+
+
 def sanitize_for_json(obj: Any) -> Any:
     """Recursively defang all string values in a structure (for safe JSON/file output)."""
     if isinstance(obj, str):

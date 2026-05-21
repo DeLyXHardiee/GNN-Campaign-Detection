@@ -47502,5 +47502,21 @@
     "registrar_location": null,
     "fetched_at": "2026-05-04T13:00:09.458811",
     "rdap_url": "https://rdap.verisign.com/com/v1/domain/yongfeng-medical.com"
+  },
+  "homebridgewholesale.com": {
+    "domain": "homebridgewholesale.com",
+    "registrar": "Gandi SAS",
+    "registration_date": "2012-07-27T13:58:27Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-20T20:57:09.991918",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/homebridgewholesale.com"
+  },
+  "dh.com": {
+    "domain": "dh.com",
+    "registrar": "CSC Corporate Domains, Inc.",
+    "registration_date": "1994-01-05T05:00:00Z",
+    "registrar_location": null,
+    "fetched_at": "2026-05-20T20:57:09.993294",
+    "rdap_url": "https://rdap.verisign.com/com/v1/domain/dh.com"
   }
 }

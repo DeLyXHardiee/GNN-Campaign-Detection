@@ -27,12 +27,12 @@
       "seed_config": "seed_candidate_workflow/configs/anchor_seed.default.json",
       "candidate_config": "seed_candidate_workflow/configs/anchor_candidate_generation.default.json",
       "pair_training": {
-        "graph_meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json"
+        "graph_meta_json": "core/graph/output/incidents-lake-misp-url-fixed_hetero.meta.json"
       },
       "semantic_shard": {
         "embeddings_json": "core/utils/embeddings/output/embeddings.json",
-        "graph_pt": "core/graph/output/incidents-lake-misp-large_hetero.pt",
-        "meta_json": "core/graph/output/incidents-lake-misp-large_hetero.meta.json",
+        "graph_pt": "core/graph/output/incidents-lake-misp-url-fixed_hetero.pt",
+        "meta_json": "core/graph/output/incidents-lake-misp-url-fixed_hetero.meta.json",
         "to_undirected": true,
         "step1": {
           "min_cluster_size": 2,

@@ -12,23 +12,28 @@ from urllib.parse import urlparse, urlunparse
 
 
 URL_PATTERN = re.compile(
-    r'(?:https?://|www\.)[^\s\'"<>]+',
-    re.IGNORECASE
+    r"(?:https?://|hxxps?://|www\.)[^\s'\"<>]+",
+    re.IGNORECASE,
 )
 
 
 def extract_urls_from_text(text: str) -> List[str]:
     if not text:
         return []
-    
-    urls = URL_PATTERN.findall(text)
+
+    try:
+        from preprocessing.utils.defang import refang_url_string
+    except ModuleNotFoundError:
+        from core.preprocessing.utils.defang import refang_url_string
+
+    urls = URL_PATTERN.findall(refang_url_string(text))
     cleaned = []
     for url in urls:
         # Remove trailing punctuation
-        url = url.rstrip('.,;:!?)')
+        url = refang_url_string(url.rstrip(".,;:!?)"))
         if url:
             cleaned.append(url)
-    
+
     return cleaned
 
 

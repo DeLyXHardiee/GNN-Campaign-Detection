@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY main.py url_utils.py ./
 COPY static ./static
 
 ENV DATA_JSON=/data/data.json

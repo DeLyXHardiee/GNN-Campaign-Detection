@@ -16,6 +16,40 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.header-row h1 {
+  margin: 0;
+}
+
+.header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.header-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.campaign-metrics {
+  font-size: 0.82rem;
+  color: #555;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .muted {
   color: #666;
   font-size: 0.9rem;
@@ -86,6 +120,12 @@ body {
   font-size: 1rem;
 }
 
+.campaign-summary {
+  margin: -0.35rem 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 ul {
   list-style: none;
   padding: 0;
@@ -114,6 +154,47 @@ li button.active {
   border-color: var(--accent);
 }
 
+#emailList li button.email-gt {
+  border-left: 3px solid #198754;
+  padding-left: calc(0.6rem - 2px);
+}
+
+#emailList li button.email-gt:not(.active) {
+  background: #f0faf4;
+}
+
+#campaignList li button.campaign-noise {
+  border-left: 3px solid #adb5bd;
+  padding-left: calc(0.6rem - 2px);
+  font-style: italic;
+}
+
+#campaignList li button.campaign-noise:not(.active) {
+  background: #f1f3f5;
+  color: #555;
+}
+
+.gt-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #198754;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  margin-right: 0.35rem;
+}
+
+.gt-banner {
+  margin-bottom: 0.85rem;
+  padding: 0.5rem 0.65rem;
+  background: #e8f5ec;
+  border-radius: 6px;
+  border: 1px solid #b8dfc8;
+}
+
 .email-container {
   font-size: 0.95rem;
   line-height: 1.5;
@@ -136,6 +217,39 @@ li button.active {
   border-radius: 8px;
   max-height: 60vh;
   overflow: auto;
+}
+
+.url-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 28vh;
+  overflow: auto;
+}
+
+.url-list li {
+  margin-bottom: 0.4rem;
+  word-break: break-all;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.url-list li.url-item {
+  padding: 0.35rem 0.45rem;
+  border-radius: 4px;
+}
+
+.url-list li.url-item .sim-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+}
+
+.url-list .defanged-url {
+  color: #333;
+  font-family: ui-monospace, monospace;
+  font-size: 0.84rem;
+  user-select: text;
+  cursor: text;
 }
 
 @media (max-width: 900px) {

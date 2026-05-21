@@ -6,11 +6,56 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+
+from url_utils import urls_for_email_row
 
 _STATIC = Path(__file__).resolve().parent / "static"
 _DATA = Path(os.environ.get("DATA_JSON", "/data/data.json"))
+
+
+def _campaign_email_count(campaign: dict) -> int:
+    size = campaign.get("size")
+    if size is not None:
+        try:
+            return int(size)
+        except (TypeError, ValueError):
+            pass
+    return len(campaign.get("member_external_ids") or [])
+
+
+def _sort_payload_campaigns(payload: dict) -> None:
+    campaigns = payload.get("campaigns")
+    if not isinstance(campaigns, list):
+        return
+    payload["campaigns"] = sorted(
+        campaigns,
+        key=_campaign_email_count,
+        reverse=True,
+    )
+
+
+def _enrich_email_urls(data: dict) -> None:
+    """Per-email ``urls`` from MISP attributes + body (refangs hxxp/hxxps)."""
+    emails = data.get("emails")
+    if not isinstance(emails, dict):
+        return
+    for row in emails.values():
+        if isinstance(row, dict):
+            row["urls"] = urls_for_email_row(row)
+
+
+def _sort_solutions_campaigns(data: dict) -> dict:
+    solutions = data.get("solutions")
+    if not isinstance(solutions, dict):
+        return data
+    for payload in solutions.values():
+        if isinstance(payload, dict):
+            _sort_payload_campaigns(payload)
+    _enrich_email_urls(data)
+    return data
+
 
 app = FastAPI(title="Campaign cluster viewer")
 
@@ -26,7 +71,8 @@ def get_data():
             detail=f"Data file not found: {_DATA}. Mount run visualization dir to /data.",
         )
     with open(_DATA, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    return _sort_solutions_campaigns(data)
 
 
 @app.get("/", response_class=HTMLResponse)
