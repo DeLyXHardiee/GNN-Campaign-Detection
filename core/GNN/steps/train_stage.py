@@ -66,6 +66,9 @@ def run_train_stage(
             **training_cfg,
             "graph_path": str(Path(graph_path).expanduser().resolve()),
         }
+        gnn_ablation = cfg_full.get("gnn_encoder_ablation")
+        if gnn_ablation is not None:
+            merged_base["gnn_encoder_ablation"] = gnn_ablation
         ovr = (pair_training_overrides or {}).get("pair_training_backends_override")
         if ovr is not None:
             backends = [str(x).strip().lower() for x in ovr if str(x).strip()]
@@ -79,7 +82,13 @@ def run_train_stage(
         per_backend: dict[str, Any] = {}
         last_pair_out: dict[str, Any] | None = None
         for slug in backends:
-            enc = "mlp_raw_email_x" if slug == "mlp" else "gnn"
+            enc_override = str(merged_base.get("pair_encoder_backend") or "").strip()
+            if enc_override:
+                from src.pair_train import resolve_pair_encoder_backend
+
+                enc = resolve_pair_encoder_backend(merged_base)
+            else:
+                enc = "mlp_raw_email_x" if slug == "mlp" else "gnn"
             merged = {**merged_base, "pair_encoder_backend": enc, "pair_training_backend_slug": slug}
             be_layout = gnn_path_layout_for_pair_backend(layout, slug)
             pair_out = run_pair_training(

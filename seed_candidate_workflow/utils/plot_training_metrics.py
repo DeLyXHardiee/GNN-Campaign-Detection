@@ -47,14 +47,18 @@ def _finite_series(s: pd.Series) -> np.ndarray:
     return v
 
 
+TRAIN_COLOR = "#ff7f0e"  # orange
+VAL_COLOR = "#1f77b4"  # blue
+
+
 def plot_loss_over_epochs(df: pd.DataFrame, out_path: Path, *, dpi: int = 120) -> None:
     epochs = df["epoch"].to_numpy()
     train = _finite_series(df["train_loss"])
     val = _finite_series(df["val_loss"])
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(epochs, train, label="train loss", color="#1f77b4", linewidth=1.8)
-    ax.plot(epochs, val, label="validation loss", color="#ff7f0e", linewidth=1.8)
+    ax.plot(epochs, train, label="train loss", color=TRAIN_COLOR, linewidth=1.8)
+    ax.plot(epochs, val, label="validation loss", color=VAL_COLOR, linewidth=1.8)
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_title("Training and validation loss")
@@ -95,6 +99,51 @@ def plot_accuracy_over_epochs(df: pd.DataFrame, out_path: Path, *, dpi: int = 12
     return True
 
 
+def plot_training_metrics_dashboard(
+    df: pd.DataFrame, out_path: Path, *, dpi: int = 120
+) -> None:
+    """Loss + score separation (train orange, validation blue)."""
+    epochs = df["epoch"].to_numpy()
+    fig, axes = plt.subplots(2, 1, figsize=(8, 7), sharex=True)
+
+    train_loss = _finite_series(df["train_loss"])
+    val_loss = _finite_series(df["val_loss"])
+    ax0 = axes[0]
+    ax0.plot(epochs, train_loss, label="train loss", color=TRAIN_COLOR, linewidth=1.8)
+    ax0.plot(epochs, val_loss, label="validation loss", color=VAL_COLOR, linewidth=1.8)
+    ax0.set_ylabel("Loss")
+    ax0.set_title("Pair training metrics")
+    ax0.legend(loc="best")
+    ax0.grid(True, alpha=0.3)
+
+    ax1 = axes[1]
+    if "train_epoch_score_separation" in df.columns:
+        ax1.plot(
+            epochs,
+            _finite_series(df["train_epoch_score_separation"]),
+            label="train pos−unl separation",
+            color=TRAIN_COLOR,
+            linewidth=1.8,
+        )
+    if "val_epoch_score_separation" in df.columns:
+        ax1.plot(
+            epochs,
+            _finite_series(df["val_epoch_score_separation"]),
+            label="val pos−unl separation",
+            color=VAL_COLOR,
+            linewidth=1.8,
+        )
+    ax1.set_xlabel("Epoch")
+    ax1.set_ylabel("Score separation")
+    ax1.legend(loc="best")
+    ax1.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=dpi)
+    plt.close(fig)
+
+
 def write_training_plots(
     run_dir: Path | str,
     *,
@@ -112,12 +161,15 @@ def write_training_plots(
     plots = run / plots_subdir
     loss_path = plots / "loss_over_epochs.png"
     acc_path = plots / "accuracy_over_epochs.png"
+    dashboard_path = plots / "training_metrics.png"
 
     plot_loss_over_epochs(df, loss_path, dpi=dpi)
+    plot_training_metrics_dashboard(df, dashboard_path, dpi=dpi)
     wrote_acc = plot_accuracy_over_epochs(df, acc_path, dpi=dpi)
     out: dict[str, Any] = {
         "run_dir": run,
         "loss_plot": loss_path,
+        "training_metrics_plot": dashboard_path,
         "accuracy_plot": acc_path if wrote_acc else None,
     }
     if not wrote_acc:
@@ -161,6 +213,8 @@ def main(argv: list[str] | None = None) -> int:
         dpi=args.dpi,
     )
     print(f"Wrote loss plot: {result['loss_plot']}")
+    if result.get("training_metrics_plot"):
+        print(f"Wrote training metrics dashboard: {result['training_metrics_plot']}")
     if result["accuracy_plot"] is not None:
         print(f"Wrote accuracy plot: {result['accuracy_plot']}")
     else:

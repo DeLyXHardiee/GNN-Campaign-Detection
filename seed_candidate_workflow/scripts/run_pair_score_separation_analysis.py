@@ -4,10 +4,15 @@ CLI entry for post-training PU pair score separation (same vs cross campaign on 
 
 Run from repository root, for example:
 
-  python seed_candidate_workflow/scripts/run_pair_score_separation_seed_candidate_workflow.py ^
-    --run-dir core/GNN/outputs/pair_pu_001 ^
-    --graph-pt core/graph/output/incidents-lake-misp-large_hetero.pt ^
-    --gt-dir data/groundtruth
+  python seed_candidate_workflow/scripts/run_pair_score_separation_analysis.py ^
+    --run-dir output/runs/main_gnn_pu_1_no_ts_dedup_task_identity_11 ^
+    --graph-pt core/graph/output/main_gnn_pu_1_no_ts_dedup_task_identity_6_hetero.pt ^
+    --gt-path data/groundtruth/ground_truth.dedup_task_identity.json
+
+  # Multiple GT JSONs (repeat --gt-path):
+  python seed_candidate_workflow/scripts/run_pair_score_separation_analysis.py ... ^
+    --gt-path data/groundtruth/ground_truth_merged.json ^
+    --gt-path data/groundtruth/ground_truth.json
 """
 from __future__ import annotations
 

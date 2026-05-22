@@ -765,6 +765,9 @@ def run_candidate_evaluation_report(
     p_sem = out_dir / "candidates_semantic.csv"
     p_comp = out_dir / "candidates_component_expanded.csv"
     p_2hop = out_dir / "candidates_2hop.csv"
+    p_body_tok = out_dir / "candidates_body_token_jaccard_highconf.csv"
+    p_body_c4 = out_dir / "candidates_body_char4gram_jaccard_highconf.csv"
+    p_mid_sender_lp = out_dir / "candidates_semantic_mid_senderlocalpart_support.csv"
 
     df_rare = _read_optional_csv(p_rare)
     df_stem_hi = _read_optional_csv(p_stem_hi)
@@ -774,6 +777,9 @@ def run_candidate_evaluation_report(
     df_sem = _read_optional_csv(p_sem)
     df_comp = _read_optional_csv(p_comp)
     df_2hop = _read_optional_csv(p_2hop)
+    df_body_tok = _read_optional_csv(p_body_tok)
+    df_body_c4 = _read_optional_csv(p_body_c4)
+    df_mid_sender_lp = _read_optional_csv(p_mid_sender_lp)
     seed_members_df = _read_optional_csv(seed_members_csv)
 
     union_df = candidate_union_df.copy()
@@ -808,6 +814,9 @@ def run_candidate_evaluation_report(
         "semantic_mid_sender_support": set(),
         "semantic_mid_core_support": set(),
         "semantic_mid_stem_support": set(),
+        "semantic_mid_senderlocalpart_support": set(),
+        "body_token_jaccard_highconf": set(),
+        "body_char4gram_jaccard_highconf": set(),
         "semantic": set(),
         "component": set(),
         "2hop": set(),
@@ -826,6 +835,12 @@ def run_candidate_evaluation_report(
             source_pairs["semantic_mid_core_support"].add(p)
         if bool(r.get("from_semantic_mid_stem_support", False)):
             source_pairs["semantic_mid_stem_support"].add(p)
+        if bool(r.get("from_semantic_mid_senderlocalpart_support", False)):
+            source_pairs["semantic_mid_senderlocalpart_support"].add(p)
+        if bool(r.get("from_body_token_jaccard_highconf", False)):
+            source_pairs["body_token_jaccard_highconf"].add(p)
+        if bool(r.get("from_body_char4gram_jaccard_highconf", False)):
+            source_pairs["body_char4gram_jaccard_highconf"].add(p)
         if bool(r.get("from_semantic", False)):
             source_pairs["semantic"].add(p)
         if bool(r.get("from_component", False)):
@@ -861,6 +876,11 @@ def run_candidate_evaluation_report(
             "candidates_semantic_csv": str(p_sem) if p_sem.is_file() else None,
             "candidates_component_expanded_csv": str(p_comp) if p_comp.is_file() else None,
             "candidates_2hop_csv": str(p_2hop) if p_2hop.is_file() else None,
+            "candidates_body_token_jaccard_highconf_csv": str(p_body_tok) if p_body_tok.is_file() else None,
+            "candidates_body_char4gram_jaccard_highconf_csv": str(p_body_c4) if p_body_c4.is_file() else None,
+            "candidates_semantic_mid_senderlocalpart_support_csv": (
+                str(p_mid_sender_lp) if p_mid_sender_lp.is_file() else None
+            ),
         },
         "total_emails": int(total_emails),
         "all_pairs_total": int(all_pairs_total),
@@ -875,6 +895,9 @@ def run_candidate_evaluation_report(
                 ("semantic", p_sem),
                 ("component", p_comp),
                 ("2hop", p_2hop),
+                ("body_token_jaccard_highconf", p_body_tok),
+                ("body_char4gram_jaccard_highconf", p_body_c4),
+                ("semantic_mid_senderlocalpart_support", p_mid_sender_lp),
             ]
             if not p.is_file()
         ],
@@ -925,6 +948,9 @@ def run_candidate_evaluation_report(
         "semantic_mid_sender_support",
         "semantic_mid_core_support",
         "semantic_mid_stem_support",
+        "semantic_mid_senderlocalpart_support",
+        "body_token_jaccard_highconf",
+        "body_char4gram_jaccard_highconf",
         "semantic",
         "component",
         "2hop",
@@ -1511,6 +1537,9 @@ def run_candidate_evaluation_report(
                     ("semantic_mid_sender", "from_semantic_mid_sender_support"),
                     ("semantic_mid_core", "from_semantic_mid_core_support"),
                     ("semantic_mid_stem", "from_semantic_mid_stem_support"),
+                    ("semantic_mid_senderlocalpart", "from_semantic_mid_senderlocalpart_support"),
+                    ("body_token_jaccard_highconf", "from_body_token_jaccard_highconf"),
+                    ("body_char4gram_jaccard_highconf", "from_body_char4gram_jaccard_highconf"),
                     ("semantic", "from_semantic"),
                     ("component", "from_component"),
                     ("2hop", "from_2hop"),

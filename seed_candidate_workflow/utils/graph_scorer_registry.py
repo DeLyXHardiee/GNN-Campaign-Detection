@@ -313,6 +313,7 @@ def score_seed_candidate_pu(
             pair_batch_size=bundle["pair_batch_size"],
             max_unique_emails=bundle["max_unique_emails"],
             with_logits=False,
+            pair_feature_columns=bundle.get("pair_feature_columns"),
         )
         pu_score = scored_tup[0] if isinstance(scored_tup, tuple) else scored_tup
         score_map: dict[tuple[str, str], float] = {}

@@ -35,7 +35,8 @@ from preprocessing.email_similarity_dedup import (
     simhash_64,
 )
 
-from .model import HeteroSAGE
+from .gnn_encoder_ablation import gnn_encoder_ablation_from_training_cfg
+from .model import HeteroSAGE, build_pair_gnn_encoder
 from .model_io import select_device
 from .pair_graph_sampling import (
     PairEndpointHeteroSample,
@@ -76,27 +77,31 @@ def reliable_negative_supervision_active(training_cfg: dict[str, Any], pair_loss
 # Pair encoder: full hetero message passing vs raw ``email.x`` only (no neighborhoods).
 PAIR_ENCODER_GNN = "gnn"
 PAIR_ENCODER_MLP_RAW_EMAIL_X = "mlp_raw_email_x"
+PAIR_ENCODER_EXPLICIT_ONLY = "explicit_only"
 
 
 def resolve_pair_encoder_backend(training_cfg: dict[str, Any]) -> str:
     v = str(training_cfg.get("pair_encoder_backend") or "").strip().lower()
     if v in ("", "gnn", "hetero", "heterosage", "sage"):
         return PAIR_ENCODER_GNN
-    if v in (PAIR_ENCODER_MLP_RAW_EMAIL_X, "mlp_raw", "mlp"):
+    if v in (PAIR_ENCODER_MLP_RAW_EMAIL_X, "mlp_raw", "mlp_raw_email_x"):
         return PAIR_ENCODER_MLP_RAW_EMAIL_X
+    if v in (PAIR_ENCODER_EXPLICIT_ONLY, "explicit_only", "explicit", "pair_features_only"):
+        return PAIR_ENCODER_EXPLICIT_ONLY
     raise ValueError(
         f"Unsupported pair_encoder_backend={training_cfg.get('pair_encoder_backend')!r}; "
-        f"use {PAIR_ENCODER_GNN!r} or {PAIR_ENCODER_MLP_RAW_EMAIL_X!r}."
+        f"use {PAIR_ENCODER_GNN!r}, {PAIR_ENCODER_MLP_RAW_EMAIL_X!r}, or {PAIR_ENCODER_EXPLICIT_ONLY!r}."
     )
 
 PAIR_FEATURE_BOOL_COLS = [
-    "from_seed",
-    "from_rare_artifact",
-    "from_semantic",
-    "from_component",
-    "from_2hop",
-    "same_seed_component_flag",
-    "cross_seed_component_flag",
+    # --- run _13 ablation: provenance / component flags (re-enable by uncommenting) ---
+    # "from_seed",
+    # "from_rare_artifact",
+    # "from_semantic",
+    # "from_component",
+    # "from_2hop",
+    # "same_seed_component_flag",
+    # "cross_seed_component_flag",
     "has_shared_sender",
     "has_shared_stem",
     "has_shared_url",
@@ -106,11 +111,12 @@ PAIR_FEATURE_BOOL_COLS = [
 ]
 
 PAIR_FEATURE_NUMERIC_COLS = [
-    "source_count",
+    # --- run _13 ablation: provenance / channel strength numerics (re-enable by uncommenting) ---
+    # "source_count",
     "semantic_cosine_max",
-    "rare_artifact_rarity_max",
-    "twohop_rarity_max",
-    "component_cosine_max",
+    # "rare_artifact_rarity_max",
+    # "twohop_rarity_max",
+    # "component_cosine_max",
     "time_gap_seconds_min",
     "shared_sender_count",
     "shared_stem_count",
@@ -119,11 +125,44 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "shared_sender_domain_count",
     "shared_domain_count",
     "n_shared_core_channels",
+    "body_token_jaccard",
+    "body_char4gram_jaccard",
+    "sender_localpart_norm_jaccard",
+    "body_only_token_jaccard",
+    "body_only_char4gram_jaccard",
+    "path_token_jaccard_combined",
 ]
 
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
 PAIR_FEATURE_COLUMNS = PAIR_FEATURE_BOOL_COLS + PAIR_FEATURE_NUMERIC_COLS
+
+_RESCUE_ALIGNED_SCORER_FEATURE_COLS = (
+    "body_only_token_jaccard",
+    "body_only_char4gram_jaccard",
+    "path_token_jaccard_combined",
+)
+
+
+def _scorer_input_feature_sanity_block(
+    df: pd.DataFrame,
+    load_stats: dict[str, Any],
+) -> dict[str, Any]:
+    from seed_candidate_workflow.utils.pair_similarity_features import (
+        build_scorer_input_feature_sanity,
+    )
+
+    block = build_scorer_input_feature_sanity(df)
+    block["rescue_aligned_in_PAIR_FEATURE_NUMERIC_COLS"] = {
+        col: col in PAIR_FEATURE_NUMERIC_COLS for col in _RESCUE_ALIGNED_SCORER_FEATURE_COLS
+    }
+    block["raw_body_retained_in_PAIR_FEATURE_NUMERIC_COLS"] = {
+        col: col in PAIR_FEATURE_NUMERIC_COLS
+        for col in ("body_token_jaccard", "body_char4gram_jaccard")
+    }
+    block["pair_scorer_numeric_feature_count"] = len(PAIR_FEATURE_NUMERIC_COLS)
+    block["load_enrichment"] = load_stats.get("pair_scorer_similarity_features")
+    return block
 
 
 def _project_root_from_here() -> Path:
@@ -156,17 +195,30 @@ def _safe_bool01(v: Any) -> float:
     return 0.0
 
 
-def build_pair_feature_matrix(df: pd.DataFrame) -> np.ndarray:
+def build_pair_feature_matrix(
+    df: pd.DataFrame,
+    feature_columns: list[str] | tuple[str, ...] | None = None,
+) -> np.ndarray:
     """
     Deterministic float matrix (N, F). Booleans -> 0/1; missing numerics -> 0.0.
+
+    When ``feature_columns`` is set (e.g. from ``pair_training_setup_summary.json`` at train
+    time), use that order and width so inference matches an older checkpoint after the code
+    adds new pair metadata columns.
     """
+    bool_set = set(PAIR_FEATURE_BOOL_COLS)
+    if feature_columns is None:
+        cols: list[str] = list(PAIR_FEATURE_COLUMNS)
+    else:
+        cols = [str(c) for c in feature_columns]
     rows: list[list[float]] = []
     for _, r in df.iterrows():
         row: list[float] = []
-        for c in PAIR_FEATURE_BOOL_COLS:
-            row.append(_safe_bool01(r.get(c, 0)))
-        for c in PAIR_FEATURE_NUMERIC_COLS:
-            row.append(_safe_float(r.get(c), 0.0))
+        for c in cols:
+            if c in bool_set:
+                row.append(_safe_bool01(r.get(c, 0)))
+            else:
+                row.append(_safe_float(r.get(c), 0.0))
         rows.append(row)
     return np.asarray(rows, dtype=np.float32)
 
@@ -196,6 +248,22 @@ def load_pair_training_dataframe(
     stats["n_unlabeled"] = int(df["is_unlabeled"].sum())
     stats["n_reliable_negative"] = int(df["is_reliable_negative"].sum())
     stats["fraction_reliable_negative"] = float(stats["n_reliable_negative"] / max(1, int(len(df))))
+
+    try:
+        from seed_candidate_workflow.utils.pair_similarity_features import (
+            build_scorer_input_feature_sanity,
+            ensure_pair_scorer_similarity_features_in_dataframe,
+        )
+
+        df, enrich_meta = ensure_pair_scorer_similarity_features_in_dataframe(
+            df,
+            csv_path=csv_path,
+        )
+        stats["pair_scorer_similarity_features"] = enrich_meta
+        stats["scorer_input_feature_sanity"] = build_scorer_input_feature_sanity(df)
+    except Exception as exc:
+        stats["pair_scorer_similarity_features"] = {"enriched": False, "error": str(exc)}
+
     return df, stats
 
 
@@ -855,7 +923,7 @@ def _build_train_df_epoch_emphasis(
 
 
 def forward_encoder_and_pair_logits(
-    model: HeteroSAGE,
+    model: HeteroSAGE | torch.nn.Module,
     pair_scorer: EmailPairMLPScorer,
     sample: PairEndpointHeteroSample,
     pair_feats: torch.Tensor | None,
@@ -904,6 +972,59 @@ def _email_raw_feature_matrix(data_cpu: Any) -> torch.Tensor:
     return x
 
 
+def forward_explicit_only_pair_logits(
+    pair_scorer: EmailPairMLPScorer,
+    data_cpu: Any,
+    gi: np.ndarray,
+    gj: np.ndarray,
+    pair_feats: torch.Tensor | None,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, PairBatchDiag, Any]:
+    """
+    Pair logits from explicit pair features only (no z_i, z_j, |z_i-z_j|, z_i*z_j).
+
+    Uses email node count only for endpoint validity (no ``email.x`` gather).
+    """
+    if "email" not in data_cpu.node_types:
+        raise KeyError("HeteroData has no 'email' node type; cannot score explicit-only pairs.")
+    email_store = data_cpu["email"]
+    n = int(getattr(email_store, "num_nodes", 0) or 0)
+    if n <= 0 and getattr(email_store, "x", None) is not None:
+        n = int(email_store.x.size(0))
+    gi_t = torch.as_tensor(gi, dtype=torch.long, device=device)
+    gj_t = torch.as_tensor(gj, dtype=torch.long, device=device)
+    ok_mask_t = (gi_t >= 0) & (gi_t < n) & (gj_t >= 0) & (gj_t < n)
+    n_pairs = int(gi_t.numel())
+    n_ok = int(ok_mask_t.sum().item())
+    if not pair_scorer.use_embedding_features:
+        if pair_feats is None:
+            raise ValueError("pair_feats required for explicit-only pair scorer forward.")
+        logits = pair_scorer(
+            torch.zeros((n_pairs, 1), device=device),
+            torch.zeros((n_pairs, 1), device=device),
+            pair_feats.to(device),
+        )
+    else:
+        raise ValueError("forward_explicit_only_pair_logits requires use_embedding_features=False")
+    diag = PairBatchDiag(
+        n_pairs=n_pairs,
+        n_unique_emails=int(
+            len(set(int(gi[i]) for i in range(len(gi))) | set(int(gj[i]) for i in range(len(gj))))
+        ),
+        n_pairs_mapped_ok=n_ok,
+        n_pairs_missing_endpoint=n_pairs - n_ok,
+    )
+    cov = SimpleNamespace(
+        n_pairs_requested=n_pairs,
+        n_both_endpoints_present=n_ok,
+        n_missing_i_only=0,
+        n_missing_j_only=0,
+        n_missing_both_endpoints=n_pairs - n_ok,
+        frac_usable_pairs=float(n_ok / max(n_pairs, 1)),
+    )
+    return logits, ok_mask_t, diag, cov
+
+
 def forward_raw_email_pair_logits(
     pair_scorer: EmailPairMLPScorer,
     data_cpu: Any,
@@ -917,6 +1038,10 @@ def forward_raw_email_pair_logits(
 
     Out-of-range indices are clamped for the forward; ``pair_ok_mask`` marks in-range rows only.
     """
+    if not pair_scorer.use_embedding_features:
+        return forward_explicit_only_pair_logits(
+            pair_scorer, data_cpu, gi, gj, pair_feats, device
+        )
     x_cpu = _email_raw_feature_matrix(data_cpu)
     n = int(x_cpu.size(0))
     gi_t = torch.as_tensor(gi, dtype=torch.long, device=device)
@@ -1998,16 +2123,36 @@ def run_pair_training(
     metadata = data_cpu.metadata()
     pair_encoder_backend = resolve_pair_encoder_backend(training_cfg)
 
-    if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
-        sampling_diagnostics: dict[str, Any] = {
-            "pair_encoder_backend": PAIR_ENCODER_MLP_RAW_EMAIL_X,
-            "note": "No hetero subgraph sampling; pair logits from global email.x gathers only.",
-        }
-        raw_x = _email_raw_feature_matrix(data_cpu)
-        raw_dim = int(raw_x.size(1))
+    if pair_encoder_backend in (PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_ENCODER_EXPLICIT_ONLY):
+        use_emb_feats = bool(training_cfg.get("pair_scorer_use_embedding_features", True))
+        if pair_encoder_backend == PAIR_ENCODER_EXPLICIT_ONLY:
+            use_emb_feats = False
+            training_cfg = {
+                **training_cfg,
+                "pair_scorer_use_embedding_features": False,
+                "pair_scorer_use_explicit_features": True,
+            }
+        if not use_emb_feats and not use_explicit_pair_feats:
+            raise ValueError(
+                "explicit_only / embedding-disabled pair training requires "
+                "pair_scorer_use_explicit_features=True."
+            )
+        if pair_encoder_backend == PAIR_ENCODER_EXPLICIT_ONLY:
+            sampling_diagnostics = {
+                "pair_encoder_backend": PAIR_ENCODER_EXPLICIT_ONLY,
+                "note": "No GNN and no email.x gathers; pair logits from explicit pair features only.",
+            }
+            embed_dim_for_scorer = 1
+        else:
+            sampling_diagnostics = {
+                "pair_encoder_backend": PAIR_ENCODER_MLP_RAW_EMAIL_X,
+                "note": "No hetero subgraph sampling; pair logits from global email.x gathers only.",
+            }
+            raw_x = _email_raw_feature_matrix(data_cpu)
+            embed_dim_for_scorer = int(raw_x.size(1))
         model: HeteroSAGE | None = None
         pair_scorer = build_email_pair_mlp_scorer(
-            embed_dim=raw_dim,
+            embed_dim=embed_dim_for_scorer,
             pair_feat_dim=pair_feat_dim_for_scorer,
             training_cfg=training_cfg,
         ).to(DEVICE)
@@ -2019,6 +2164,8 @@ def run_pair_training(
             pair_batch_size,
             max_unique,
         )
+        if pair_encoder_backend == PAIR_ENCODER_EXPLICIT_ONLY:
+            probe_shapes["pair_encoder_backend"] = PAIR_ENCODER_EXPLICIT_ONLY
     else:
         sampling_diagnostics = collect_pair_sampling_diagnostics(
             data_cpu,
@@ -2030,7 +2177,7 @@ def run_pair_training(
             max_batches=pair_sampling_diag_max_batches,
             assert_full_endpoint_coverage=pair_assert_full_endpoint_coverage,
         )
-        model = HeteroSAGE(metadata=metadata, hidden=hidden, out=out_dim, layers=layers, dropout=dropout).to(DEVICE)
+        model = build_pair_gnn_encoder(metadata, training_cfg, device=DEVICE)
         pair_scorer = build_email_pair_mlp_scorer(
             embed_dim=out_dim,
             pair_feat_dim=pair_feat_dim_for_scorer,
@@ -2056,6 +2203,7 @@ def run_pair_training(
             "load_stats": load_stats,
             "pair_encoder_backend": pair_encoder_backend,
         },
+        "gnn_encoder_ablation": gnn_encoder_ablation_from_training_cfg(training_cfg).to_log_dict(),
         "split": {
             "pair_val_ratio": val_ratio,
             "pair_test_ratio": test_ratio,
@@ -2211,6 +2359,7 @@ def run_pair_training(
             ),
         },
         "pair_feature_columns_ordered": list(PAIR_FEATURE_COLUMNS),
+        "scorer_input_feature_sanity": _scorer_input_feature_sanity_block(df, load_stats),
         "pair_feature_dim_from_columns": feat_dim_columns,
         "pair_scorer_use_explicit_features": use_explicit_pair_feats,
         "pair_feature_dim_passed_to_scorer": pair_feat_dim_for_scorer,
@@ -2262,6 +2411,14 @@ def run_pair_training(
         "scorer_input_shapes": probe_shapes,
         "notes": (
             [
+                "pair_encoder_backend=explicit_only: MLP on explicit pair features only "
+                "(no z_i, z_j, |z_i-z_j|, z_i*z_j; no email.x or GNN).",
+                "PU: default pair_loss_type=nnpu (Kiryo-style non-negative risk); unlabeled rows are not negatives.",
+                "Per-epoch train rows (when enabled): easy_positive_capping -> hard_positive extras -> "
+                "hard_unlabeled extras -> reliable_negative extras -> optional shuffle.",
+            ]
+            if pair_encoder_backend == PAIR_ENCODER_EXPLICIT_ONLY
+            else [
                 "pair_encoder_backend=mlp_raw_email_x: no NeighborLoader; logits from raw data['email'].x "
                 "at pair endpoints plus the same EmailPairMLP head (and optional CSV pair metadata).",
                 "PU: default pair_loss_type=nnpu (Kiryo-style non-negative risk); unlabeled rows are not negatives.",
@@ -2319,8 +2476,15 @@ def run_pair_training(
         "pair_eval_threshold": pair_eval_threshold,
         "reliable_negative_loss_weight": float(reliable_negative_loss_weight),
     }
+    encoder_config["pair_scorer_use_embedding_features"] = bool(
+        training_cfg.get("pair_scorer_use_embedding_features", True)
+    )
+    ablation_cfg = gnn_encoder_ablation_from_training_cfg(training_cfg)
+    encoder_config["gnn_encoder_ablation"] = ablation_cfg.to_log_dict()
     if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
         encoder_config["raw_email_feature_dim"] = int(pair_scorer.embed_dim)
+    elif pair_encoder_backend == PAIR_ENCODER_EXPLICIT_ONLY:
+        encoder_config["explicit_only_pair_features"] = True
     pair_training_config = {
         "pair_dataset_csv": str(csv_path),
         "pair_batch_size": pair_batch_size,
@@ -2568,7 +2732,7 @@ def run_pair_training(
                 require_from_semantic_false=hue_require_from_semantic_false,
             ).sum()
         )
-        if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+        if pair_encoder_backend in (PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_ENCODER_EXPLICIT_ONLY):
             tr_loss, tr_pu, tr_agg = train_pair_epoch_raw(
                 pair_scorer=pair_scorer,
                 optimizer=opt,
@@ -2637,7 +2801,7 @@ def run_pair_training(
         )
         tr_agg["reliable_negative_emphasis_enabled"] = bool(rne_enabled)
         tr_agg["reliable_negative_oversample_factor"] = float(rne_oversample_factor)
-        if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+        if pair_encoder_backend in (PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_ENCODER_EXPLICIT_ONLY):
             va_loss, va_pu, va_agg = eval_pair_epoch_raw(
                 pair_scorer=pair_scorer,
                 data_cpu=data_cpu,
@@ -2776,7 +2940,7 @@ def run_pair_training(
         if model is not None and best_state.get("model"):
             model.load_state_dict(best_state["model"])
         pair_scorer.load_state_dict(best_state["pair_scorer"])
-    if pair_encoder_backend == PAIR_ENCODER_MLP_RAW_EMAIL_X:
+    if pair_encoder_backend in (PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_ENCODER_EXPLICIT_ONLY):
         te_loss, te_pu, te_agg = eval_pair_epoch_raw(
             pair_scorer=pair_scorer,
             data_cpu=data_cpu,

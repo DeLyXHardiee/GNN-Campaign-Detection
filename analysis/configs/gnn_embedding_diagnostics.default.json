@@ -1,0 +1,23 @@
+{
+  "_comment": "Repo-relative paths unless absolute. Writes under <run-dir>/gnn_embedding_diagnostics/.",
+  "run_dir": "output/runs/main_gnn_pu_1_no_ts_dedup_task_identity_13",
+  "graph_pt": "core/graph/output/main_gnn_pu_1_no_ts_dedup_task_identity_12_hetero.pt",
+  "gt_paths": [
+    "data/groundtruth/ground_truth.dedup_task_identity.json"
+  ],
+  "pair_csv": null,
+  "candidate_union_csv": null,
+  "bridge_scores_csv": null,
+  "checkpoint_name": "best_model.pt",
+  "device": "cpu",
+  "to_undirected": true,
+  "max_pairs_per_relation": 80000,
+  "max_emails_for_retrieval": 0,
+  "high_cosine_threshold": 0.85,
+  "max_high_cosine_nonedges": 5000,
+  "max_review_pairs": 400,
+  "random_state": 42,
+  "skip_plots": false,
+  "skip_html": false,
+  "skip_probe": false
+}

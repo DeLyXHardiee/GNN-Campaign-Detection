@@ -1,0 +1,82 @@
+{
+  "gt_set": "dedup_task_identity_multi_gt",
+  "graph_pt": "core/graph/output/main_gnn_pu_1_no_ts_dedup_task_identity_6_hetero.pt",
+  "meta_json": "core/graph/output/main_gnn_pu_1_no_ts_dedup_task_identity_6_hetero.meta.json",
+  "embeddings_json": "core/utils/embeddings/output/embeddings.json",
+  "pair_training_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity_7/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity_7/pair_training_dataset.csv",
+  "candidate_union_csv": null,
+  "anchor_run_dir": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity_7/anchor/main_gnn_pu_1_no_ts_dedup_task_identity_7",
+  "out_dir": "output/analysis/candidate_family_scorecard/dedup_task_identity_7",
+  "max_same_pairs": 8000,
+  "max_cross_pairs": 8000,
+  "seed": 0,
+  "min_support": 10,
+  "community_method": "louvain",
+  "community_resolution": 1.0,
+  "community_seed": 0,
+  "recommendation_thresholds": {
+    "min_new_same_pairs": 5,
+    "min_oracle_v_gain": 0.005,
+    "min_precision_like_new": 0.65,
+    "max_cross_new_capture_rate": 0.05,
+    "max_graph_only_fraction_of_oracle": 0.85,
+    "min_learnability_score": 0.15,
+    "weak_gain_max_new_same": 3
+  },
+  "families": [
+    {
+      "family_name": "semantic_ge_0_90_AND_shared_sender",
+      "rule_expression": "semantic_ge_0_90_AND_shared_sender",
+      "category": "B_semantic_plus_support",
+      "mode": "hypothetical_add"
+    },
+    {
+      "family_name": "semantic_ge_0_90_AND_shared_stem",
+      "rule_expression": "semantic_ge_0_90_AND_shared_stem",
+      "category": "B_semantic_plus_support",
+      "mode": "hypothetical_add"
+    },
+    {
+      "family_name": "semantic_band_0_85_0_90_AND_shared_sender",
+      "rule_expression": "semantic_band_0_85_0_90_AND_shared_sender",
+      "category": "B_semantic_plus_support",
+      "mode": "hypothetical_add"
+    },
+    {
+      "family_name": "from_2hop_AND_semantic_ge_0_90",
+      "rule_expression": "from_2hop_AND_semantic_ge_0_90",
+      "category": "C_structural_frontier",
+      "mode": "hypothetical_add"
+    },
+    {
+      "family_name": "from_component_AND_semantic_ge_0_90",
+      "rule_expression": "from_component_AND_semantic_ge_0_90",
+      "category": "C_structural_frontier",
+      "mode": "hypothetical_add"
+    },
+    {
+      "family_name": "semantic_mid_sender_support_v1",
+      "provenance_column": "from_semantic_mid_sender_support",
+      "category": "pipeline_existing",
+      "mode": "provenance_slice"
+    },
+    {
+      "family_name": "semantic_mid_core_support_v1",
+      "provenance_column": "from_semantic_mid_core_support",
+      "category": "pipeline_existing",
+      "mode": "provenance_slice"
+    },
+    {
+      "family_name": "shared_stem_highconf_v1",
+      "provenance_column": "from_shared_stem_highconf",
+      "category": "pipeline_existing",
+      "mode": "provenance_slice"
+    },
+    {
+      "family_name": "2hop_bounded_v1",
+      "provenance_column": "from_2hop",
+      "category": "pipeline_existing",
+      "mode": "provenance_slice"
+    }
+  ]
+}

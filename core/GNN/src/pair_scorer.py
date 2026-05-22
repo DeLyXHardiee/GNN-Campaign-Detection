@@ -28,12 +28,24 @@ class EmailPairMLPScorer(nn.Module):
         mlp_hidden_dim: int = 256,
         dropout: float = 0.2,
         use_explicit_pair_features: bool = True,
+        use_embedding_features: bool = True,
     ):
         super().__init__()
         self.embed_dim = int(embed_dim)
         self.pair_feat_dim = int(pair_feat_dim) if use_explicit_pair_features else 0
         self.use_explicit_pair_features = bool(use_explicit_pair_features)
-        in_dim = 4 * self.embed_dim + (self.pair_feat_dim if use_explicit_pair_features else 0)
+        self.use_embedding_features = bool(use_embedding_features)
+        if not self.use_embedding_features and not self.use_explicit_pair_features:
+            raise ValueError(
+                "EmailPairMLPScorer requires at least one of use_embedding_features or "
+                "use_explicit_pair_features."
+            )
+        if self.use_embedding_features:
+            in_dim = 4 * self.embed_dim + (
+                self.pair_feat_dim if use_explicit_pair_features else 0
+            )
+        else:
+            in_dim = self.pair_feat_dim
         self._in_dim = in_dim
         self.net = nn.Sequential(
             nn.Linear(in_dim, int(mlp_hidden_dim)),
@@ -47,6 +59,16 @@ class EmailPairMLPScorer(nn.Module):
         return self._in_dim
 
     def forward(self, z_i: torch.Tensor, z_j: torch.Tensor, pair_feats: torch.Tensor | None) -> torch.Tensor:
+        if not self.use_embedding_features:
+            if pair_feats is None:
+                raise ValueError("pair_feats required when use_embedding_features=False")
+            b = int(pair_feats.size(0))
+            if pair_feats.dim() != 2 or pair_feats.size(1) != self.pair_feat_dim:
+                raise ValueError(
+                    f"pair_feats must be (B, {self.pair_feat_dim}), got {pair_feats.shape}"
+                )
+            return self.net(pair_feats).squeeze(-1)
+
         if z_i.shape != z_j.shape:
             raise ValueError(f"z_i/z_j shape mismatch: {z_i.shape} vs {z_j.shape}")
         b, d = z_i.shape[0], z_i.shape[1]
@@ -83,17 +105,23 @@ def build_email_pair_mlp_scorer(
             f"Unsupported pair_scorer_type={scorer_type!r}; use 'email_pair_mlp' or 'mlp_concat'."
         )
     use_explicit = bool(training_cfg.get("pair_scorer_use_explicit_features", True))
+    use_embedding = bool(training_cfg.get("pair_scorer_use_embedding_features", True))
     hidden = int(training_cfg.get("pair_scorer_hidden_dim", 256))
     drop = float(training_cfg.get("pair_scorer_dropout", 0.2))
     pf = int(pair_feat_dim) if use_explicit else 0
     if use_explicit and pair_feat_dim < 0:
         raise ValueError("pair_feat_dim must be non-negative.")
+    if not use_embedding and not use_explicit:
+        raise ValueError(
+            "pair_scorer_use_embedding_features=False requires pair_scorer_use_explicit_features=True."
+        )
     return EmailPairMLPScorer(
         embed_dim=int(embed_dim),
         pair_feat_dim=pf,
         mlp_hidden_dim=hidden,
         dropout=drop,
         use_explicit_pair_features=use_explicit,
+        use_embedding_features=use_embedding,
     )
 
 

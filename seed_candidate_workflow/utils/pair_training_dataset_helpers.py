@@ -78,6 +78,52 @@ def _infer_anchor_run_dir(
     return None
 
 
+def infer_graph_id_from_graph_bundles_path(path: Path) -> str | None:
+    """Return ``graph_id`` when ``path`` is under ``.../graph_bundles/<graph_id>/...``."""
+    parts = list(Path(path).resolve().parts)
+    try:
+        i = [p.lower() for p in parts].index("graph_bundles")
+        if i + 1 < len(parts):
+            s = str(parts[i + 1]).strip()
+            return s or None
+    except ValueError:
+        return None
+    return None
+
+
+def load_sorted_anchor_external_ids_for_candidate_union(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None = None,
+    project_root: Path | None = None,
+) -> tuple[list[str] | None, dict[str, Any]]:
+    """
+    Sorted ``external_id`` values from anchor graph artifacts (full graph email universe).
+
+    Aligns pair-training body Jaccard columns with candidate-generation body caches.
+    """
+    root = project_root or gh.find_project_root()
+    run_dir = _infer_anchor_run_dir(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=root,
+    )
+    if run_dir is None:
+        return None, {"available": False, "reason": "anchor_run_dir_not_found"}
+    nodes_df, _edges_df, _candidates_df, _summary, _g = load_anchor_graph_artifacts(
+        run_dir,
+        load_graph_pickle=False,
+    )
+    if "external_id" not in nodes_df.columns:
+        return None, {"available": False, "reason": "missing_external_id"}
+    ids = sorted({str(x) for x in nodes_df["external_id"].astype(str).tolist()})
+    return ids, {
+        "available": True,
+        "anchor_run_dir": str(run_dir),
+        "n_emails": int(len(ids)),
+    }
+
+
 def _load_anchor_node_sets_by_email(
     *,
     candidate_union_csv: Path,
@@ -464,6 +510,87 @@ def build_pair_training_dataset(
         project_root=project_root,
     )
     df = _add_shared_attribute_pair_features(df=df, nodes_by_email=nodes_by_email)
+
+    text_similarity_meta: dict[str, Any] = {"status": "skipped"}
+    try:
+        from seed_candidate_workflow.utils.body_similarity_cache import build_or_load_email_body_feature_store
+        from seed_candidate_workflow.utils.pair_similarity_features import (
+            BODY_ONLY_PAIR_FEATURE_COLS,
+            RESCUE_ALIGNED_SCORER_FEATURE_COLS,
+            TEXT_SIMILARITY_PAIR_FEATURE_COLS,
+            add_body_only_pair_features_to_dataframe,
+            add_text_similarity_pair_features_to_dataframe,
+            attach_path_jaccard_features_to_dataframe,
+            load_misp_text_catalog_for_pairs,
+        )
+        from seed_candidate_workflow.utils.pair_score_separation import _resolve_default_misp_json_path
+
+        text_catalog, text_similarity_meta = load_misp_text_catalog_for_pairs(project_root=project_root)
+        root = project_root or gh.find_project_root()
+        body_store = None
+        body_cache_diag: dict[str, Any] = {"status": "skipped"}
+        if text_catalog:
+            try:
+                misp_path = _resolve_default_misp_json_path(root)
+            except Exception:
+                misp_path = None
+            if misp_path is not None and Path(misp_path).is_file():
+                anchor_ids, anchor_ids_meta = load_sorted_anchor_external_ids_for_candidate_union(
+                    candidate_union_csv=candidate_union_csv,
+                    graph_id=graph_id,
+                    project_root=project_root,
+                )
+                gid = graph_id or infer_graph_id_from_graph_bundles_path(candidate_union_csv) or "unknown_graph"
+                if anchor_ids:
+                    body_store, body_cache_diag = build_or_load_email_body_feature_store(
+                        email_ids=anchor_ids,
+                        text_catalog=text_catalog,
+                        graph_id=str(gid),
+                        misp_json_path=Path(misp_path),
+                        force_rebuild=False,
+                    )
+                    body_cache_diag["anchor_external_ids_meta"] = anchor_ids_meta
+                else:
+                    body_cache_diag = {
+                        "status": "skipped",
+                        "reason": "anchor_external_ids_unavailable",
+                        "anchor_external_ids_meta": anchor_ids_meta,
+                    }
+            else:
+                body_cache_diag = {"status": "skipped", "reason": "misp_json_not_resolved"}
+            df = add_text_similarity_pair_features_to_dataframe(
+                df,
+                text_catalog=text_catalog,
+                nodes_by_email=nodes_by_email,
+                body_feature_store=body_store,
+            )
+            df = add_body_only_pair_features_to_dataframe(df, text_catalog=text_catalog)
+            df = attach_path_jaccard_features_to_dataframe(
+                df,
+                nodes_by_email=nodes_by_email,
+                prefer_existing=False,
+            )
+            text_similarity_meta["status"] = "ok"
+            text_similarity_meta["columns"] = list(TEXT_SIMILARITY_PAIR_FEATURE_COLS) + list(
+                RESCUE_ALIGNED_SCORER_FEATURE_COLS
+            )
+            text_similarity_meta["body_email_feature_cache"] = body_cache_diag
+        else:
+            for c in TEXT_SIMILARITY_PAIR_FEATURE_COLS + BODY_ONLY_PAIR_FEATURE_COLS:
+                df[c] = 0.0
+            df["path_token_jaccard_combined"] = 0.0
+            text_similarity_meta["status"] = "defaults_zero_no_catalog"
+    except Exception as exc:
+        from seed_candidate_workflow.utils.pair_similarity_features import (
+            BODY_ONLY_PAIR_FEATURE_COLS,
+            TEXT_SIMILARITY_PAIR_FEATURE_COLS,
+        )
+
+        for c in TEXT_SIMILARITY_PAIR_FEATURE_COLS + BODY_ONLY_PAIR_FEATURE_COLS:
+            df[c] = 0.0
+        df["path_token_jaccard_combined"] = 0.0
+        text_similarity_meta = {"status": "error", "error": str(exc)}
+
     # Every row is part of the candidate-universe handoff; seed-only extras are still
     # "candidate stage" outputs for training contract purposes.
     df["is_candidate_pair"] = True
@@ -582,6 +709,20 @@ def build_pair_training_dataset(
             "n_shared_core_channels": pd.to_numeric(
                 df["n_shared_core_channels"], errors="coerce"
             ).fillna(0).astype(int),
+            "body_token_jaccard": pd.to_numeric(df["body_token_jaccard"], errors="coerce").fillna(0.0),
+            "body_char4gram_jaccard": pd.to_numeric(df["body_char4gram_jaccard"], errors="coerce").fillna(0.0),
+            "sender_localpart_norm_jaccard": pd.to_numeric(
+                df["sender_localpart_norm_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "body_only_token_jaccard": pd.to_numeric(
+                df["body_only_token_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "body_only_char4gram_jaccard": pd.to_numeric(
+                df["body_only_char4gram_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "path_token_jaccard_combined": pd.to_numeric(
+                df["path_token_jaccard_combined"], errors="coerce"
+            ).fillna(0.0),
             "seed_component_i": pd.to_numeric(df["seed_component_i"], errors="coerce"),
             "seed_component_j": pd.to_numeric(df["seed_component_j"], errors="coerce"),
             "same_seed_component_flag": df["same_seed_component_flag"].astype(bool),
@@ -644,6 +785,12 @@ def build_pair_training_dataset(
         "has_shared_attachment",
         "has_shared_sender_domain",
         "has_shared_domain",
+        "body_token_jaccard",
+        "body_char4gram_jaccard",
+        "sender_localpart_norm_jaccard",
+        "body_only_token_jaccard",
+        "body_only_char4gram_jaccard",
+        "path_token_jaccard_combined",
     ]
     shared_count_cols = [
         "shared_sender_count",
@@ -729,6 +876,7 @@ def build_pair_training_dataset(
         "feature_availability": _feature_availability(out_df, feat_cols),
 
         "shared_attribute_context": shared_ctx,
+        "text_similarity_pair_features": text_similarity_meta,
         "shared_attribute_feature_stats": _shared_feature_stats(
             out_df,
             count_cols=shared_count_cols,

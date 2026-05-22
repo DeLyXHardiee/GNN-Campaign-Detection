@@ -45,6 +45,15 @@ from seed_candidate_workflow.utils.pair_inspection_admitting_evidence import (
     resolve_candidate_generation_dir,
     resolve_seed_generation_dir,
 )
+from seed_candidate_workflow.utils.pair_score_separation_output_layout import (
+    ExportFlags,
+    build_navigation_index,
+    build_primary_outputs,
+    ensure_pair_score_separation_layout,
+    path_for_write,
+    rel_to_root,
+    write_artifact_manifest,
+)
 from seed_candidate_workflow.utils.pair_low_band_twohop_channel import (
     build_channel_summary_table,
     build_twohop_channel_recommendations,
@@ -102,6 +111,7 @@ def score_pair_rows(
     pair_batch_size: int,
     max_unique_emails: int,
     with_logits: bool = False,
+    pair_feature_columns: list[str] | None = None,
 ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
     return _score_pair_rows(
         model=model,
@@ -113,6 +123,7 @@ def score_pair_rows(
         pair_batch_size=pair_batch_size,
         max_unique_emails=max_unique_emails,
         with_logits=with_logits,
+        pair_feature_columns=pair_feature_columns,
     )
 
 
@@ -151,6 +162,7 @@ def _plot_score_histogram_counts(
     import matplotlib.pyplot as plt
 
     scores = scores[np.isfinite(scores)]
+    save_path = path_for_write(out_path)
     fig, ax = plt.subplots(figsize=(8, 4.5))
     if scores.size == 0:
         ax.text(0.5, 0.5, f"No scored pairs ({cohort_label})", ha="center", va="center", transform=ax.transAxes)
@@ -158,7 +170,7 @@ def _plot_score_histogram_counts(
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Number of pairs")
         fig.tight_layout()
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        fig.savefig(save_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
         return
 
@@ -181,7 +193,7 @@ def _plot_score_histogram_counts(
     ax.set_ylabel("Number of pairs")
     ax.set_title(f"{title} (n={scores.size})")
     fig.tight_layout()
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    fig.savefig(save_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -917,6 +929,13 @@ def _generate_high_band_recommendations(
     }
 
 
+def _numeric_series_for_eval(df_eval: pd.DataFrame, col: str) -> pd.Series:
+    """Per-row numeric series; missing columns become NaN (not a scalar)."""
+    if col not in df_eval.columns:
+        return pd.Series(np.nan, index=df_eval.index, dtype=float)
+    return pd.to_numeric(df_eval[col], errors="coerce")
+
+
 def _build_band_joint_separator_for_gt(
     *,
     gt_path: Path,
@@ -972,7 +991,7 @@ def _build_band_joint_separator_for_gt(
     f2 = df_eval.get("from_2hop", False).fillna(False).astype(bool).to_numpy()
     fcomp = df_eval.get("from_component", False).fillna(False).astype(bool).to_numpy()
     fra = df_eval.get("from_rare_artifact", False).fillna(False).astype(bool).to_numpy()
-    sem = pd.to_numeric(df_eval.get("semantic_cosine_max"), errors="coerce")
+    sem = _numeric_series_for_eval(df_eval, "semantic_cosine_max")
     same_seed = (
         df_eval.get("same_seed_component_flag", False).fillna(False).astype(bool).to_numpy()
         if "same_seed_component_flag" in df_eval.columns
@@ -1054,11 +1073,19 @@ def _build_band_joint_separator_for_gt(
         "semantic_ge_0_90": sem_ge_90,
         "n_shared_core_channels_ge_1": n_core_ge_1,
     }
-    sc = pd.to_numeric(df_eval.get("source_count"), errors="coerce")
+    sc = _numeric_series_for_eval(df_eval, "source_count")
     bool_terms["source_count_eq_1"] = sc.eq(1).fillna(False).to_numpy(dtype=bool)
     bool_terms["source_count_ge_2"] = sc.ge(2).fillna(False).to_numpy(dtype=bool)
 
-    if twohop_channel_analysis and band_kind == "low":
+    if twohop_channel_analysis:
+        body_only_tok = _numeric_series_for_eval(df_eval, "body_only_token_jaccard")
+        body_only_c4 = _numeric_series_for_eval(df_eval, "body_only_char4gram_jaccard")
+        path_comb = _numeric_series_for_eval(df_eval, "path_token_jaccard_combined")
+        url_path = _numeric_series_for_eval(df_eval, "url_path_token_jaccard")
+        bool_terms["body_only_token_jaccard_ge_0_25"] = body_only_tok.ge(0.25).fillna(False).to_numpy()
+        bool_terms["body_only_char4gram_jaccard_ge_0_25"] = body_only_c4.ge(0.25).fillna(False).to_numpy()
+        bool_terms["path_token_jaccard_combined_ge_0_25"] = path_comb.ge(0.25).fillna(False).to_numpy()
+        bool_terms["url_path_token_jaccard_ge_0_25"] = url_path.ge(0.25).fillna(False).to_numpy()
         bool_terms = extend_bool_terms_for_low_band_channels(
             bool_terms,
             df_eval,
@@ -1317,7 +1344,66 @@ _INSPECTION_FEATURE_COLS: tuple[str, ...] = (
     "rare_artifact_rarity_max",
     "time_gap_seconds_min",
     "source_count",
+    "body_token_jaccard",
+    "body_char4gram_jaccard",
+    "body_only_token_jaccard",
+    "body_only_char4gram_jaccard",
+    "path_token_jaccard_combined",
+    "url_path_token_jaccard",
+    "stem_path_token_jaccard",
+    "sender_localpart_norm_jaccard",
 )
+
+_PAIR_CARD_METRIC_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Body similarity",
+        (
+            "body_token_jaccard",
+            "body_char4gram_jaccard",
+            "body_only_token_jaccard",
+            "body_only_char4gram_jaccard",
+        ),
+    ),
+    (
+        "Path similarity",
+        (
+            "path_token_jaccard_combined",
+            "url_path_token_jaccard",
+            "stem_path_token_jaccard",
+        ),
+    ),
+    (
+        "Sender / semantic / support",
+        (
+            "sender_localpart_norm_jaccard",
+            "semantic_cosine",
+            "semantic_cosine_max",
+            "source_count",
+            "n_shared_core_channels",
+        ),
+    ),
+    (
+        "Shared artifact counts",
+        (
+            "shared_sender_count",
+            "shared_stem_count",
+            "shared_url_count",
+            "shared_attachment_count",
+            "shared_sender_domain_count",
+            "shared_domain_count",
+        ),
+    ),
+    (
+        "Latent diagnostics",
+        ("gnn_encoder_cosine", "gnn_encoder_l2", "static_subj_body_cosine"),
+    ),
+    (
+        "Seed / component context",
+        ("same_seed_component_flag", "cross_seed_component_flag"),
+    ),
+)
+
+_TWOHOP_VIA_COL_PREFIX = "twohop_via_"
 
 
 def _format_shared_values(values: set[str], *, max_items: int = 40) -> str:
@@ -1732,6 +1818,9 @@ def _inject_semantic_cosine_for_manual_review(df: pd.DataFrame) -> pd.DataFrame:
     out["embedding_cosine_subj_body_cache"] = emb_list
     out["semantic_cosine_for_display"] = disp
     out["semantic_cosine_source"] = src_raw
+    # Review HTML/CSV metric chips read ``semantic_cosine``; pair CSV often leaves
+    # ``semantic_cosine_max`` null for 2-hop-only rows while the embed cache has values.
+    out["semantic_cosine"] = disp
     meta_path = emb_path.resolve() if emb_path is not None else None
     out.attrs["semantic_cosine_injection"] = {
         "embeddings_json": str(meta_path) if meta_path else None,
@@ -1931,6 +2020,60 @@ def _email_pane_html(
     """
 
 
+def _format_pair_metric_value(row: pd.Series, col: str, *, prec: int = 3) -> str:
+    if col == "semantic_cosine" and col not in row.index:
+        for fallback in ("semantic_cosine_for_display", "semantic_cosine_max"):
+            if fallback in row.index:
+                col = fallback
+                break
+    if col not in row.index:
+        return "—"
+    val = row.get(col)
+    if col.endswith("_flag") or isinstance(val, (bool, np.bool_)):
+        if pd.isna(val):
+            return "—"
+        return "yes" if bool(val) else "no"
+    num = pd.to_numeric(val, errors="coerce")
+    if pd.isna(num):
+        return "—"
+    return f"{float(num):.{prec}f}"
+
+
+def _twohop_attribution_summary(row: pd.Series) -> str:
+    parts: list[str] = []
+    for col in sorted(row.index.astype(str)):
+        if not col.startswith(_TWOHOP_VIA_COL_PREFIX):
+            continue
+        v = row.get(col)
+        if pd.isna(v):
+            continue
+        if bool(v):
+            parts.append(col.replace(_TWOHOP_VIA_COL_PREFIX, ""))
+    if not parts:
+        return "none"
+    return ", ".join(parts[:8]) + ("…" if len(parts) > 8 else "")
+
+
+def _pair_metric_groups_html(row: pd.Series) -> str:
+    blocks: list[str] = []
+    for title, cols in _PAIR_CARD_METRIC_GROUPS:
+        chips = "".join(
+            f'<span class="metric-chip"><strong>{html.escape(c)}</strong> '
+            f"{html.escape(_format_pair_metric_value(row, c))}</span>"
+            for c in cols
+        )
+        blocks.append(
+            f'<div class="metric-group"><div class="metric-group-title">{html.escape(title)}</div>'
+            f'<div class="metric-chips">{chips}</div></div>'
+        )
+    twohop = _twohop_attribution_summary(row)
+    blocks.append(
+        '<div class="metric-group"><div class="metric-group-title">2-hop attribution</div>'
+        f'<div class="metric-chips"><span class="metric-chip">{html.escape(twohop)}</span></div></div>'
+    )
+    return f'<div class="metric-groups">{"".join(blocks)}</div>'
+
+
 def _pair_card_html(
     *,
     pair_idx: int,
@@ -1938,6 +2081,7 @@ def _pair_card_html(
     email_text_by_eid: dict[str, dict[str, str]],
     review_prompt: str = "Do these look like the same phishing campaign?",
     gt_note: str = "labeled cross",
+    filter_column: str = "fp_regime",
 ) -> str:
     row_prompt = str(row.get("gt_review_note") or "").strip()
     if row_prompt:
@@ -1964,6 +2108,20 @@ def _pair_card_html(
     prov = html.escape(str(row.get("provenance_combo") or ""))
     shared = html.escape(str(row.get("shared_artifacts_brief") or "none"))
     pair_status = html.escape(str(row.get("pair_status") or ""))
+    what_high = str(row.get("what_made_it_high") or "").strip()
+    likely_tags = str(row.get("likely_explanation_tags") or "").strip()
+    failure_mode_html = ""
+    if what_high or likely_tags:
+        failure_mode_html = (
+            '<div class="meta-grid meta-grid-failure">'
+            + (f'<span><strong>What made it high</strong> <code>{html.escape(what_high)}</code></span>' if what_high else "")
+            + (
+                f'<span><strong>Likely tags</strong> <code>{html.escape(likely_tags)}</code></span>'
+                if likely_tags
+                else ""
+            )
+            + "</div>"
+        )
     tgap = row.get("time_gap_seconds_min")
     tgap_s = (
         f"{float(tgap):.0f}s"
@@ -1971,7 +2129,7 @@ def _pair_card_html(
         else "?"
     )
     regime_class = re.sub(r"[^a-z0-9_]+", "_", regime_raw.lower()) or "unknown"
-    filter_regime = regime_raw or "unknown"
+    filter_value = str(row.get(filter_column) or regime_raw or "unknown")
     pane_i = _email_pane_html(
         label="Email A",
         external_id=str(row["email_i"]),
@@ -1994,22 +2152,30 @@ def _pair_card_html(
         )
         warn_html = f"{warn_html} {ch_html}".strip()
     evidence_html = _admitting_evidence_section_html(row)
+    metric_groups_html = _pair_metric_groups_html(row)
     gt_rel_attr = html.escape(str(row.get("gt_relation") or ""))
+    bucket_attr = ""
+    if "same_unlabeled_bucket" in row.index and pd.notna(row.get("same_unlabeled_bucket")):
+        bucket_attr = f' data-bucket="{html.escape(str(row.get("same_unlabeled_bucket")))}"'
     return f"""
-    <section class="pair-card regime-{regime_class}" id="pair-{pair_idx}" data-regime="{html.escape(filter_regime)}" data-gt-relation="{gt_rel_attr}">
+    <section class="pair-card regime-{regime_class}" id="pair-{pair_idx}"
+      data-filter-value="{html.escape(filter_value)}" data-regime="{html.escape(regime_raw or 'unknown')}"{bucket_attr}
+      data-gt-relation="{gt_rel_attr}">
       <header class="pair-header">
         <h2>Pair {pair_idx + 1}</h2>
         <div class="warning-badges">{warn_html}</div>
-        <div class="meta-grid">
+        <div class="meta-grid meta-grid-core">
           <span><strong>Model score</strong> {score_s}</span>
-          <span><strong>Semantic cos</strong> {sem_s}{sem_src_html}</span>
+          <span><strong>Semantic cosine</strong> {sem_s}{sem_src_html}</span>
           <span><strong>GT</strong> campaign {ci} vs {cj} ({html.escape(gt_note)})</span>
           <span><strong>Pair status</strong> {pair_status}</span>
-          <span><strong>Pair time-gap</strong> {html.escape(tgap_s)} <span class="cosine-src">(time_gap_seconds_min)</span></span>
+          <span><strong>Time gap</strong> {html.escape(tgap_s)}</span>
           <span><strong>Regime</strong> <code>{regime}</code></span>
           <span><strong>Provenance</strong> {prov}</span>
-          <span><strong>Evidence summary</strong> {shared}</span>
+          <span><strong>Evidence</strong> {shared}</span>
         </div>
+        {failure_mode_html}
+        {metric_groups_html}
         <p class="review-prompt">{html.escape(review_prompt)}</p>
         {evidence_html}
       </header>
@@ -2030,6 +2196,9 @@ def _write_pairs_for_review_html(
     subtitle: str,
     review_prompt: str = "Do these look like the same phishing campaign?",
     gt_note: str = "GT cross-campaign",
+    filter_column: str = "fp_regime",
+    page_banner_html: str | None = None,
+    max_main_width: str = "56rem",
 ) -> None:
     if df_pairs.empty:
         out_path.write_text(
@@ -2045,10 +2214,16 @@ def _write_pairs_for_review_html(
 
     toc_items: list[str] = []
     cards: list[str] = []
-    regimes = sorted({str(r.get("fp_regime") or "unknown") for _, r in df_pairs.iterrows()})
+    filter_values = sorted(
+        {
+            str(r.get(filter_column) or r.get("fp_regime") or "unknown")
+            for _, r in df_pairs.iterrows()
+        }
+    )
 
     for pair_idx, (_, row) in enumerate(df_pairs.iterrows()):
         regime = str(row.get("fp_regime") or "")
+        filt_val = str(row.get(filter_column) or regime or "unknown")
         score = row.get("score")
         score_s = f"{float(score):.3f}" if score is not None and pd.notna(score) else "?"
         ci = row.get("gt_campaign_i")
@@ -2056,10 +2231,10 @@ def _write_pairs_for_review_html(
         regime_class = re.sub(r"[^a-z0-9_]+", "_", regime.lower()) or "unknown"
         toc_items.append(
             f'<a class="toc-item regime-{regime_class}" href="#pair-{pair_idx}" '
-            f'data-regime="{html.escape(regime)}">'
+            f'data-filter-value="{html.escape(filt_val)}">'
             f'<span class="toc-num">{pair_idx + 1}</span>'
             f'<span class="toc-main">score {score_s} · camp {ci} vs {cj}</span>'
-            f'<span class="toc-sub">{html.escape(regime)}</span></a>'
+            f'<span class="toc-sub">{html.escape(filt_val)}</span></a>'
         )
         cards.append(
             _pair_card_html(
@@ -2068,13 +2243,15 @@ def _write_pairs_for_review_html(
                 email_text_by_eid=email_text_by_eid,
                 review_prompt=review_prompt,
                 gt_note=gt_note,
+                filter_column=filter_column,
             )
         )
 
-    regime_filters = "".join(
+    value_filters = "".join(
         f'<button type="button" class="filter-btn" data-filter="{html.escape(r)}">{html.escape(r)}</button>'
-        for r in regimes
+        for r in filter_values
     )
+    banner_block = page_banner_html or ""
 
     doc = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2167,7 +2344,52 @@ def _write_pairs_for_review_html(
     .toc-sub {{ color: var(--muted); grid-column: 2; }}
     .main {{
       padding: 1.25rem 1.5rem 3rem;
-      max-width: 1400px;
+      max-width: {max_main_width};
+    }}
+    .page-banner {{
+      margin: 0 0 1rem;
+      padding: 0.65rem 0.85rem;
+      background: #1e2a3d;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      max-width: {max_main_width};
+    }}
+    .page-banner strong {{ color: var(--text); }}
+    .metric-groups {{
+      display: grid;
+      gap: 0.55rem;
+      margin: 0.5rem 0 0.75rem;
+      max-width: {max_main_width};
+    }}
+    .metric-group-title {{
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }}
+    .metric-chips {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.65rem;
+    }}
+    .metric-chip {{
+      font-size: 0.78rem;
+      padding: 0.2rem 0.5rem;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+    }}
+    .metric-chip strong {{
+      color: var(--text);
+      font-weight: 600;
+      margin-right: 0.25rem;
+    }}
+    .meta-grid-core {{
+      max-width: {max_main_width};
     }}
     .pair-card {{
       margin-bottom: 2.5rem;
@@ -2332,13 +2554,14 @@ def _write_pairs_for_review_html(
       <p class="subtitle">{html.escape(subtitle)}</p>
       <div class="filters">
         <button type="button" class="filter-btn active" data-filter="all">all</button>
-        {regime_filters}
+        {value_filters}
       </div>
       <nav class="toc" id="toc">
         {"".join(toc_items)}
       </nav>
     </aside>
     <main class="main" id="main">
+      {banner_block}
       {"".join(cards)}
     </main>
   </div>
@@ -2352,11 +2575,11 @@ def _write_pairs_for_review_html(
         btn.classList.add('active');
         const f = btn.dataset.filter;
         cards.forEach(card => {{
-          const show = f === 'all' || card.dataset.regime === f;
+          const show = f === 'all' || card.dataset.filterValue === f;
           card.classList.toggle('hidden', !show);
         }});
         tocItems.forEach(link => {{
-          const show = f === 'all' || link.dataset.regime === f;
+          const show = f === 'all' || link.dataset.filterValue === f;
           link.style.display = show ? '' : 'none';
         }});
       }});
@@ -2371,18 +2594,22 @@ def _write_pairs_for_review_html(
 def _export_high_band_pairs_for_manual_review(
     *,
     df_false_positive: pd.DataFrame,
-    out_dir: Path,
+    layout: dict[str, Path],
     email_text_by_eid: dict[str, dict[str, str]],
     email_text_meta: dict[str, Any],
     preview_chars: int,
     wrap_width: int,
+    export_flags: ExportFlags,
 ) -> dict[str, Any]:
-    """CSV previews + JSONL with full subject/body for GT eyeballing."""
+    """Optional debug CSV/HTML for high-score cross-campaign false positives."""
     paths: dict[str, str] = {}
     notes: list[str] = []
 
     if df_false_positive.empty:
         notes.append("no_false_positive_pairs_to_export")
+        return {"paths": paths, "notes": notes, "email_text_catalog": email_text_meta}
+    if not export_flags.emit_debug_csv and not export_flags.emit_debug_html:
+        notes.append("skipped_high_band_review_exports_emit_debug_csv_or_html_false")
         return {"paths": paths, "notes": notes, "email_text_catalog": email_text_meta}
 
     df_review = _enrich_pairs_with_email_text(
@@ -2390,43 +2617,48 @@ def _export_high_band_pairs_for_manual_review(
         email_text_by_eid=email_text_by_eid,
         preview_chars=preview_chars,
     )
-    csv_path = out_dir / "pair_high_band_false_positive_pairs_for_review.csv"
-    df_review.to_csv(csv_path, index=False)
-    paths["false_positive_pairs_for_review_csv"] = str(csv_path)
+    debug_csv = layout["debug_csv"]
+    if export_flags.emit_debug_csv:
+        csv_path = debug_csv / "debug_pair_high_band_false_positive_pairs_for_review.csv"
+        df_review.to_csv(csv_path, index=False)
+        paths["false_positive_pairs_for_review_csv"] = str(csv_path)
+        if export_flags.emit_review_jsonl:
+            jsonl_path = debug_csv / "debug_pair_high_band_false_positive_pairs_for_review.jsonl"
+            _write_pairs_for_review_jsonl(
+                df_review,
+                out_path=jsonl_path,
+                email_text_by_eid=email_text_by_eid,
+                wrap_width=wrap_width,
+            )
+            paths["false_positive_pairs_for_review_jsonl"] = str(jsonl_path)
 
-    jsonl_path = out_dir / "pair_high_band_false_positive_pairs_for_review.jsonl"
-    _write_pairs_for_review_jsonl(
-        df_review,
-        out_path=jsonl_path,
-        email_text_by_eid=email_text_by_eid,
-        wrap_width=wrap_width,
-    )
-    paths["false_positive_pairs_for_review_jsonl"] = str(jsonl_path)
-
-    html_path = out_dir / "pair_high_band_false_positive_pairs_for_review.html"
-    _write_pairs_for_review_html(
-        df_review,
-        out_path=html_path,
-        email_text_by_eid=email_text_by_eid,
-        title="High-score cross-campaign pairs (manual review)",
-        subtitle="Side-by-side subject/body for GT eyeballing. Use filters in the sidebar.",
-    )
-    paths["false_positive_pairs_for_review_html"] = str(html_path)
+    if export_flags.emit_debug_html:
+        html_path = debug_csv / "debug_pair_high_band_false_positive_pairs_for_review.html"
+        _write_pairs_for_review_html(
+            df_review,
+            out_path=html_path,
+            email_text_by_eid=email_text_by_eid,
+            title="High-score cross-campaign pairs (manual review)",
+            subtitle="Side-by-side subject/body for GT eyeballing. Use filters in the sidebar.",
+        )
+        paths["false_positive_pairs_for_review_html"] = str(html_path)
 
     df_sem = df_review[df_review["fp_regime"].isin({"semantic_only", "no_shared_core_artifacts"})]
-    if not df_sem.empty:
-        sem_csv = out_dir / "pair_high_band_semantic_only_false_positive_pairs_for_review.csv"
+    if not df_sem.empty and export_flags.emit_debug_csv:
+        sem_csv = debug_csv / "debug_pair_high_band_semantic_only_false_positive_pairs_for_review.csv"
         df_sem.to_csv(sem_csv, index=False)
         paths["semantic_only_false_positive_pairs_for_review_csv"] = str(sem_csv)
-        sem_jsonl = out_dir / "pair_high_band_semantic_only_false_positive_pairs_for_review.jsonl"
-        _write_pairs_for_review_jsonl(
-            df_sem,
-            out_path=sem_jsonl,
-            email_text_by_eid=email_text_by_eid,
-            wrap_width=wrap_width,
-        )
-        paths["semantic_only_false_positive_pairs_for_review_jsonl"] = str(sem_jsonl)
-        sem_html = out_dir / "pair_high_band_semantic_only_false_positive_pairs_for_review.html"
+        if export_flags.emit_review_jsonl:
+            sem_jsonl = debug_csv / "debug_pair_high_band_semantic_only_false_positive_pairs_for_review.jsonl"
+            _write_pairs_for_review_jsonl(
+                df_sem,
+                out_path=sem_jsonl,
+                email_text_by_eid=email_text_by_eid,
+                wrap_width=wrap_width,
+            )
+            paths["semantic_only_false_positive_pairs_for_review_jsonl"] = str(sem_jsonl)
+    if not df_sem.empty and export_flags.emit_debug_html:
+        sem_html = debug_csv / "debug_pair_high_band_semantic_only_false_positive_pairs_for_review.html"
         _write_pairs_for_review_html(
             df_sem,
             out_path=sem_html,
@@ -2454,20 +2686,23 @@ def _export_high_band_pairs_for_manual_review(
 def _export_low_band_pairs_for_manual_review(
     *,
     df_low_band: pd.DataFrame,
-    out_dir: Path,
+    layout: dict[str, Path],
     email_text_by_eid: dict[str, dict[str, str]],
     email_text_meta: dict[str, Any],
     preview_chars: int,
     wrap_width: int,
     low_score_max: float,
+    export_flags: ExportFlags,
 ) -> dict[str, Any]:
-    """CSV/JSONL/HTML for low-score unlabeled same-campaign vs cross-campaign pairs."""
+    """Primary low-band HTML; optional debug CSV/JSONL/split HTML."""
     paths: dict[str, str] = {}
     notes: list[str] = []
 
+    review_html = layout["review_html"]
+    debug_csv = layout["debug_csv"]
     if df_low_band.empty:
         notes.append("no_low_band_unlabeled_pairs_to_export")
-        html_path = out_dir / "pair_low_band_unlabeled_pairs_for_review.html"
+        html_path = review_html / "pair_low_band_unlabeled_pairs_for_review.html"
         _write_pairs_for_review_html(
             df_low_band,
             out_path=html_path,
@@ -2495,20 +2730,21 @@ def _export_low_band_pairs_for_manual_review(
     ).reset_index(drop=True)
 
     stem = "pair_low_band_unlabeled_pairs_for_review"
-    csv_path = out_dir / f"{stem}.csv"
-    df_review.to_csv(csv_path, index=False)
-    paths["low_band_unlabeled_pairs_for_review_csv"] = str(csv_path)
+    if export_flags.emit_debug_csv:
+        csv_path = debug_csv / f"debug_{stem}.csv"
+        df_review.to_csv(csv_path, index=False)
+        paths["low_band_unlabeled_pairs_for_review_csv"] = str(csv_path)
+        if export_flags.emit_review_jsonl:
+            jsonl_path = debug_csv / f"debug_{stem}.jsonl"
+            _write_pairs_for_review_jsonl(
+                df_review,
+                out_path=jsonl_path,
+                email_text_by_eid=email_text_by_eid,
+                wrap_width=wrap_width,
+            )
+            paths["low_band_unlabeled_pairs_for_review_jsonl"] = str(jsonl_path)
 
-    jsonl_path = out_dir / f"{stem}.jsonl"
-    _write_pairs_for_review_jsonl(
-        df_review,
-        out_path=jsonl_path,
-        email_text_by_eid=email_text_by_eid,
-        wrap_width=wrap_width,
-    )
-    paths["low_band_unlabeled_pairs_for_review_jsonl"] = str(jsonl_path)
-
-    html_path = out_dir / f"{stem}.html"
+    html_path = review_html / f"{stem}.html"
     _write_pairs_for_review_html(
         df_review,
         out_path=html_path,
@@ -2526,41 +2762,44 @@ def _export_low_band_pairs_for_manual_review(
     )
     paths["low_band_unlabeled_pairs_for_review_html"] = str(html_path)
 
-    df_same = df_review[df_review["gt_relation"].astype(str) == "same_campaign"]
-    if not df_same.empty:
-        same_csv = out_dir / "pair_low_band_same_campaign_unlabeled_pairs_for_review.csv"
-        df_same.to_csv(same_csv, index=False)
-        paths["low_band_same_campaign_unlabeled_pairs_for_review_csv"] = str(same_csv)
-        same_html = out_dir / "pair_low_band_same_campaign_unlabeled_pairs_for_review.html"
-        _write_pairs_for_review_html(
-            df_same,
-            out_path=same_html,
-            email_text_by_eid=email_text_by_eid,
-            title="Low-score same-campaign unlabeled pairs",
-            subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should move up.",
-            review_prompt=(
-                "Same GT campaign but low model score. What evidence is missing from the scorer?"
-            ),
-            gt_note="same_campaign unlabeled",
-        )
-        paths["low_band_same_campaign_unlabeled_pairs_for_review_html"] = str(same_html)
+    if export_flags.emit_debug_csv or export_flags.emit_debug_html:
+        df_same = df_review[df_review["gt_relation"].astype(str) == "same_campaign"]
+        if not df_same.empty and export_flags.emit_debug_csv:
+            same_csv = debug_csv / "debug_pair_low_band_same_campaign_unlabeled_pairs_for_review.csv"
+            df_same.to_csv(same_csv, index=False)
+            paths["low_band_same_campaign_unlabeled_pairs_for_review_csv"] = str(same_csv)
+        if not df_same.empty and export_flags.emit_debug_html:
+            same_html = debug_csv / "debug_pair_low_band_same_campaign_unlabeled_pairs_for_review.html"
+            _write_pairs_for_review_html(
+                df_same,
+                out_path=same_html,
+                email_text_by_eid=email_text_by_eid,
+                title="Low-score same-campaign unlabeled pairs",
+                subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should move up.",
+                review_prompt=(
+                    "Same GT campaign but low model score. What evidence is missing from the scorer?"
+                ),
+                gt_note="same_campaign unlabeled",
+            )
+            paths["low_band_same_campaign_unlabeled_pairs_for_review_html"] = str(same_html)
 
-    df_cross = df_review[df_review["gt_relation"].astype(str) == "cross_campaign"]
-    if not df_cross.empty:
-        cross_csv = out_dir / "pair_low_band_cross_campaign_unlabeled_pairs_for_review.csv"
-        df_cross.to_csv(cross_csv, index=False)
-        paths["low_band_cross_campaign_unlabeled_pairs_for_review_csv"] = str(cross_csv)
-        cross_html = out_dir / "pair_low_band_cross_campaign_unlabeled_pairs_for_review.html"
-        _write_pairs_for_review_html(
-            df_cross,
-            out_path=cross_html,
-            email_text_by_eid=email_text_by_eid,
-            title="Low-score cross-campaign unlabeled pairs",
-            subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should stay low.",
-            review_prompt="Cross GT campaigns with low score — confirm these should remain separated.",
-            gt_note="cross_campaign unlabeled",
-        )
-        paths["low_band_cross_campaign_unlabeled_pairs_for_review_html"] = str(cross_html)
+        df_cross = df_review[df_review["gt_relation"].astype(str) == "cross_campaign"]
+        if not df_cross.empty and export_flags.emit_debug_csv:
+            cross_csv = debug_csv / "debug_pair_low_band_cross_campaign_unlabeled_pairs_for_review.csv"
+            df_cross.to_csv(cross_csv, index=False)
+            paths["low_band_cross_campaign_unlabeled_pairs_for_review_csv"] = str(cross_csv)
+        if not df_cross.empty and export_flags.emit_debug_html:
+            cross_html = debug_csv / "debug_pair_low_band_cross_campaign_unlabeled_pairs_for_review.html"
+            _write_pairs_for_review_html(
+                df_cross,
+                out_path=cross_html,
+                email_text_by_eid=email_text_by_eid,
+                title="Low-score cross-campaign unlabeled pairs",
+                subtitle=f"Score band [0, {float(low_score_max)}] — pairs that should stay low.",
+                review_prompt="Cross GT campaigns with low score — confirm these should remain separated.",
+                gt_note="cross_campaign unlabeled",
+            )
+            paths["low_band_cross_campaign_unlabeled_pairs_for_review_html"] = str(cross_html)
 
     if not email_text_by_eid:
         notes.append("email_text_catalog_empty_subjects_and_bodies_will_be_blank")
@@ -2583,16 +2822,25 @@ def _export_low_band_pairs_for_manual_review(
 def _export_cross_campaign_positive_pairs_for_manual_review(
     *,
     df_cross_positive: pd.DataFrame,
-    out_dir: Path,
+    layout: dict[str, Path],
     email_text_by_eid: dict[str, dict[str, str]],
     email_text_meta: dict[str, Any],
     preview_chars: int,
     wrap_width: int,
+    export_flags: ExportFlags,
 ) -> dict[str, Any]:
-    """Manual review export for GT cross-campaign pairs with training label positive."""
+    """Optional debug export for GT cross-campaign pairs with training label positive."""
     paths: dict[str, str] = {}
+    debug_csv = layout["debug_csv"]
     if df_cross_positive.empty:
-        html_path = out_dir / "pair_cross_campaign_positive_pairs_for_review.html"
+        if not export_flags.emit_debug_html:
+            return {
+                "paths": paths,
+                "n_pairs": 0,
+                "email_text_catalog": email_text_meta,
+                "note": "empty_cohort_no_gt_cross_campaign_pairs_with_positive_label",
+            }
+        html_path = debug_csv / "debug_pair_cross_campaign_positive_pairs_for_review.html"
         _write_pairs_for_review_html(
             df_cross_positive,
             out_path=html_path,
@@ -2609,60 +2857,70 @@ def _export_cross_campaign_positive_pairs_for_manual_review(
             "note": "empty_cohort_no_gt_cross_campaign_pairs_with_positive_label",
         }
 
+    if not export_flags.emit_debug_csv and not export_flags.emit_debug_html:
+        return {
+            "paths": paths,
+            "n_pairs": int(len(df_cross_positive)),
+            "email_text_catalog": email_text_meta,
+            "note": "skipped_cross_positive_review_exports_emit_debug_csv_or_html_false",
+        }
+
     df_review = _enrich_pairs_with_email_text(
         df_cross_positive,
         email_text_by_eid=email_text_by_eid,
         preview_chars=preview_chars,
     )
     stem = "pair_cross_campaign_positive_pairs_for_review"
-    csv_path = out_dir / f"{stem}.csv"
-    df_review.to_csv(csv_path, index=False)
-    paths["cross_campaign_positive_pairs_for_review_csv"] = str(csv_path)
+    if export_flags.emit_debug_csv:
+        csv_path = debug_csv / f"debug_{stem}.csv"
+        df_review.to_csv(csv_path, index=False)
+        paths["cross_campaign_positive_pairs_for_review_csv"] = str(csv_path)
+        if export_flags.emit_review_jsonl:
+            jsonl_path = debug_csv / f"debug_{stem}.jsonl"
+            _write_pairs_for_review_jsonl(
+                df_review,
+                out_path=jsonl_path,
+                email_text_by_eid=email_text_by_eid,
+                wrap_width=wrap_width,
+            )
+            paths["cross_campaign_positive_pairs_for_review_jsonl"] = str(jsonl_path)
 
-    jsonl_path = out_dir / f"{stem}.jsonl"
-    _write_pairs_for_review_jsonl(
-        df_review,
-        out_path=jsonl_path,
-        email_text_by_eid=email_text_by_eid,
-        wrap_width=wrap_width,
-    )
-    paths["cross_campaign_positive_pairs_for_review_jsonl"] = str(jsonl_path)
-
-    html_path = out_dir / f"{stem}.html"
-    _write_pairs_for_review_html(
-        df_review,
-        out_path=html_path,
-        email_text_by_eid=email_text_by_eid,
-        title="Cross-campaign pairs labeled positive (manual review)",
-        subtitle=(
-            "Training/seeds marked positive but GT says different campaigns. "
-            "Compare side-by-side with timestamps."
-        ),
-        review_prompt=(
-            "Training label is positive, but GT assigns different campaigns. "
-            "Should these be the same campaign?"
-        ),
-        gt_note="GT cross-campaign, pair_status positive",
-    )
-    paths["cross_campaign_positive_pairs_for_review_html"] = str(html_path)
-
-    df_sem = df_review[df_review["fp_regime"].isin({"semantic_only", "no_shared_core_artifacts"})]
-    if not df_sem.empty:
-        sem_stem = "pair_cross_campaign_positive_semantic_only_pairs_for_review"
-        sem_html = out_dir / f"{sem_stem}.html"
+    if export_flags.emit_debug_html:
+        html_path = debug_csv / f"debug_{stem}.html"
         _write_pairs_for_review_html(
-            df_sem,
-            out_path=sem_html,
+            df_review,
+            out_path=html_path,
             email_text_by_eid=email_text_by_eid,
-            title="Cross-campaign positives — semantic-only (no shared artifacts)",
-            subtitle="Positive-labeled cross-GT pairs with no shared structural artifacts.",
+            title="Cross-campaign pairs labeled positive (manual review)",
+            subtitle=(
+                "Training/seeds marked positive but GT says different campaigns. "
+                "Compare side-by-side with timestamps."
+            ),
             review_prompt=(
-                "Positive label + different GT campaigns + no shared artifacts. "
-                "Same campaign or GT error?"
+                "Training label is positive, but GT assigns different campaigns. "
+                "Should these be the same campaign?"
             ),
             gt_note="GT cross-campaign, pair_status positive",
         )
-        paths["cross_campaign_positive_semantic_only_pairs_for_review_html"] = str(sem_html)
+        paths["cross_campaign_positive_pairs_for_review_html"] = str(html_path)
+
+        df_sem = df_review[df_review["fp_regime"].isin({"semantic_only", "no_shared_core_artifacts"})]
+        if not df_sem.empty:
+            sem_stem = "pair_cross_campaign_positive_semantic_only_pairs_for_review"
+            sem_html = debug_csv / f"debug_{sem_stem}.html"
+            _write_pairs_for_review_html(
+                df_sem,
+                out_path=sem_html,
+                email_text_by_eid=email_text_by_eid,
+                title="Cross-campaign positives — semantic-only (no shared artifacts)",
+                subtitle="Positive-labeled cross-GT pairs with no shared structural artifacts.",
+                review_prompt=(
+                    "Positive label + different GT campaigns + no shared artifacts. "
+                    "Same campaign or GT error?"
+                ),
+                gt_note="GT cross-campaign, pair_status positive",
+            )
+            paths["cross_campaign_positive_semantic_only_pairs_for_review_html"] = str(sem_html)
 
     return {
         "paths": paths,
@@ -2865,7 +3123,9 @@ def run_pair_score_separation_analysis(
     checkpoint_name: str = "best_model.pt",
     device: str = "cpu",
     to_undirected: bool = True,
-    low_score_max: float = 0.4,
+    low_score_max: float = 0.15,
+    mid_score_min: float = 0.15,
+    mid_score_max: float = 0.50,
     high_score_min: float = 0.8,
     anchor_run_dir: Path | None = None,
     misp_json_path: Path | None = None,
@@ -2873,6 +3133,17 @@ def run_pair_score_separation_analysis(
     skip_email_text_export: bool = False,
     email_text_preview_chars: int = 500,
     email_text_wrap_width: int = 88,
+    enable_rescued_collapsed_analysis: bool = True,
+    enable_mid_band_frontier_analysis: bool = True,
+    enable_frontier_analysis: bool | None = None,
+    enable_high_cross_unlabeled_analysis: bool = True,
+    high_cross_score_min: float = 0.80,
+    mid_cross_score_min: float = 0.70,
+    rescued_score_min: float = 0.80,
+    collapsed_score_max: float = 0.10,
+    community_cut_score_min: float = 0.30,
+    community_cut_score_max: float = 0.50,
+    export_flags: ExportFlags | None = None,
 ) -> dict[str, Any]:
     from src.pair_train import load_pair_training_dataframe
 
@@ -2881,9 +3152,9 @@ def run_pair_score_separation_analysis(
     graph_pt = Path(graph_pt).resolve()
     pair_csv = Path(pair_csv).resolve()
     out_dir = (output_dir or (run_dir / "pair_score_separation")).resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    plots_dir = out_dir / "plots"
-    plots_dir.mkdir(parents=True, exist_ok=True)
+    layout = ensure_pair_score_separation_layout(out_dir)
+    flags = export_flags or ExportFlags()
+    plots_dir = layout["plots"]
 
     df, _stats = load_pair_training_dataframe(pair_csv)
     df_work = df.reset_index(drop=True)
@@ -2909,6 +3180,7 @@ def run_pair_score_separation_analysis(
         fanout=bundle["fanout"],
         pair_batch_size=bundle["pair_batch_size"],
         max_unique_emails=bundle["max_unique_emails"],
+        pair_feature_columns=bundle.get("pair_feature_columns"),
     )
     scored_mask = np.isfinite(scores)
     plot_all_scored = plots_dir / "score_distribution_all_scored_pairs.png"
@@ -3081,37 +3353,29 @@ def run_pair_score_separation_analysis(
             high_min=high_score_min,
         )
         summary["band_diagnostics"] = band_diag
-        summary["plot_same_campaign"] = str(plot_same.relative_to(out_dir))
-        summary["plot_cross_campaign"] = str(plot_cross.relative_to(out_dir))
+        summary["plot_same_campaign"] = rel_to_root(layout, plot_same)
+        summary["plot_cross_campaign"] = rel_to_root(layout, plot_cross)
 
-        summary["plot_same_campaign_positive_only"] = str(
-            plot_same_pos.relative_to(out_dir)
-        )
-        summary["plot_cross_campaign_positive_only"] = str(
-            plot_cross_pos.relative_to(out_dir)
-        )
-        summary["plot_same_campaign_unlabeled_only"] = str(
-            plot_same_unl.relative_to(out_dir)
-        )
-        summary["plot_cross_campaign_unlabeled_only"] = str(
-            plot_cross_unl.relative_to(out_dir)
-        )
+        summary["plot_same_campaign_positive_only"] = rel_to_root(layout, plot_same_pos)
+        summary["plot_cross_campaign_positive_only"] = rel_to_root(layout, plot_cross_pos)
+        summary["plot_same_campaign_unlabeled_only"] = rel_to_root(layout, plot_same_unl)
+        summary["plot_cross_campaign_unlabeled_only"] = rel_to_root(layout, plot_cross_unl)
         if cc_plot_same is not None and cc_plot_cross is not None:
-            summary["plot_cross_component_same_campaign"] = str(cc_plot_same.relative_to(out_dir))
-            summary["plot_cross_component_cross_campaign"] = str(cc_plot_cross.relative_to(out_dir))
+            summary["plot_cross_component_same_campaign"] = rel_to_root(layout, cc_plot_same)
+            summary["plot_cross_component_cross_campaign"] = rel_to_root(layout, cc_plot_cross)
         if cc_plot_same_pos is not None and cc_plot_cross_pos is not None:
-            summary["plot_cross_component_same_campaign_positive_only"] = str(
-                cc_plot_same_pos.relative_to(out_dir)
+            summary["plot_cross_component_same_campaign_positive_only"] = rel_to_root(
+                layout, cc_plot_same_pos
             )
-            summary["plot_cross_component_cross_campaign_positive_only"] = str(
-                cc_plot_cross_pos.relative_to(out_dir)
+            summary["plot_cross_component_cross_campaign_positive_only"] = rel_to_root(
+                layout, cc_plot_cross_pos
             )
         if cc_plot_same_unl is not None and cc_plot_cross_unl is not None:
-            summary["plot_cross_component_same_campaign_unlabeled_only"] = str(
-                cc_plot_same_unl.relative_to(out_dir)
+            summary["plot_cross_component_same_campaign_unlabeled_only"] = rel_to_root(
+                layout, cc_plot_same_unl
             )
-            summary["plot_cross_component_cross_campaign_unlabeled_only"] = str(
-                cc_plot_cross_unl.relative_to(out_dir)
+            summary["plot_cross_component_cross_campaign_unlabeled_only"] = rel_to_root(
+                layout, cc_plot_cross_unl
             )
         per_gt.append(summary)
         low_sep, low_rows = _build_low_band_separator_for_gt(
@@ -3126,6 +3390,7 @@ def run_pair_score_separation_analysis(
         same_eval = same_mask[(both & scored)]
         cross_eval = cross_mask[(both & scored)]
         low = df_eval["score"].ge(0.0) & df_eval["score"].le(float(low_score_max))
+        mid = df_eval["score"].gt(float(mid_score_min)) & df_eval["score"].le(float(mid_score_max))
         same_low_eval = same_eval & low.to_numpy(dtype=bool, copy=False)
         cross_low_eval = cross_eval & low.to_numpy(dtype=bool, copy=False)
         unl_eval = unl_mask[(both & scored)]
@@ -3244,37 +3509,38 @@ def run_pair_score_separation_analysis(
         "device": device,
         "band_config": {
             "low_score_band": [0.0, float(low_score_max)],
+            "mid_score_band": [float(mid_score_min), float(mid_score_max)],
             "high_score_band": [float(high_score_min), 1.0],
+            "community_cut_zone": [float(community_cut_score_min), float(community_cut_score_max)],
         },
         "shared_evidence_context": shared_ctx,
         "admitting_evidence_catalog": admitting_evidence_meta,
         "per_gt": per_gt,
         "n_pair_rows_scored": int(len(df_work)),
         "n_finite_scores": int(scored_mask.sum()),
-        "plot_all_scored_pairs": str(plot_all_scored.relative_to(out_dir)),
+        "plot_all_scored_pairs": rel_to_root(layout, plot_all_scored),
+        "output_layout": {k: rel_to_root(layout, v) for k, v in layout.items() if k != "root"},
     }
-    summary_path = out_dir / "pair_score_separation_summary.json"
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, default=str)
-    band_csv_path = out_dir / "pair_score_band_diagnostics.csv"
+    core_json = layout["core_json"]
+    debug_json = layout["debug_json"]
+    debug_csv = layout["debug_csv"]
+    summary_path = core_json / "pair_score_separation_summary.json"
+
+    band_csv_path = debug_csv / "detail_pair_score_band_diagnostics.csv"
     pd.DataFrame(band_rows).to_csv(band_csv_path, index=False)
-    low_sep_summary_path = out_dir / "pair_low_band_separator_summary.json"
-    low_sep_payload = {
-        "run_dir": str(run_dir),
-        "graph_pt": str(graph_pt),
-        "pair_csv": str(pair_csv),
-        "checkpoint": str(bundle["checkpoint_path"]),
-        "band_config": {
-            "low_score_band": [0.0, float(low_score_max)],
-            "high_score_band": [float(high_score_min), 1.0],
-        },
-        "per_gt": low_sep_per_gt,
-    }
-    with open(low_sep_summary_path, "w", encoding="utf-8") as f:
-        json.dump(low_sep_payload, f, indent=2, default=str)
-    low_sep_csv_path = out_dir / "pair_low_band_separator_table.csv"
-    pd.DataFrame(low_sep_rows).to_csv(low_sep_csv_path, index=False)
-    low_joint_summary_path = out_dir / "pair_low_band_joint_separator_summary.json"
+
+    low_sep_summary_path: Path | None = None
+    low_joint_summary_path: Path | None = None
+    low_sep_csv_path: Path | None = None
+    low_joint_csv_path: Path | None = None
+    high_sep_summary_path: Path | None = None
+    high_joint_summary_path: Path | None = None
+    high_sep_csv_path: Path | None = None
+    high_joint_csv_path: Path | None = None
+    twohop_channel_summary_path: Path | None = None
+    twohop_channel_csv_path: Path | None = None
+    high_fp_json_path: Path | None = None
+
     low_joint_payload = {
         "run_dir": str(run_dir),
         "graph_pt": str(graph_pt),
@@ -3286,49 +3552,71 @@ def run_pair_score_separation_analysis(
         },
         "per_gt": low_joint_per_gt,
     }
-    with open(low_joint_summary_path, "w", encoding="utf-8") as f:
-        json.dump(low_joint_payload, f, indent=2, default=str)
-    low_joint_csv_path = out_dir / "pair_low_band_joint_separator_table.csv"
-    pd.DataFrame(low_joint_rows).to_csv(low_joint_csv_path, index=False)
-
-    high_sep_summary_path = out_dir / "pair_high_band_separator_summary.json"
-    high_sep_payload = {
-        "run_dir": str(run_dir),
-        "graph_pt": str(graph_pt),
-        "pair_csv": str(pair_csv),
-        "checkpoint": str(bundle["checkpoint_path"]),
-        "band_config": {
-            "low_score_band": [0.0, float(low_score_max)],
-            "high_score_band": [float(high_score_min), 1.0],
-        },
-        "analysis_focus": (
-            "Marginal separators for all GT-covered pairs in the high-score band; "
-            "joint/recommendations use unlabeled-only high-band pairs."
-        ),
-        "per_gt": high_sep_per_gt,
-    }
-    with open(high_sep_summary_path, "w", encoding="utf-8") as f:
-        json.dump(high_sep_payload, f, indent=2, default=str)
-    high_sep_csv_path = out_dir / "pair_high_band_separator_table.csv"
-    pd.DataFrame(high_sep_rows).to_csv(high_sep_csv_path, index=False)
-
-    high_joint_summary_path = out_dir / "pair_high_band_joint_separator_summary.json"
-    high_joint_payload = {
-        "run_dir": str(run_dir),
-        "graph_pt": str(graph_pt),
-        "pair_csv": str(pair_csv),
-        "checkpoint": str(bundle["checkpoint_path"]),
-        "band_config": {
-            "low_score_band": [0.0, float(low_score_max)],
-            "high_score_band": [float(high_score_min), 1.0],
-        },
-        "analysis_focus": "Joint separators for unlabeled pairs in the high-score band (same vs cross).",
-        "per_gt": high_joint_per_gt,
-    }
-    with open(high_joint_summary_path, "w", encoding="utf-8") as f:
-        json.dump(high_joint_payload, f, indent=2, default=str)
-    high_joint_csv_path = out_dir / "pair_high_band_joint_separator_table.csv"
-    pd.DataFrame(high_joint_rows).to_csv(high_joint_csv_path, index=False)
+    if flags.emit_debug_json:
+        low_sep_summary_path = debug_json / "detail_pair_low_band_separator_summary.json"
+        with open(low_sep_summary_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "run_dir": str(run_dir),
+                    "graph_pt": str(graph_pt),
+                    "pair_csv": str(pair_csv),
+                    "checkpoint": str(bundle["checkpoint_path"]),
+                    "band_config": low_joint_payload["band_config"],
+                    "per_gt": low_sep_per_gt,
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+        low_joint_summary_path = debug_json / "detail_pair_low_band_joint_separator_summary.json"
+        with open(low_joint_summary_path, "w", encoding="utf-8") as f:
+            json.dump(low_joint_payload, f, indent=2, default=str)
+        high_sep_summary_path = debug_json / "detail_pair_high_band_separator_summary.json"
+        with open(high_sep_summary_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "run_dir": str(run_dir),
+                    "graph_pt": str(graph_pt),
+                    "pair_csv": str(pair_csv),
+                    "checkpoint": str(bundle["checkpoint_path"]),
+                    "band_config": low_joint_payload["band_config"],
+                    "analysis_focus": (
+                        "Marginal separators for all GT-covered pairs in the high-score band; "
+                        "joint/recommendations use unlabeled-only high-band pairs."
+                    ),
+                    "per_gt": high_sep_per_gt,
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+        high_joint_summary_path = debug_json / "detail_pair_high_band_joint_separator_summary.json"
+        with open(high_joint_summary_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "run_dir": str(run_dir),
+                    "graph_pt": str(graph_pt),
+                    "pair_csv": str(pair_csv),
+                    "checkpoint": str(bundle["checkpoint_path"]),
+                    "band_config": low_joint_payload["band_config"],
+                    "analysis_focus": (
+                        "Joint separators for unlabeled pairs in the high-score band (same vs cross)."
+                    ),
+                    "per_gt": high_joint_per_gt,
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+    if flags.emit_debug_csv:
+        low_sep_csv_path = debug_csv / "detail_pair_low_band_separator_table.csv"
+        pd.DataFrame(low_sep_rows).to_csv(low_sep_csv_path, index=False)
+        low_joint_csv_path = debug_csv / "detail_pair_low_band_joint_separator_table.csv"
+        pd.DataFrame(low_joint_rows).to_csv(low_joint_csv_path, index=False)
+        high_sep_csv_path = debug_csv / "detail_pair_high_band_separator_table.csv"
+        pd.DataFrame(high_sep_rows).to_csv(high_sep_csv_path, index=False)
+        high_joint_csv_path = debug_csv / "detail_pair_high_band_joint_separator_table.csv"
+        pd.DataFrame(high_joint_rows).to_csv(high_joint_csv_path, index=False)
 
     df_high_fp = (
         pd.concat(high_fp_inspection_frames, ignore_index=True)
@@ -3368,58 +3656,74 @@ def run_pair_score_separation_analysis(
         twohop_channel_rows,
         joint_payload=low_joint_per_gt[0] if low_joint_per_gt else None,
     )
-    twohop_channel_summary_path = out_dir / "pair_low_band_twohop_channel_summary.json"
-    twohop_channel_payload = {
-        "run_dir": str(run_dir),
-        "pair_csv": str(pair_csv),
-        "band_config": {"low_score_band": [0.0, float(low_score_max)]},
-        "meta": twohop_channel_meta,
-        "per_channel": twohop_channel_rows,
-        "twohop_channel_recommendations": twohop_channel_recs,
-        "admitting_evidence_catalog": admitting_evidence_meta,
-    }
-    with open(twohop_channel_summary_path, "w", encoding="utf-8") as f:
-        json.dump(twohop_channel_payload, f, indent=2, default=str)
-    twohop_channel_csv_path = out_dir / "pair_low_band_twohop_channel_summary.csv"
-    pd.DataFrame(twohop_channel_rows).to_csv(twohop_channel_csv_path, index=False)
-    if low_joint_per_gt:
-        for entry in low_joint_per_gt:
-            entry["twohop_channel_recommendations"] = twohop_channel_recs
-    low_joint_payload["twohop_channel_summary_path"] = str(twohop_channel_summary_path)
-    low_joint_payload["twohop_channel_csv_path"] = str(twohop_channel_csv_path)
-    low_joint_payload["twohop_channel_recommendations"] = twohop_channel_recs
-    low_joint_payload["twohop_channel_per_channel"] = twohop_channel_rows
-    with open(low_joint_summary_path, "w", encoding="utf-8") as f:
-        json.dump(low_joint_payload, f, indent=2, default=str)
-    payload["twohop_channel_summary_path"] = str(twohop_channel_summary_path)
-    payload["twohop_channel_csv_path"] = str(twohop_channel_csv_path)
+    if flags.emit_debug_json:
+        twohop_channel_summary_path = debug_json / "detail_pair_low_band_twohop_channel_summary.json"
+        twohop_channel_payload = {
+            "run_dir": str(run_dir),
+            "pair_csv": str(pair_csv),
+            "band_config": {"low_score_band": [0.0, float(low_score_max)]},
+            "meta": twohop_channel_meta,
+            "per_channel": twohop_channel_rows,
+            "twohop_channel_recommendations": twohop_channel_recs,
+            "admitting_evidence_catalog": admitting_evidence_meta,
+        }
+        with open(twohop_channel_summary_path, "w", encoding="utf-8") as f:
+            json.dump(twohop_channel_payload, f, indent=2, default=str)
+        if low_joint_summary_path is not None:
+            low_joint_payload["twohop_channel_summary_path"] = rel_to_root(
+                layout, twohop_channel_summary_path
+            )
+            low_joint_payload["twohop_channel_recommendations"] = twohop_channel_recs
+            low_joint_payload["twohop_channel_per_channel"] = twohop_channel_rows
+            with open(low_joint_summary_path, "w", encoding="utf-8") as f:
+                json.dump(low_joint_payload, f, indent=2, default=str)
+    if flags.emit_debug_csv:
+        twohop_channel_csv_path = debug_csv / "detail_pair_low_band_twohop_channel_summary.csv"
+        pd.DataFrame(twohop_channel_rows).to_csv(twohop_channel_csv_path, index=False)
+
     payload["twohop_channel_recommendations"] = twohop_channel_recs
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, default=str)
 
-    low_band_pairs_path = out_dir / "pair_low_band_unlabeled_pairs.csv"
-    df_low_band_all.to_csv(low_band_pairs_path, index=False)
-    high_fp_pairs_path = out_dir / "pair_high_band_false_positive_pairs.csv"
-    df_high_fp.to_csv(high_fp_pairs_path, index=False)
-    high_tp_pairs_path = out_dir / "pair_high_band_true_positive_pairs.csv"
-    df_high_tp.to_csv(high_tp_pairs_path, index=False)
+    low_band_pairs_path: Path | None = None
+    high_fp_pairs_path: Path | None = None
+    high_tp_pairs_path: Path | None = None
+    high_fp_artifact_path: Path | None = None
+    if flags.emit_debug_csv:
+        low_band_pairs_path = debug_csv / "debug_pair_low_band_unlabeled_pairs.csv"
+        df_low_band_all.to_csv(low_band_pairs_path, index=False)
+        high_fp_pairs_path = debug_csv / "debug_pair_high_band_false_positive_pairs.csv"
+        df_high_fp.to_csv(high_fp_pairs_path, index=False)
+        high_tp_pairs_path = debug_csv / "debug_pair_high_band_true_positive_pairs.csv"
+        df_high_tp.to_csv(high_tp_pairs_path, index=False)
+        high_fp_artifact_summary = _build_high_band_artifact_summary(
+            df_high_fp,
+            cohort_label="high_score_false_positive_unlabeled",
+        )
+        high_fp_artifact_path = debug_csv / "debug_pair_high_band_false_positive_artifact_summary.csv"
+        high_fp_artifact_summary.to_csv(high_fp_artifact_path, index=False)
+    else:
+        high_fp_artifact_summary = _build_high_band_artifact_summary(
+            df_high_fp,
+            cohort_label="high_score_false_positive_unlabeled",
+        )
 
-    high_fp_artifact_summary = _build_high_band_artifact_summary(
-        df_high_fp,
-        cohort_label="high_score_false_positive_unlabeled",
-    )
-    high_fp_artifact_path = out_dir / "pair_high_band_false_positive_artifact_summary.csv"
-    high_fp_artifact_summary.to_csv(high_fp_artifact_path, index=False)
-
-    high_fp_json_path = out_dir / "pair_high_band_false_positive_summary.json"
     high_fp_json = _build_high_band_false_positive_json_summary(
         df_false_positive=df_high_fp,
         df_true_positive=df_high_tp,
         artifact_summary=high_fp_artifact_summary,
         high_score_min=high_score_min,
     )
-    with open(high_fp_json_path, "w", encoding="utf-8") as f:
-        json.dump(high_fp_json, f, indent=2, default=str)
+    if flags.emit_debug_json:
+        high_fp_json_path = debug_json / "detail_pair_high_band_false_positive_summary.json"
+        with open(high_fp_json_path, "w", encoding="utf-8") as f:
+            json.dump(high_fp_json, f, indent=2, default=str)
+    else:
+        payload["high_band_false_positive_digest"] = {
+            "n_false_positive": int(len(df_high_fp)),
+            "n_true_positive": int(len(df_high_tp)),
+            "fp_regime_counts": high_fp_json.get("fp_regime_counts"),
+            "note": "Full detail JSON at debug_json/detail_pair_high_band_false_positive_summary.json "
+            "(pass --emit-debug-json).",
+        }
 
     manual_review_export: dict[str, Any] = {"skipped": True}
     cross_positive_review_export: dict[str, Any] = {"skipped": True}
@@ -3445,65 +3749,341 @@ def run_pair_score_separation_analysis(
         )
         manual_review_export = _export_high_band_pairs_for_manual_review(
             df_false_positive=df_high_fp,
-            out_dir=out_dir,
+            layout=layout,
             email_text_by_eid=email_catalog,
             email_text_meta=email_catalog_meta,
             preview_chars=int(email_text_preview_chars),
             wrap_width=int(email_text_wrap_width),
+            export_flags=flags,
         )
         review_paths = manual_review_export.get("paths") or {}
-        high_fp_json["manual_review_export"] = manual_review_export
-        with open(high_fp_json_path, "w", encoding="utf-8") as f:
-            json.dump(high_fp_json, f, indent=2, default=str)
+        if high_fp_json_path is not None:
+            high_fp_json["manual_review_export"] = manual_review_export
+            with open(high_fp_json_path, "w", encoding="utf-8") as f:
+                json.dump(high_fp_json, f, indent=2, default=str)
 
         cross_positive_review_export = _export_cross_campaign_positive_pairs_for_manual_review(
             df_cross_positive=df_cross_pos_all,
-            out_dir=out_dir,
+            layout=layout,
             email_text_by_eid=email_catalog,
             email_text_meta=email_catalog_meta,
             preview_chars=int(email_text_preview_chars),
             wrap_width=int(email_text_wrap_width),
+            export_flags=flags,
         )
         cross_positive_review_paths = cross_positive_review_export.get("paths") or {}
-        high_fp_json["cross_campaign_positive_manual_review_export"] = cross_positive_review_export
-        with open(high_fp_json_path, "w", encoding="utf-8") as f:
-            json.dump(high_fp_json, f, indent=2, default=str)
+        if high_fp_json_path is not None:
+            high_fp_json["cross_campaign_positive_manual_review_export"] = cross_positive_review_export
+            with open(high_fp_json_path, "w", encoding="utf-8") as f:
+                json.dump(high_fp_json, f, indent=2, default=str)
 
         low_band_review_export = _export_low_band_pairs_for_manual_review(
             df_low_band=df_low_band_all,
-            out_dir=out_dir,
+            layout=layout,
             email_text_by_eid=email_catalog,
             email_text_meta=email_catalog_meta,
             preview_chars=int(email_text_preview_chars),
             wrap_width=int(email_text_wrap_width),
             low_score_max=float(low_score_max),
+            export_flags=flags,
         )
         low_band_review_paths = low_band_review_export.get("paths") or {}
-        payload["low_band_unlabeled_manual_review_export"] = low_band_review_export
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, default=str)
+        payload["low_band_unlabeled_manual_review_export"] = {
+            "status": "ok",
+            "n_pairs": low_band_review_export.get("n_pairs"),
+            "primary_html": low_band_review_paths.get("low_band_unlabeled_pairs_for_review_html"),
+        }
     else:
         cross_positive_review_export = {"skipped": True, "reason": "skip_email_text_export"}
         cross_positive_review_paths = {}
         low_band_review_export = {"skipped": True, "reason": "skip_email_text_export"}
         low_band_review_paths = {}
+        email_catalog = {}
+
+    run_frontier = (
+        enable_frontier_analysis
+        if enable_frontier_analysis is not None
+        else enable_mid_band_frontier_analysis
+    )
+    mid_band_paths: dict[str, str] = {}
+    frontier_paths: dict[str, str] = {}
+    if run_frontier:
+        from seed_candidate_workflow.utils.pair_mid_band_frontier import (
+            MidBandThresholds,
+            run_mid_band_frontier_analysis,
+        )
+
+        th = MidBandThresholds(
+            low_score_max=float(low_score_max),
+            mid_score_min=float(mid_score_min),
+            mid_score_max=float(mid_score_max),
+            high_score_min=float(high_score_min),
+            rescued_score_min=float(rescued_score_min),
+            community_cut_score_min=float(community_cut_score_min),
+            community_cut_score_max=float(community_cut_score_max),
+        )
+        per_gt_mid: list[dict[str, Any]] = []
+        for gt_path in gt_paths:
+            gt_path = Path(gt_path).resolve()
+            label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)
+            label_map = {str(k): v for k, v in label_map.items()}
+            suffix = f"__{_sanitize_filename_stem(gt_path.stem)}" if len(gt_paths) > 1 else ""
+            mid_out = run_mid_band_frontier_analysis(
+                df_work=df_work,
+                scores=scores,
+                gt_path=gt_path,
+                label_map=label_map,
+                layout=layout,
+                nodes_by_email=nodes_by_email,
+                evidence_index=admitting_evidence_index,
+                email_text_by_eid=email_catalog if email_catalog else None,
+                thresholds=th,
+                export_flags=flags,
+                filename_suffix=suffix,
+            )
+            per_gt_mid.append({"gt_path": str(gt_path), "gt_name": gt_path.name, **mid_out})
+            if not mid_band_paths:
+                mid_band_paths = {
+                    k: v for k, v in (mid_out.get("paths") or {}).items() if isinstance(v, str)
+                }
+                mid_band_paths["summary_path"] = mid_out.get("summary_path")
+                mid_band_paths["joint_summary_path"] = mid_out.get("joint_summary_path")
+                mid_band_paths["table_path"] = mid_out.get("table_path")
+            if not frontier_paths:
+                frontier_paths = {
+                    k: v for k, v in (mid_out.get("paths") or {}).items() if isinstance(v, str)
+                }
+                frontier_paths["summary_path"] = mid_out.get("frontier_summary_path") or mid_out.get(
+                    "summary_path"
+                )
+                frontier_paths["joint_summary_path"] = mid_out.get(
+                    "frontier_joint_summary_path"
+                ) or mid_out.get("joint_summary_path")
+                frontier_paths["table_path"] = mid_out.get("table_path")
+        payload["mid_band_frontier_analysis"] = {
+            "skipped": False,
+            "thresholds": {
+                "low_score_max": th.low_score_max,
+                "mid_score_min_exclusive": th.mid_score_min,
+                "mid_score_max_inclusive": th.mid_score_max,
+                "high_score_min_exclusive": th.high_score_min,
+                "community_cut_score_range": [
+                    th.community_cut_score_min,
+                    th.community_cut_score_max,
+                ],
+            },
+            "per_gt": per_gt_mid,
+        }
+        payload["pair_frontier_analysis"] = payload["mid_band_frontier_analysis"]
+        if per_gt_mid:
+            payload["mid_band_frontier_digest"] = per_gt_mid[0].get("digest")
+            payload["frontier_analysis_digest"] = per_gt_mid[0].get("digest")
+    else:
+        payload["mid_band_frontier_analysis"] = {"skipped": True, "reason": "disabled"}
+        payload["pair_frontier_analysis"] = {"skipped": True, "reason": "disabled"}
+
+    high_cross_paths: dict[str, str] = {}
+    per_gt_high_cross: list[dict[str, Any]] = []
+    run_encoder_hint = str(bundle.get("pair_encoder_backend") or "")
+    try:
+        tc = bundle.get("train_cfg") or {}
+        if tc.get("pair_scorer_use_explicit_features") is False:
+            run_encoder_hint = run_encoder_hint or "gnn_embedding_only_scorer"
+        if tc.get("pair_scorer_use_embedding_features") is False:
+            run_encoder_hint = run_encoder_hint or "explicit_only_scorer"
+    except Exception:
+        pass
+
+    if enable_high_cross_unlabeled_analysis:
+        from seed_candidate_workflow.utils.pair_high_cross_unlabeled_analysis import (
+            HighCrossThresholds,
+            run_pair_high_cross_unlabeled_analysis,
+        )
+
+        hth = HighCrossThresholds(
+            high_cross_score_min=float(high_cross_score_min),
+            mid_cross_score_min=float(mid_cross_score_min),
+        )
+        for gt_path in gt_paths:
+            gt_path = Path(gt_path).resolve()
+            label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)
+            label_map = {str(k): v for k, v in label_map.items()}
+            suffix = f"__{_sanitize_filename_stem(gt_path.stem)}" if len(gt_paths) > 1 else ""
+            hc_out = run_pair_high_cross_unlabeled_analysis(
+                df_work=df_work,
+                scores=scores,
+                gt_path=gt_path,
+                label_map=label_map,
+                layout=layout,
+                nodes_by_email=nodes_by_email,
+                evidence_index=admitting_evidence_index,
+                email_text_by_eid=email_catalog if email_catalog else None,
+                thresholds=hth,
+                export_flags=flags,
+                filename_suffix=suffix,
+                project_root=project_root,
+                run_dir=run_dir,
+                graph_pt=graph_pt,
+                inference_bundle=bundle,
+                run_encoder_hint=run_encoder_hint or None,
+            )
+            per_gt_high_cross.append({"gt_path": str(gt_path), "gt_name": gt_path.name, **hc_out})
+            if not high_cross_paths:
+                high_cross_paths = {k: v for k, v in (hc_out.get("paths") or {}).items() if isinstance(v, str)}
+        payload["pair_high_cross_unlabeled_analysis"] = {
+            "skipped": False,
+            "thresholds": {
+                "high_cross_score_min": hth.high_cross_score_min,
+                "mid_cross_score_min": hth.mid_cross_score_min,
+            },
+            "per_gt": per_gt_high_cross,
+            "run_encoder_hint": run_encoder_hint,
+        }
+        if per_gt_high_cross:
+            payload["high_cross_unlabeled_digest"] = per_gt_high_cross[0].get("digest")
+    else:
+        payload["pair_high_cross_unlabeled_analysis"] = {"skipped": True, "reason": "disabled"}
+        payload["high_cross_unlabeled_digest"] = None
+
+    rescued_collapsed_exports: dict[str, Any] = {"skipped": True}
+    rescued_collapsed_paths: dict[str, str] = {}
+    per_gt_rescued: list[dict[str, Any]] = []
+    if enable_rescued_collapsed_analysis:
+        from seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed import (
+            run_same_unlabeled_rescued_vs_collapsed_analysis,
+        )
+
+        unl_mask_global = (
+            df_work["pair_status"].astype(str).str.lower().eq("unlabeled").to_numpy()
+            if "pair_status" in df_work.columns
+            else np.zeros(len(df_work), dtype=bool)
+        )
+        ei_all = df_work["email_i"].astype(str).values
+        ej_all = df_work["email_j"].astype(str).values
+        for gt_path in gt_paths:
+            gt_path = Path(gt_path).resolve()
+            label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)
+            label_map = {str(k): v for k, v in label_map.items()}
+            n = len(df_work)
+            camp_i = np.array([label_map.get(str(ei_all[k])) for k in range(n)], dtype=object)
+            camp_j = np.array([label_map.get(str(ej_all[k])) for k in range(n)], dtype=object)
+            both = np.array(
+                [camp_i[k] is not None and camp_j[k] is not None for k in range(n)],
+                dtype=bool,
+            )
+            cross_unl = both & (camp_i != camp_j) & unl_mask_global & scored_mask
+            stem = _sanitize_filename_stem(gt_path.stem)
+            suffix = f"__{stem}" if len(gt_paths) > 1 else ""
+            paths = run_same_unlabeled_rescued_vs_collapsed_analysis(
+                df_work=df_work,
+                scores=scores,
+                gt_path=gt_path,
+                label_map=label_map,
+                out_dir=out_dir,
+                nodes_by_email=nodes_by_email,
+                evidence_index=admitting_evidence_index,
+                email_text_by_eid=email_catalog,
+                rescued_score_min=float(rescued_score_min),
+                collapsed_score_max=float(collapsed_score_max),
+                email_text_preview_chars=int(email_text_preview_chars),
+                email_text_wrap_width=int(email_text_wrap_width),
+                cross_unlabeled_mask=cross_unl,
+                filename_suffix=suffix,
+                export_flags=flags,
+            )
+            per_gt_rescued.append(
+                {
+                    "gt_path": str(gt_path),
+                    "gt_name": gt_path.name,
+                    "filename_suffix": suffix,
+                    **paths,
+                }
+            )
+            if not rescued_collapsed_paths:
+                rescued_collapsed_paths = {
+                    k: v for k, v in paths.items() if isinstance(v, str)
+                }
+        rescued_collapsed_exports = {
+            "skipped": False,
+            "thresholds": {
+                "rescued_same_unlabeled_min_score": float(rescued_score_min),
+                "collapsed_same_unlabeled_max_score": float(collapsed_score_max),
+            },
+            "per_gt": per_gt_rescued,
+        }
+        payload["rescued_vs_collapsed_same_unlabeled_analysis"] = {
+            "skipped": False,
+            "thresholds": rescued_collapsed_exports["thresholds"],
+            "per_gt": [
+                {
+                    "gt_path": e.get("gt_path"),
+                    "gt_name": e.get("gt_name"),
+                    "summary_path": e.get("summary_path"),
+                    "review_html_rescued": e.get("review_html_rescued"),
+                    "review_html_collapsed": e.get("review_html_collapsed"),
+                }
+                for e in per_gt_rescued
+            ],
+        }
+
+    rescued_suffix = ""
+    if per_gt_rescued:
+        rescued_suffix = str(per_gt_rescued[0].get("filename_suffix") or "")
+    has_high_cross = bool(enable_high_cross_unlabeled_analysis and per_gt_high_cross)
+    primary_outputs = build_primary_outputs(
+        layout=layout,
+        rescued_suffix=rescued_suffix,
+        per_gt=per_gt,
+        has_mid_band=run_frontier,
+        has_high_cross=has_high_cross,
+        gnn_only_scorer_hint="embedding_only" in (run_encoder_hint or "").lower()
+        or "gnn_only" in str(run_dir.name).lower(),
+    )
+    nav = build_navigation_index(
+        layout=layout,
+        export_flags=flags,
+        primary_outputs=primary_outputs,
+        has_rescued_collapsed=enable_rescued_collapsed_analysis,
+        has_mid_band=run_frontier,
+        has_high_cross=has_high_cross,
+        gnn_only_scorer_hint="embedding_only" in (run_encoder_hint or "").lower()
+        or "gnn_only" in str(run_dir.name).lower(),
+    )
+    payload.update(nav)
+    manifest_path = write_artifact_manifest(
+        layout=layout,
+        export_flags=flags,
+        run_meta={
+            "run_dir": str(run_dir),
+            "pair_csv": str(pair_csv),
+            "n_gt_files": len(gt_paths),
+        },
+    )
+    payload["artifact_manifest_json"] = rel_to_root(layout, manifest_path)
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+
+    def _opt(p: Path | None) -> str | None:
+        return str(p) if p is not None else None
 
     return {
         "output_dir": str(out_dir),
         "summary_path": str(summary_path),
+        "manifest_path": str(manifest_path),
+        "primary_outputs": primary_outputs,
         "band_csv_path": str(band_csv_path),
-        "low_separator_summary_path": str(low_sep_summary_path),
-        "low_separator_csv_path": str(low_sep_csv_path),
-        "low_joint_separator_summary_path": str(low_joint_summary_path),
-        "low_joint_separator_csv_path": str(low_joint_csv_path),
-        "high_separator_summary_path": str(high_sep_summary_path),
-        "high_separator_csv_path": str(high_sep_csv_path),
-        "high_joint_separator_summary_path": str(high_joint_summary_path),
-        "high_joint_separator_csv_path": str(high_joint_csv_path),
-        "high_false_positive_pairs_csv_path": str(high_fp_pairs_path),
-        "high_true_positive_pairs_csv_path": str(high_tp_pairs_path),
-        "high_false_positive_artifact_summary_csv_path": str(high_fp_artifact_path),
-        "high_false_positive_summary_json_path": str(high_fp_json_path),
+        "low_separator_summary_path": _opt(low_sep_summary_path),
+        "low_separator_csv_path": _opt(low_sep_csv_path),
+        "low_joint_separator_summary_path": _opt(low_joint_summary_path),
+        "low_joint_separator_csv_path": _opt(low_joint_csv_path),
+        "high_separator_summary_path": _opt(high_sep_summary_path),
+        "high_separator_csv_path": _opt(high_sep_csv_path),
+        "high_joint_separator_summary_path": _opt(high_joint_summary_path),
+        "high_joint_separator_csv_path": _opt(high_joint_csv_path),
+        "high_false_positive_pairs_csv_path": _opt(high_fp_pairs_path),
+        "high_true_positive_pairs_csv_path": _opt(high_tp_pairs_path),
+        "high_false_positive_artifact_summary_csv_path": _opt(high_fp_artifact_path),
+        "high_false_positive_summary_json_path": _opt(high_fp_json_path),
         "high_false_positive_pairs_for_review_csv_path": review_paths.get(
             "false_positive_pairs_for_review_csv"
         ),
@@ -3544,8 +4124,35 @@ def run_pair_score_separation_analysis(
         "low_band_cross_campaign_unlabeled_pairs_for_review_html_path": low_band_review_paths.get(
             "low_band_cross_campaign_unlabeled_pairs_for_review_html"
         ),
+        "mid_band_frontier_summary_json_path": mid_band_paths.get("summary_path"),
+        "mid_band_frontier_joint_summary_json_path": mid_band_paths.get("joint_summary_path"),
+        "mid_band_frontier_table_csv_path": mid_band_paths.get("table_path"),
+        "mid_band_same_unlabeled_for_review_html_path": mid_band_paths.get("mid_same_review_html"),
+        "mid_band_cross_unlabeled_for_review_html_path": mid_band_paths.get("mid_cross_review_html"),
+        "mid_band_same_vs_cross_for_review_html_path": mid_band_paths.get("mid_same_vs_cross_review_html"),
+        "mid_band_same_vs_rescued_for_review_html_path": mid_band_paths.get("mid_same_vs_rescued_review_html"),
+        "frontier_analysis_summary_json_path": frontier_paths.get("summary_path"),
+        "frontier_analysis_joint_summary_json_path": frontier_paths.get("joint_summary_path"),
+        "frontier_analysis_table_csv_path": frontier_paths.get("table_path"),
+        "frontier_high_same_unlabeled_for_review_html_path": frontier_paths.get("high_same_review_html"),
+        "frontier_low_same_unlabeled_for_review_html_path": frontier_paths.get("low_same_review_html"),
         "low_band_twohop_channel_summary_json_path": str(twohop_channel_summary_path),
         "low_band_twohop_channel_summary_csv_path": str(twohop_channel_csv_path),
+        "rescued_collapsed_summary_path": rescued_collapsed_paths.get("summary_path"),
+        "rescued_collapsed_table_path": rescued_collapsed_paths.get("table_path"),
+        "rescued_collapsed_joint_path": rescued_collapsed_paths.get("joint_path"),
+        "rescued_collapsed_review_html_path": rescued_collapsed_paths.get("review_html"),
+        "high_cross_unlabeled_analysis_summary_json_path": high_cross_paths.get("summary_path"),
+        "high_cross_unlabeled_analysis_joint_summary_json_path": high_cross_paths.get(
+            "joint_summary_path"
+        ),
+        "high_cross_unlabeled_analysis_table_csv_path": high_cross_paths.get("table_path"),
+        "high_cross_unlabeled_for_review_html_path": high_cross_paths.get(
+            "high_cross_unlabeled_for_review_html"
+        ),
+        "high_same_unlabeled_for_review_html_path": high_cross_paths.get(
+            "high_same_unlabeled_for_review_html"
+        ),
         "payload": payload,
     }
 
@@ -3565,18 +4172,19 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--run-dir", type=Path, required=True, help="Pair supervision run directory (e.g. core/GNN/outputs/pair_pu_001)")
     p.add_argument("--graph-pt", type=Path, required=True, help="Path to hetero .pt used for training")
     p.add_argument("--pair-csv", type=Path, default=None, help="pair_training_dataset.csv (default: from run training_config.json)")
-    g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument(
+    p.add_argument(
         "--gt-dir",
         type=Path,
         default=None,
         help="Use every *.json in this directory (default: skip filenames containing 'report').",
     )
-    g.add_argument(
+    p.add_argument(
         "--gt-path",
         type=Path,
+        action="append",
         default=None,
-        help="Analyze exactly one ground-truth JSON file.",
+        metavar="PATH",
+        help="Ground-truth JSON (repeat for multiple files, e.g. merged + default).",
     )
     p.add_argument(
         "--gt-include-report-json",
@@ -3586,8 +4194,37 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--output-dir", type=Path, default=None, help="Output root (default: <run-dir>/pair_score_separation)")
     p.add_argument("--checkpoint", type=str, default="best_model.pt", help="Checkpoint filename under run_dir/models/")
     p.add_argument("--device", type=str, default="cpu")
-    p.add_argument("--low-score-max", type=float, default=0.4, help="Low-score band upper bound (inclusive).")
+    p.add_argument(
+        "--low-score-max",
+        type=float,
+        default=0.15,
+        help="Low-score band upper bound inclusive (default 0.15; scores at mid_min go to mid band).",
+    )
+    p.add_argument(
+        "--mid-score-min",
+        type=float,
+        default=0.15,
+        help="Mid-band lower bound exclusive (default 0.15).",
+    )
+    p.add_argument(
+        "--mid-score-max",
+        type=float,
+        default=0.50,
+        help="Mid-band upper bound inclusive (default 0.50).",
+    )
     p.add_argument("--high-score-min", type=float, default=0.8, help="High-score band lower bound (exclusive).")
+    p.add_argument(
+        "--community-cut-score-min",
+        type=float,
+        default=0.30,
+        help="Community cut zone lower bound inclusive (descriptive analysis).",
+    )
+    p.add_argument(
+        "--community-cut-score-max",
+        type=float,
+        default=0.50,
+        help="Community cut zone upper bound inclusive (descriptive analysis).",
+    )
     p.add_argument("--anchor-run-dir", type=Path, default=None, help="Optional anchor graph run dir (contains anchor_graph_nodes.csv) for shared-evidence diagnostics.")
     p.add_argument(
         "--misp-json-path",
@@ -3623,27 +4260,103 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Load graph without ToUndirected (default: undirected, matching training)",
     )
+    p.add_argument(
+        "--skip-rescued-collapsed-analysis",
+        action="store_true",
+        help="Skip rescued vs collapsed same-campaign unlabeled analysis.",
+    )
+    p.add_argument(
+        "--skip-mid-band-analysis",
+        action="store_true",
+        help="Skip mid-band / full frontier analysis (low/mid/high unlabeled cohorts).",
+    )
+    p.add_argument(
+        "--skip-frontier-analysis",
+        action="store_true",
+        help="Alias for --skip-mid-band-analysis (full pair frontier diagnostic).",
+    )
+    p.add_argument(
+        "--skip-high-cross-analysis",
+        action="store_true",
+        help="Skip high-scoring cross-campaign unlabeled diagnostic (GNN-only FP analysis).",
+    )
+    p.add_argument(
+        "--high-cross-score-min",
+        type=float,
+        default=0.80,
+        help="Min score for high_cross_unlabeled / high_same_unlabeled cohorts (default 0.80).",
+    )
+    p.add_argument(
+        "--mid-cross-score-min",
+        type=float,
+        default=0.70,
+        help="Lower bound for mid_cross_unlabeled vs high_cross comparison (default 0.70).",
+    )
+    p.add_argument(
+        "--rescued-score-min",
+        type=float,
+        default=0.80,
+        help="Score >= this marks rescued_same_unlabeled (default 0.80).",
+    )
+    p.add_argument(
+        "--collapsed-score-max",
+        type=float,
+        default=0.10,
+        help="Score <= this marks collapsed_same_unlabeled (default 0.10).",
+    )
+    p.add_argument(
+        "--emit-debug-json",
+        action="store_true",
+        help="Write detail_* separator/joint/twohop JSON under debug_json/ (off by default).",
+    )
+    p.add_argument(
+        "--emit-debug-csv",
+        action="store_true",
+        help="Write detail_* tables and debug_* pair dumps under debug_csv/ (off by default).",
+    )
+    p.add_argument(
+        "--emit-debug-html",
+        action="store_true",
+        help="Write debug_* secondary review HTML under debug_csv/ (off by default).",
+    )
+    p.add_argument(
+        "--emit-review-jsonl",
+        action="store_true",
+        help="Also write JSONL review exports (requires --emit-debug-csv; off by default).",
+    )
     args = p.parse_args(argv)
 
+    if bool(args.gt_dir) == bool(args.gt_path):
+        raise SystemExit("Provide exactly one of: --gt-dir, or one or more --gt-path.")
+
     run_dir = args.run_dir.resolve()
-    cfg_path = run_dir / "training_config.json"
-    if not cfg_path.is_file():
-        raise SystemExit(f"Missing {cfg_path}")
-    with open(cfg_path, encoding="utf-8") as f:
-        tc = json.load(f)
-    pair_csv = args.pair_csv
-    if pair_csv is None:
-        raw = tc.get("pair_dataset_csv")
-        if not raw:
-            raise SystemExit("pair_dataset_csv not in training_config.json; pass --pair-csv")
-        pair_csv = Path(raw)
-        if not pair_csv.is_absolute():
-            repo = Path(__file__).resolve().parents[2]
-            pair_csv = (repo / pair_csv).resolve()
+    repo_root = Path(__file__).resolve().parents[2]
+    from seed_candidate_workflow.utils.pair_model_inference import (
+        resolve_pair_dataset_csv_path,
+        resolve_pair_supervision_run_artifacts,
+    )
+
+    try:
+        resolve_pair_supervision_run_artifacts(
+            run_dir,
+            checkpoint_name=str(args.checkpoint),
+            project_root=repo_root,
+        )
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    try:
+        pair_csv = resolve_pair_dataset_csv_path(
+            run_dir,
+            pair_csv=args.pair_csv,
+            project_root=repo_root,
+        )
+    except FileNotFoundError as exc:
+        raise SystemExit(str(exc)) from exc
 
     gt_paths: list[Path] = []
     if args.gt_path is not None:
-        gt_paths = [args.gt_path.resolve()]
+        gt_paths = [Path(p).resolve() for p in args.gt_path]
     elif args.gt_dir is not None:
         gt_paths.extend(
             _gt_json_paths_from_dir(
@@ -3661,6 +4374,12 @@ def main(argv: list[str] | None = None) -> None:
     if not gt_paths:
         raise SystemExit("No ground-truth files resolved; use --gt-path or --gt-dir.")
 
+    export_flags = ExportFlags.from_cli(
+        emit_debug_json=bool(args.emit_debug_json),
+        emit_debug_csv=bool(args.emit_debug_csv),
+        emit_debug_html=bool(args.emit_debug_html),
+        emit_review_jsonl=bool(args.emit_review_jsonl),
+    )
     out = run_pair_score_separation_analysis(
         run_dir=run_dir,
         graph_pt=args.graph_pt.resolve(),
@@ -3671,18 +4390,37 @@ def main(argv: list[str] | None = None) -> None:
         device=args.device,
         to_undirected=not bool(args.no_to_undirected),
         low_score_max=float(args.low_score_max),
+        mid_score_min=float(args.mid_score_min),
+        mid_score_max=float(args.mid_score_max),
         high_score_min=float(args.high_score_min),
+        community_cut_score_min=float(args.community_cut_score_min),
+        community_cut_score_max=float(args.community_cut_score_max),
+        enable_mid_band_frontier_analysis=not (
+            bool(args.skip_mid_band_analysis) or bool(args.skip_frontier_analysis)
+        ),
+        enable_frontier_analysis=not (
+            bool(args.skip_mid_band_analysis) or bool(args.skip_frontier_analysis)
+        ),
         anchor_run_dir=args.anchor_run_dir,
         misp_json_path=args.misp_json_path,
         misp_translated_json_path=args.misp_translated_json_path,
         skip_email_text_export=bool(args.skip_email_text_export),
         email_text_preview_chars=int(args.email_text_preview_chars),
         email_text_wrap_width=int(args.email_text_wrap_width),
+        enable_rescued_collapsed_analysis=not bool(args.skip_rescued_collapsed_analysis),
+        enable_high_cross_unlabeled_analysis=not bool(args.skip_high_cross_analysis),
+        high_cross_score_min=float(args.high_cross_score_min),
+        mid_cross_score_min=float(args.mid_cross_score_min),
+        rescued_score_min=float(args.rescued_score_min),
+        collapsed_score_max=float(args.collapsed_score_max),
+        export_flags=export_flags,
     )
     print(
         json.dumps(
             {
                 "wrote": out["summary_path"],
+                "manifest": out.get("manifest_path"),
+                "primary_outputs": out.get("primary_outputs"),
                 "band_csv": out["band_csv_path"],
                 "low_band_separator_json": out["low_separator_summary_path"],
                 "low_band_separator_csv": out["low_separator_csv_path"],
@@ -3735,6 +4473,10 @@ def main(argv: list[str] | None = None) -> None:
                 "low_band_cross_campaign_unlabeled_pairs_for_review_html": out.get(
                     "low_band_cross_campaign_unlabeled_pairs_for_review_html_path"
                 ),
+                "rescued_collapsed_summary_json": out.get("rescued_collapsed_summary_path"),
+                "rescued_collapsed_table_csv": out.get("rescued_collapsed_table_path"),
+                "rescued_collapsed_joint_json": out.get("rescued_collapsed_joint_path"),
+                "rescued_collapsed_review_html": out.get("rescued_collapsed_review_html_path"),
                 "plots_under": str(Path(out["output_dir"]) / "plots"),
             },
             indent=2,

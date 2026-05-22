@@ -39,6 +39,7 @@ from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProject
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
+from .hetero_graph_cleanup import drop_inactive_hetero_node_types
 from .normalizer import normalize_graph
 from .feature_projection import (
     SCALAR_COUNT,
@@ -200,11 +201,19 @@ def _build_metadata_from_ir(data: Any, ir: Any, schema: GraphSchema) -> Dict[str
     edge_counts: Dict[str, int] = {}
 
     for node_key, node_map in schema.nodes.items():
+        if node_key not in ir.nodes:
+            continue
         pyg_label = node_map.pyg
         if node_key != "email":
-            labels: List[str] = list((ir.nodes.get(node_key) and ir.nodes[node_key].index_to_string) or [])
+            labels: List[str] = list((ir.nodes[node_key].index_to_string) or [])
             node_maps[pyg_label] = {"index_to_string": labels}
-        feature_shapes[pyg_label] = list(data[pyg_label].x.shape) if "x" in data[pyg_label] else [0, 0]
+        if pyg_label in data.node_types and "x" in data[pyg_label]:
+            feature_shapes[pyg_label] = list(data[pyg_label].x.shape)
+        else:
+            node_x = ir.nodes[node_key].x
+            n_rows = len(node_x)
+            n_cols = len(node_x[0]) if node_x and node_x[0] else 0
+            feature_shapes[pyg_label] = [n_rows, n_cols]
 
     for edge_key, edge in schema.edges.items():
         src_label = N[edge.src].pyg
@@ -289,7 +298,8 @@ def build_hetero_graph_from_misp(
     _set_edges_from_ir(data, ir, schema)
 
     data = normalize_graph(data)
-    
+    data = drop_inactive_hetero_node_types(data)
+
     metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
 

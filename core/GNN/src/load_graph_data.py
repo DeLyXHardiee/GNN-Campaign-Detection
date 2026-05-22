@@ -49,5 +49,16 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
         del data["email"].external_id
     if to_undirected:
-        return ToUndirected()(data)
-    return data
+        data = ToUndirected()(data)
+
+    # Graphs built with exclude_node_types may still carry empty placeholder node
+    # stores from older metadata passes; strip them before GNN / neighbor sampling.
+    try:
+        from graph.hetero_graph_cleanup import drop_inactive_hetero_node_types
+    except ImportError:
+        core_dir = Path(__file__).resolve().parent.parent.parent
+        if str(core_dir) not in sys.path:
+            sys.path.insert(0, str(core_dir))
+        from graph.hetero_graph_cleanup import drop_inactive_hetero_node_types
+
+    return drop_inactive_hetero_node_types(data)

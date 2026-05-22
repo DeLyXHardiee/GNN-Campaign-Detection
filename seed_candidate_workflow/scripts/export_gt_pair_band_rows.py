@@ -126,6 +126,7 @@ def main() -> None:
         fanout=bundle["fanout"],
         pair_batch_size=bundle["pair_batch_size"],
         max_unique_emails=bundle["max_unique_emails"],
+        pair_feature_columns=bundle.get("pair_feature_columns"),
     )
 
     label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)

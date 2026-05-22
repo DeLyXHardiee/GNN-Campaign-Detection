@@ -1,0 +1,280 @@
+{
+  "schema": "dedup_vs_expanded_gap_summary_v2",
+  "inputs": {
+    "gt_dedup_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.dedup_task_identity.json",
+    "gt_expanded_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+    "anchor_run_dir": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\graph_bundles\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\anchor\\main_gnn_pu_1_no_ts_dedup_task_identity_11",
+    "scored_edges_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\materialized_pu_scored_edges_main_gnn_pu_1_no_ts_dedup_task_identity_11.csv",
+    "community_multi_gt_summary_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_multi_gt_summary.json",
+    "dedup_collapse_out_dir": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\misp\\misp_lake_dedup_task_identity",
+    "external_id_map_csv": null,
+    "member_external_id_map_csv_resolved": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\misp\\misp_lake_dedup_task_identity\\external_id_map.csv",
+    "candidate_union_csv": null,
+    "pair_training_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\graph_bundles\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\pair_training\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\pair_training_dataset.csv"
+  },
+  "same_partition_comparison": {
+    "expanded_selected": {
+      "selection_label": "expanded_selected",
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_best__ground_truth.json",
+      "partition_parameters": {
+        "method": "louvain",
+        "resolution": 1.5,
+        "min_edge_weight": 0.1,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      },
+      "partition_info_replayed": {
+        "method_requested": "louvain",
+        "method_used": "louvain",
+        "n_nodes": 4970,
+        "n_edges_after_threshold": 39833,
+        "n_communities": 1482
+      },
+      "metrics_on_dedup_gt": {
+        "n_eval": 785.0,
+        "homogeneity": 0.970874908276948,
+        "completeness": 0.8451283810806106,
+        "v_measure": 0.9036480762698991,
+        "coverage_gt": 1.0,
+        "coverage_predictions": 0.1579476861167002
+      },
+      "metrics_on_expanded_gt": {
+        "n_eval": 1472.0,
+        "homogeneity": 0.972536052026959,
+        "completeness": 0.8652335334483409,
+        "v_measure": 0.9157522372246211,
+        "coverage_gt": 1.0,
+        "coverage_predictions": 0.2007363971089595
+      },
+      "deltas_expanded_minus_dedup": {
+        "expanded_minus_dedup_v_measure": 0.012104160954721999,
+        "expanded_minus_dedup_completeness": 0.02010515236773025,
+        "expanded_minus_dedup_homogeneity": 0.0016611437500110293
+      },
+      "interpretation": "Using the expanded_selected partition (one fixed prediction, two GT views), expanded GT scores higher than dedup GT on V-measure (Δ=+0.0121)."
+    },
+    "dedup_selected": {
+      "selection_label": "dedup_selected",
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\seed_candidate\\community\\anchor_community_best__ground_truth.dedup_task_identity.json",
+      "partition_parameters": {
+        "method": "leiden",
+        "resolution": 1.5,
+        "min_edge_weight": 0.0001,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      },
+      "partition_info_replayed": {
+        "method_requested": "leiden",
+        "method_used": "leiden",
+        "n_nodes": 4970,
+        "n_edges_after_threshold": 54904,
+        "n_communities": 834
+      },
+      "metrics_on_dedup_gt": {
+        "n_eval": 785.0,
+        "homogeneity": 0.9474505025952602,
+        "completeness": 0.9185704308199644,
+        "v_measure": 0.9327869808584425,
+        "coverage_gt": 1.0,
+        "coverage_predictions": 0.1579476861167002
+      },
+      "metrics_on_expanded_gt": {
+        "n_eval": 1472.0,
+        "homogeneity": 0.9112564523250241,
+        "completeness": 0.910636197252695,
+        "v_measure": 0.9109462192073493,
+        "coverage_gt": 1.0,
+        "coverage_predictions": 0.2007363971089595
+      },
+      "deltas_expanded_minus_dedup": {
+        "expanded_minus_dedup_v_measure": -0.021840761651093166,
+        "expanded_minus_dedup_completeness": -0.007934233567269411,
+        "expanded_minus_dedup_homogeneity": -0.036194050270236144
+      },
+      "interpretation": "Using the dedup_selected partition (one fixed prediction, two GT views), dedup GT scores higher than expanded GT on V-measure (Δ=-0.0218)."
+    }
+  },
+  "best_to_best_comparison": {
+    "expanded_gt_best": {
+      "gt_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_best__ground_truth.json",
+      "partition_parameters": {
+        "method": "louvain",
+        "resolution": 1.5,
+        "min_edge_weight": 0.1,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      },
+      "metrics_at_best_for_this_gt": {
+        "n_eval": 1472.0,
+        "homogeneity": 0.973252296652633,
+        "completeness": 0.8626847341216113,
+        "v_measure": 0.9146391022103272,
+        "coverage_gt": 1.0,
+        "coverage_predictions": null
+      },
+      "note": "Metrics from community sweep best_row for expanded GT (each GT optimizes its own partition)."
+    },
+    "dedup_gt_best": {
+      "gt_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.dedup_task_identity.json",
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\seed_candidate\\community\\anchor_community_best__ground_truth.dedup_task_identity.json",
+      "partition_parameters": {
+        "method": "leiden",
+        "resolution": 1.5,
+        "min_edge_weight": 0.0001,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      },
+      "metrics_at_best_for_this_gt": {
+        "n_eval": 785.0,
+        "homogeneity": 0.9474505025952602,
+        "completeness": 0.9185704308199644,
+        "v_measure": 0.9327869808584425,
+        "coverage_gt": 1.0,
+        "coverage_predictions": null
+      },
+      "note": "Metrics from community sweep best_row for dedup GT."
+    },
+    "same_partition": false,
+    "partition_parameter_diff": {
+      "method": {
+        "expanded_best": "louvain",
+        "dedup_best": "leiden",
+        "equal": false
+      },
+      "resolution": {
+        "expanded_best": 1.5,
+        "dedup_best": 1.5,
+        "delta_expanded_minus_dedup": 0.0
+      },
+      "min_edge_weight": {
+        "expanded_best": 0.1,
+        "dedup_best": 0.0001,
+        "delta_expanded_minus_dedup": 0.0999
+      }
+    },
+    "deltas_expanded_best_minus_dedup_best": {
+      "best_to_best_v_measure_delta": -0.01814787864811529,
+      "best_to_best_completeness_delta": -0.05588569669835308,
+      "best_to_best_homogeneity_delta": 0.025801794057372818
+    },
+    "interpretation": "Each GT view selected its own sweep-best partition (settings may differ); dedup GT achieves a higher best V-measure than expanded GT."
+  },
+  "same_partition_interpretation": "Using the expanded_selected partition (one fixed prediction, two GT views), expanded GT scores higher than dedup GT on V-measure (Δ=+0.0121).",
+  "best_to_best_interpretation": "Each GT view selected its own sweep-best partition (settings may differ); dedup GT achieves a higher best V-measure than expanded GT.",
+  "evaluation_mode_diagnostics": {
+    "community_multi_gt_summary_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_multi_gt_summary.json",
+    "expanded_selected": {
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_best__ground_truth.json",
+      "partition_parameters": {
+        "method": "louvain",
+        "resolution": 1.5,
+        "min_edge_weight": 0.1,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      }
+    },
+    "dedup_selected": {
+      "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11\\seed_candidate\\community\\anchor_community_best__ground_truth.dedup_task_identity.json",
+      "partition_parameters": {
+        "method": "leiden",
+        "resolution": 1.5,
+        "min_edge_weight": 0.0001,
+        "weight_col": "edge_weight",
+        "use_edge_weights_in_partitioning": true
+      }
+    },
+    "best_to_best_same_partition": false,
+    "scored_edges_csv": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\analysis\\materialized_pu_scored_edges_main_gnn_pu_1_no_ts_dedup_task_identity_11.csv",
+    "gt_dedup_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.dedup_task_identity.json",
+    "gt_expanded_json": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+    "legacy_v1_global_metrics_note": "v1 global_metrics compared expanded-GT metrics on member-expanded predictions against dedup-GT metrics on representative-level predictions under one partition; that mixed GT views and prediction levels. Use same_partition_comparison and best_to_best_comparison instead."
+  },
+  "structural_analysis": {
+    "comparison_mode": "same_partition",
+    "submode": "expanded_selected",
+    "partition_parameters": {
+      "method": "louvain",
+      "resolution": 1.5,
+      "min_edge_weight": 0.1,
+      "weight_col": "edge_weight",
+      "use_edge_weights_in_partitioning": true
+    },
+    "selection_source": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\seed_candidate_workflow\\output\\scoring_runs\\main_gnn_pu_1_no_ts_dedup_task_identity_11__expanded_full_gt\\seed_candidate\\community\\anchor_community_best__ground_truth.json",
+    "failure_classification": {
+      "failure_mechanism_tags": [
+        "missing_candidate_representative_links"
+      ],
+      "link_stats": {
+        "n_representative_pairs_analyzed": 21481,
+        "n_missing_from_candidate": 7889,
+        "n_present_low_score": 2046,
+        "n_present_high_score": 11546,
+        "n_same_pred_community": 16372,
+        "n_split_across_pred_communities": 5109,
+        "score_threshold_used": 0.1
+      },
+      "campaign_mass_stats": {
+        "n_campaigns_positive_gap_mass": 0,
+        "total_gap_mass": 0.0,
+        "fraction_gap_mass_top5_campaigns": 0.0,
+        "n_campaigns_small_gap_mass_lt_5": 0
+      },
+      "plain_english_takeaways": [
+        "A substantial share of representative pairs in lossy campaigns never appear in the candidate graph; recovering those bridges or widening candidate families is likely high leverage."
+      ]
+    },
+    "best_to_best_note": "Representative-link and lossy-campaign tables use the expanded-selected partition only. If best-to-best partitions differ, structural conclusions may not hold for the dedup-optimal partition."
+  },
+  "lossy_campaign_analysis": {
+    "comparison_mode": "same_partition",
+    "submode": "expanded_selected",
+    "partition_parameters": {
+      "method": "louvain",
+      "resolution": 1.5,
+      "min_edge_weight": 0.1,
+      "weight_col": "edge_weight",
+      "use_edge_weights_in_partitioning": true
+    },
+    "description": "Campaign ranking and representative-pair tables answer: given one fixed prediction (expanded-selected partition), what coherence is lost when evaluating duplicate-expanded GT?"
+  },
+  "questions": {
+    "A_where_does_gap_come_from": {
+      "few_large_campaigns": false,
+      "many_small_campaigns": false,
+      "many_dedup_representatives": true,
+      "missing_bridges_between_representatives": true
+    },
+    "B_failing_representative_links": {
+      "mostly_absent_from_candidate": true,
+      "mostly_present_but_low_scoring": false,
+      "community_split_despite_strong_edges": false
+    },
+    "C_implications_next_steps": [
+      "A substantial share of representative pairs in lossy campaigns never appear in the candidate graph; recovering those bridges or widening candidate families is likely high leverage."
+    ]
+  },
+  "failure_classification": {
+    "failure_mechanism_tags": [
+      "missing_candidate_representative_links"
+    ],
+    "link_stats": {
+      "n_representative_pairs_analyzed": 21481,
+      "n_missing_from_candidate": 7889,
+      "n_present_low_score": 2046,
+      "n_present_high_score": 11546,
+      "n_same_pred_community": 16372,
+      "n_split_across_pred_communities": 5109,
+      "score_threshold_used": 0.1
+    },
+    "campaign_mass_stats": {
+      "n_campaigns_positive_gap_mass": 0,
+      "total_gap_mass": 0.0,
+      "fraction_gap_mass_top5_campaigns": 0.0,
+      "n_campaigns_small_gap_mass_lt_5": 0
+    },
+    "plain_english_takeaways": [
+      "A substantial share of representative pairs in lossy campaigns never appear in the candidate graph; recovering those bridges or widening candidate families is likely high leverage."
+    ]
+  }
+}

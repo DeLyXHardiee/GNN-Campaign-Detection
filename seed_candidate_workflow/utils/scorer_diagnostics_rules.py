@@ -18,6 +18,15 @@ FEATURE_KEYS_DEFAULT: tuple[str, ...] = (
     "twohop_rarity_max",
     "component_cosine_max",
     "time_gap_seconds_min",
+    "source_count",
+    "body_token_jaccard",
+    "body_char4gram_jaccard",
+    "body_only_token_jaccard",
+    "body_only_char4gram_jaccard",
+    "path_token_jaccard_combined",
+    "url_path_token_jaccard",
+    "stem_path_token_jaccard",
+    "sender_localpart_norm_jaccard",
 )
 
 SHARED_EVIDENCE_KEYS_DEFAULT: tuple[str, ...] = (

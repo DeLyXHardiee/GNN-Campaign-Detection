@@ -244,3 +244,87 @@ def generate_semantic_mid_stem_support_v1(
         support_mode="stem",
         source_label="semantic_mid_stem_support_v1",
     )
+
+
+def _nodes_sender_dict(nodes_df: pd.DataFrame) -> dict[str, dict[str, set[str]]]:
+    out: dict[str, dict[str, set[str]]] = {}
+    if "sender_set" not in nodes_df.columns:
+        return out
+    for _, row in nodes_df.iterrows():
+        eid = str(row.get("external_id") or "").strip()
+        if not eid:
+            continue
+        out[eid] = {"sender_set": _to_set_cell(row.get("sender_set"))}
+    return out
+
+
+def generate_semantic_mid_senderlocalpart_support_v1(
+    *,
+    nodes_df: pd.DataFrame,
+    id_to_vec: dict[str, np.ndarray],
+    generator_cfg: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Medium semantic band (default 0.85 <= cosine < 0.90) with normalized sender local-part
+    similarity >= threshold (default 0.7). Distinct from ``semantic_mid_sender_support_v1``
+    (exact shared sender channel only).
+    """
+    from seed_candidate_workflow.utils.pair_similarity_features import (
+        sender_localpart_norm_jaccard_for_nodes,
+    )
+
+    semantic_top_k = int(generator_cfg.get("semantic_top_k", 50))
+    semantic_min_cos = float(generator_cfg.get("semantic_min_cos", 0.85))
+    semantic_max_cos_exclusive = float(generator_cfg.get("semantic_max_cos_exclusive", 0.90))
+    min_sender_lp = float(generator_cfg.get("min_sender_localpart_norm_jaccard", 0.7))
+    max_candidate_rows = int(generator_cfg.get("max_candidate_rows", 500_000))
+
+    nodes_df = nodes_df.copy()
+    nodes_df["external_id"] = nodes_df["external_id"].astype(str)
+    nodes_by_sender = _nodes_sender_dict(nodes_df)
+    node_ids = nodes_df["external_id"].tolist()
+
+    band_pairs = _compute_direct_cosine_band_pairs(
+        node_ids=node_ids,
+        id_to_vec=id_to_vec,
+        semantic_top_k=semantic_top_k,
+        semantic_min_cos=semantic_min_cos,
+        semantic_max_cos_exclusive=semantic_max_cos_exclusive,
+    )
+
+    rows: list[dict[str, Any]] = []
+    n_band = len(band_pairs)
+    n_lp_fail = 0
+    for (a, b), cos in sorted(band_pairs.items(), key=lambda x: (-x[1], x[0][0], x[0][1])):
+        na = nodes_by_sender.get(a) or {}
+        nb = nodes_by_sender.get(b) or {}
+        lp_sim = sender_localpart_norm_jaccard_for_nodes(na, nb)
+        if lp_sim < min_sender_lp:
+            n_lp_fail += 1
+            continue
+        rows.append(
+            {
+                "email_i": a,
+                "email_j": b,
+                "source": "semantic_mid_senderlocalpart_support_v1",
+                "cosine": float(cos),
+                "sender_localpart_norm_jaccard": float(lp_sim),
+                "semantic_min_cos": semantic_min_cos,
+                "semantic_max_cos_exclusive": semantic_max_cos_exclusive,
+            }
+        )
+        if len(rows) >= max_candidate_rows:
+            break
+
+    df = pd.DataFrame(rows)
+    return df, {
+        "semantic_min_cos": semantic_min_cos,
+        "semantic_max_cos_exclusive": semantic_max_cos_exclusive,
+        "min_sender_localpart_norm_jaccard": min_sender_lp,
+        "semantic_top_k": semantic_top_k,
+        "n_pairs_in_band": int(n_band),
+        "n_pairs_sender_localpart_pass": int(len(df)),
+        "n_pairs_sender_localpart_fail": int(n_lp_fail),
+        "max_candidate_rows": max_candidate_rows,
+        "truncated": bool(len(rows) >= max_candidate_rows),
+    }

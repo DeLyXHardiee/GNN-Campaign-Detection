@@ -1,0 +1,7 @@
+[
+  {
+    "family_name": "same_query_key_set_or_overlap_ge_*",
+    "category": "C_url_path",
+    "reason": "query-key overlap feature not computed in scorecard enrichment yet"
+  }
+]

@@ -28,11 +28,21 @@ from seed_candidate_workflow.utils.anchor_candidate_2hop_bounded_helpers import 
 from seed_candidate_workflow.utils.anchor_candidate_shared_stem_highconf_helpers import (
     generate_candidates_shared_stem_highconf_v1,
 )
+from seed_candidate_workflow.utils.anchor_candidate_body_similarity_helpers import (
+    BODY_GENERATOR_NAMES,
+    build_semantic_band_pool_for_body_generators,
+    generate_body_char4gram_jaccard_highconf_v1,
+    generate_body_token_jaccard_highconf_v1,
+    prepare_body_feature_store,
+)
+from seed_candidate_workflow.utils.body_similarity_progress import progress_from_cfg
 from seed_candidate_workflow.utils.anchor_candidate_semantic_mid_support_helpers import (
     generate_semantic_mid_core_support_v1,
     generate_semantic_mid_sender_support_v1,
+    generate_semantic_mid_senderlocalpart_support_v1,
     generate_semantic_mid_stem_support_v1,
 )
+from seed_candidate_workflow.utils.pair_similarity_features import load_misp_text_catalog_for_pairs
 from seed_candidate_workflow.utils.anchor_candidate_eval_helpers import run_candidate_evaluation_report
 from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts, load_embedding_vectors
 
@@ -217,6 +227,18 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         tfidf_max_features=tfidf_max_features,
     )
 
+    _body_gen_names = {"body_token_jaccard_highconf_v1", "body_char4gram_jaccard_highconf_v1"}
+    text_catalog_shared: dict[str, dict[str, str]] = {}
+    text_catalog_meta_shared: dict[str, Any] = {}
+    if any(
+        bool(g.get("enabled", True)) and str(g.get("name") or "").strip().lower() in _body_gen_names
+        for g in generators
+        if isinstance(g, dict)
+    ):
+        text_catalog_shared, text_catalog_meta_shared = load_misp_text_catalog_for_pairs(
+            project_root=project_root
+        )
+
     ts_map: dict[str, float] = {}
     if "ts" in nodes_df.columns:
         for eid, ts in zip(nodes_df["external_id"].astype(str).tolist(), nodes_df["ts"].tolist(), strict=False):
@@ -233,6 +255,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         "semantic_mid_sender": set(),
         "semantic_mid_core": set(),
         "semantic_mid_stem": set(),
+        "semantic_mid_senderlocalpart": set(),
+        "body_token_jaccard_highconf": set(),
+        "body_char4gram_jaccard_highconf": set(),
         "semantic": set(),
         "component": set(),
         "twohop": set(),
@@ -242,6 +267,8 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     component_cosine_max: dict[tuple[str, str], float] = {}
     twohop_rarity_max: dict[tuple[str, str], float] = {}
     pair_time_gap_min: dict[tuple[str, str], float] = {}
+
+    deferred_body_gens: list[tuple[str, dict[str, Any]]] = []
 
     pbar_total = 5 + int(len(generators))
     pbar = tqdm(total=pbar_total, desc=f"Anchor candidate generation [{graph_id}]") if tqdm is not None else None
@@ -260,6 +287,12 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         if name:
             generator_cfg_map[name] = {"enabled": enabled, "config": cfg}
         if not enabled or not name:
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if name in BODY_GENERATOR_NAMES:
+            deferred_body_gens.append((name, cfg))
             if pbar is not None:
                 pbar.update(1)
             continue
@@ -405,6 +438,32 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 pbar.update(1)
             continue
 
+        if name == "semantic_mid_senderlocalpart_support_v1":
+            df, diag = generate_semantic_mid_senderlocalpart_support_v1(
+                nodes_df=nodes_df,
+                id_to_vec=id_to_vec,
+                generator_cfg=cfg,
+            )
+            p = out_dir / "candidates_semantic_mid_senderlocalpart_support.csv"
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources["semantic_mid_senderlocalpart"] |= pairs
+            semantic_cosine_max.update(_aggregate_pair_metric_max(df, "cosine"))
+            per_gen_outputs.append(
+                {
+                    "name": name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
         if name == "semantic_reciprocal_v1":
             semantic_top_k = int(cfg.get("semantic_top_k", 50))
             semantic_min_cos = float(cfg.get("semantic_min_cos", 0.9))
@@ -530,6 +589,85 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
 
         raise ValueError(f"Unknown candidate generator: {name!r}")
 
+    body_generation_summary: dict[str, Any] = {}
+    if deferred_body_gens:
+        prior_pair_pool = set(union_pairs)
+        first_body_cfg = deferred_body_gens[0][1]
+        body_progress = progress_from_cfg(first_body_cfg, graph_id=graph_id)
+        body_progress.message(
+            f"Starting body Jaccard generators ({len(deferred_body_gens)} rules, "
+            f"prior_pool={len(prior_pair_pool):,} pairs)"
+        )
+        semantic_band_pool = build_semantic_band_pool_for_body_generators(
+            nodes_df=nodes_df,
+            id_to_vec=id_to_vec,
+            generator_cfg=first_body_cfg,
+            progress=body_progress,
+        )
+        shared_store, cache_diag, _catalog = prepare_body_feature_store(
+            nodes_df=nodes_df,
+            generator_cfg=first_body_cfg,
+            project_root=project_root,
+            graph_id=graph_id,
+            text_catalog=text_catalog_shared,
+            progress=body_progress,
+        )
+        body_generation_summary = {
+            "n_deferred_generators": int(len(deferred_body_gens)),
+            "n_prior_pair_pool": int(len(prior_pair_pool)),
+            "n_semantic_band_pool": int(len(semantic_band_pool)),
+            "cache": cache_diag,
+        }
+        for gen_idx, (body_name, body_cfg) in enumerate(deferred_body_gens, start=1):
+            body_progress.message(f"Generator {gen_idx}/{len(deferred_body_gens)}: {body_name}")
+            if body_name == "body_token_jaccard_highconf_v1":
+                df, diag = generate_body_token_jaccard_highconf_v1(
+                    nodes_df=nodes_df,
+                    generator_cfg=body_cfg,
+                    project_root=project_root,
+                    graph_id=graph_id,
+                    text_catalog=text_catalog_shared,
+                    prior_pair_pool=prior_pair_pool,
+                    semantic_band_pool=semantic_band_pool,
+                    body_feature_store=shared_store,
+                    cache_diag_preload=cache_diag,
+                    progress=body_progress,
+                )
+                p = out_dir / "candidates_body_token_jaccard_highconf.csv"
+                pair_key = "body_token_jaccard_highconf"
+            elif body_name == "body_char4gram_jaccard_highconf_v1":
+                df, diag = generate_body_char4gram_jaccard_highconf_v1(
+                    nodes_df=nodes_df,
+                    generator_cfg=body_cfg,
+                    project_root=project_root,
+                    graph_id=graph_id,
+                    text_catalog=text_catalog_shared,
+                    prior_pair_pool=prior_pair_pool,
+                    semantic_band_pool=semantic_band_pool,
+                    body_feature_store=shared_store,
+                    cache_diag_preload=cache_diag,
+                    progress=body_progress,
+                )
+                p = out_dir / "candidates_body_char4gram_jaccard_highconf.csv"
+                pair_key = "body_char4gram_jaccard_highconf"
+            else:
+                continue
+            _write_candidate_csv(df, p)
+            pairs = _pairs_from_df(df)
+            union_pairs |= pairs
+            pair_sources[pair_key] |= pairs
+            per_gen_outputs.append(
+                {
+                    "name": body_name,
+                    "enabled": True,
+                    "csv": str(p),
+                    "n_rows": int(len(df)),
+                    "n_pairs": int(len(pairs)),
+                    "diagnostics": diag,
+                }
+            )
+        body_progress.message("Body Jaccard generators finished")
+
     # Enforce required invariant on the union of enabled generator outputs.
     missing_seed_pairs = seed_pairs - union_pairs
     if missing_seed_pairs:
@@ -555,6 +693,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         from_mid_sender = (email_i, email_j) in pair_sources["semantic_mid_sender"]
         from_mid_core = (email_i, email_j) in pair_sources["semantic_mid_core"]
         from_mid_stem = (email_i, email_j) in pair_sources["semantic_mid_stem"]
+        from_mid_sender_lp = (email_i, email_j) in pair_sources["semantic_mid_senderlocalpart"]
+        from_body_tok = (email_i, email_j) in pair_sources["body_token_jaccard_highconf"]
+        from_body_c4 = (email_i, email_j) in pair_sources["body_char4gram_jaccard_highconf"]
         from_sem = (email_i, email_j) in pair_sources["semantic"]
         from_comp = (email_i, email_j) in pair_sources["component"]
         from_2hop = (email_i, email_j) in pair_sources["twohop"]
@@ -572,6 +713,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                 "from_semantic_mid_sender_support": bool(from_mid_sender),
                 "from_semantic_mid_core_support": bool(from_mid_core),
                 "from_semantic_mid_stem_support": bool(from_mid_stem),
+                "from_semantic_mid_senderlocalpart_support": bool(from_mid_sender_lp),
+                "from_body_token_jaccard_highconf": bool(from_body_tok),
+                "from_body_char4gram_jaccard_highconf": bool(from_body_c4),
                 "from_semantic": bool(from_sem),
                 "from_component": bool(from_comp),
                 "from_2hop": bool(from_2hop),
@@ -584,6 +728,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
                             from_mid_sender,
                             from_mid_core,
                             from_mid_stem,
+                            from_mid_sender_lp,
+                            from_body_tok,
+                            from_body_c4,
                             from_sem,
                             from_comp,
                             from_2hop,
@@ -632,6 +779,7 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         "anchor_run_dir": str(anchor_run_dir),
         "seed_stage_dir": str(seed_dir),
         "generators_run": per_gen_outputs,
+        "body_jaccard_generation": body_generation_summary or None,
         "union_invariant": {
             "n_seed_pairs": int(len(seed_pairs)),
             "n_union_pairs": int(len(union_pairs)),
@@ -663,9 +811,28 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             else 0,
             "n_from_component": int(candidate_union_df["from_component"].sum()) if not candidate_union_df.empty else 0,
             "n_from_2hop": int(candidate_union_df["from_2hop"].sum()) if not candidate_union_df.empty else 0,
+            "n_from_semantic_mid_senderlocalpart_support": int(
+                candidate_union_df["from_semantic_mid_senderlocalpart_support"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_semantic_mid_senderlocalpart_support" in candidate_union_df.columns
+            else 0,
+            "n_from_body_token_jaccard_highconf": int(
+                candidate_union_df["from_body_token_jaccard_highconf"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_body_token_jaccard_highconf" in candidate_union_df.columns
+            else 0,
+            "n_from_body_char4gram_jaccard_highconf": int(
+                candidate_union_df["from_body_char4gram_jaccard_highconf"].sum()
+            )
+            if not candidate_union_df.empty
+            and "from_body_char4gram_jaccard_highconf" in candidate_union_df.columns
+            else 0,
         },
         "candidate_eval": eval_outputs,
         "embedding_meta": emb_meta,
+        "text_catalog_meta": text_catalog_meta_shared,
     }
     p_summary = out_dir / "anchor_candidates_summary.json"
     p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")

@@ -325,11 +325,17 @@ def _compute_pair_features_row(
     # --- body ---
     bi = str(text_i.get("body") or "")
     bj = str(text_j.get("body") or "")
-    bt_i = _tokenize(bi, min_len=2)
-    bt_j = _tokenize(bj, min_len=2)
-    out["body_token_jaccard"] = _jaccard(bt_i, bt_j)
+    from seed_candidate_workflow.utils.pair_similarity_features import (
+        body_char4gram_jaccard_from_bodies,
+        body_token_jaccard_from_bodies,
+        tokenize_text,
+    )
+
+    bt_i = tokenize_text(bi, min_len=2)
+    bt_j = tokenize_text(bj, min_len=2)
+    out["body_token_jaccard"] = body_token_jaccard_from_bodies(bi, bj)
     out["body_token_overlap_count"] = float(_overlap_count(bt_i, bt_j))
-    out["body_char4gram_jaccard"] = _jaccard(_char_ngrams(bi, 4), _char_ngrams(bj, 4))
+    out["body_char4gram_jaccard"] = body_char4gram_jaccard_from_bodies(bi, bj)
     br_i = bt_i & body_rare_tokens
     br_j = bt_j & body_rare_tokens
     out["body_rare_token_jaccard"] = _jaccard(br_i, br_j)
@@ -979,6 +985,7 @@ def run_low_band_feature_discovery(
         fanout=bundle["fanout"],
         pair_batch_size=bundle["pair_batch_size"],
         max_unique_emails=bundle["max_unique_emails"],
+        pair_feature_columns=bundle.get("pair_feature_columns"),
     )
     scored = np.isfinite(scores)
     df_work["score"] = scores
