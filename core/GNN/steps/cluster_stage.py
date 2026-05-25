@@ -143,11 +143,6 @@ def _prepare_embedding_map_for_clustering(
         axis=0,
     )
 
-    if l2_normalize:
-        norms = np.linalg.norm(X, axis=1, keepdims=True)
-        norms = np.where(norms > 0.0, norms, 1.0)
-        X = X / norms
-
     if max_components is not None:
         max_components = int(max_components)
         if max_components > 1 and X.shape[1] > max_components:
@@ -156,10 +151,30 @@ def _prepare_embedding_map_for_clustering(
                 svd = TruncatedSVD(n_components=n_components, random_state=random_state)
                 X = svd.fit_transform(X).astype(np.float32, copy=False)
 
+    if l2_normalize:
+        norms = np.linalg.norm(X, axis=1, keepdims=True)
+        norms = np.where(norms > 0.0, norms, 1.0)
+        X = X / norms
+
     return {
         eid: np.asarray(X[i], dtype=np.float64).copy()
         for i, eid in enumerate(ordered_ids)
     }
+
+
+def _resolve_bert_max_components(optimization_cfg: dict[str, Any]) -> int | None:
+    """
+    Resolve clustering-time dimensionality reduction for the BERT baseline.
+
+    Missing config preserves the historical default of ``256``. An explicit JSON
+    ``null`` disables TruncatedSVD completely.
+    """
+    if "max_components" not in optimization_cfg:
+        return 256
+    raw_value = optimization_cfg.get("max_components")
+    if raw_value is None:
+        return None
+    return int(raw_value)
 
 
 def _resolve_bert_algorithms_cfg(
@@ -674,11 +689,7 @@ def run_clustering_stage(
         bert_id_to_emb_prepared = _prepare_embedding_map_for_clustering(
             id_to_embedding_map=bert_id_to_emb,
             l2_normalize=bool(optimization_cfg.get("l2_normalize", True)),
-            max_components=(
-                int(optimization_cfg["max_components"])
-                if optimization_cfg.get("max_components") is not None
-                else 256
-            ),
+            max_components=_resolve_bert_max_components(optimization_cfg),
             random_state=int(optimization_cfg.get("random_state", 42)),
         )
         bert_algorithms_cfg, bert_optimization_notes = _resolve_bert_algorithms_cfg(

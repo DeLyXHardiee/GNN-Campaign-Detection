@@ -98,6 +98,7 @@ def build_visualization_data(
             "params": raw.get("params") or {},
             "metrics": raw.get("metrics") or {},
             "n_campaigns": raw.get("n_campaigns", len(camps)),
+            "n_non_noise_campaigns": raw.get("n_non_noise_campaigns"),
             "n_noise": raw.get("n_noise"),
             "campaigns": camps,
         }
