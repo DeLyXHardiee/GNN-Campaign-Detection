@@ -76,8 +76,8 @@ def run_train_stage(
             backends = pair_training_enabled_backend_slugs(cfg_full)
         if not backends:
             raise ValueError(
-                "pair_training.backends must enable at least one of 'gnn' or 'mlp' when training_objective is "
-                "pair_supervision (unless pair_training_backends_override is passed)."
+                "pair_training.backends must enable at least one of 'gnn', 'mlp', or 'edge_gnn' when "
+                "training_objective is pair_supervision (unless pair_training_backends_override is passed)."
             )
         per_backend: dict[str, Any] = {}
         last_pair_out: dict[str, Any] | None = None

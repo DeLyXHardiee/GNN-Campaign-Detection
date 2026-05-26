@@ -38,6 +38,7 @@ def _discover_training_config_paths(run_dir: Path) -> list[Path]:
 
     for rel in (
         "gnn/training_config.json",
+        "edge_gnn/training_config.json",
         "training_config.json",
         "mlp/training_config.json",
     ):
@@ -77,6 +78,7 @@ def _discover_checkpoint_paths(run_dir: Path, checkpoint_name: str) -> list[Path
 
     for rel in (
         f"gnn/models/{checkpoint_name}",
+        f"edge_gnn/models/{checkpoint_name}",
         f"models/{checkpoint_name}",
         f"mlp/models/{checkpoint_name}",
     ):

@@ -15,6 +15,9 @@
     "data/groundtruth/ground_truth_merged.json",
     "data/groundtruth/ground_truth.json"
   ],
+  "expanded_gt_only": [
+    "data/groundtruth/ground_truth.json"
+  ],
   "merged_only": [
     "data/groundtruth/ground_truth_merged.json"
   ],

@@ -114,7 +114,7 @@ class GnnPathLayout:
     stage_result_json: str = "stage_result.json"
 
 
-_DEFAULT_PAIR_TRAINING_BACKENDS: dict[str, bool] = {"gnn": True, "mlp": False}
+_DEFAULT_PAIR_TRAINING_BACKENDS: dict[str, bool] = {"gnn": True, "mlp": False, "edge_gnn": False}
 
 
 def pair_training_backends_dict(cfg: Mapping[str, Any] | dict[str, Any]) -> dict[str, bool]:
@@ -129,27 +129,27 @@ def pair_training_backends_dict(cfg: Mapping[str, Any] | dict[str, Any]) -> dict
     if raw is None and isinstance(cfg, dict):
         raw = cfg.get("pair_training_backends")
     if isinstance(raw, dict):
-        for k in ("gnn", "mlp"):
+        for k in ("gnn", "mlp", "edge_gnn"):
             if k in raw:
                 out[k] = bool(raw[k])
     return out
 
 
 def pair_training_enabled_backend_slugs(cfg: Mapping[str, Any] | dict[str, Any]) -> list[str]:
-    """Stable order: ``gnn`` then ``mlp``; only backends explicitly enabled."""
+    """Stable order: ``gnn`` then ``mlp`` then ``edge_gnn``; only backends explicitly enabled."""
     d = pair_training_backends_dict(cfg)
-    return [slug for slug in ("gnn", "mlp") if d.get(slug, False)]
+    return [slug for slug in ("gnn", "mlp", "edge_gnn") if d.get(slug, False)]
 
 
 def gnn_path_layout_for_pair_backend(layout: GnnPathLayout, backend_slug: str) -> GnnPathLayout:
     """
     Per-method artifact layout under a single run directory, e.g. ``gnn/models/``, ``mlp/models/``.
 
-    ``backend_slug`` must be ``gnn`` or ``mlp`` (pair-supervision training / checkpoints only).
+    ``backend_slug`` must be ``gnn``, ``mlp``, or ``edge_gnn`` (pair-supervision training / checkpoints only).
     """
     b = str(backend_slug).strip().lower()
-    if b not in ("gnn", "mlp"):
-        raise ValueError(f"pair backend must be 'gnn' or 'mlp', got {backend_slug!r}")
+    if b not in ("gnn", "mlp", "edge_gnn"):
+        raise ValueError(f"pair backend must be 'gnn', 'mlp', or 'edge_gnn', got {backend_slug!r}")
     return GnnPathLayout(
         runs_parent=layout.runs_parent,
         models_subdir=f"{b}/models",

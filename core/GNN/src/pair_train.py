@@ -78,6 +78,7 @@ def reliable_negative_supervision_active(training_cfg: dict[str, Any], pair_loss
 PAIR_ENCODER_GNN = "gnn"
 PAIR_ENCODER_MLP_RAW_EMAIL_X = "mlp_raw_email_x"
 PAIR_ENCODER_EXPLICIT_ONLY = "explicit_only"
+PAIR_ENCODER_EDGE_GNN = "edge_gnn"
 
 
 def resolve_pair_encoder_backend(training_cfg: dict[str, Any]) -> str:
@@ -88,9 +89,12 @@ def resolve_pair_encoder_backend(training_cfg: dict[str, Any]) -> str:
         return PAIR_ENCODER_MLP_RAW_EMAIL_X
     if v in (PAIR_ENCODER_EXPLICIT_ONLY, "explicit_only", "explicit", "pair_features_only"):
         return PAIR_ENCODER_EXPLICIT_ONLY
+    if v in (PAIR_ENCODER_EDGE_GNN, "edge_gnn", "edge-gnn"):
+        return PAIR_ENCODER_EDGE_GNN
     raise ValueError(
         f"Unsupported pair_encoder_backend={training_cfg.get('pair_encoder_backend')!r}; "
-        f"use {PAIR_ENCODER_GNN!r}, {PAIR_ENCODER_MLP_RAW_EMAIL_X!r}, or {PAIR_ENCODER_EXPLICIT_ONLY!r}."
+        f"use {PAIR_ENCODER_GNN!r}, {PAIR_ENCODER_MLP_RAW_EMAIL_X!r}, {PAIR_ENCODER_EXPLICIT_ONLY!r}, "
+        f"or {PAIR_ENCODER_EDGE_GNN!r}."
     )
 
 PAIR_FEATURE_BOOL_COLS = [
@@ -2050,6 +2054,11 @@ def run_pair_training(
     np.random.seed(TORCH_SEED)
 
     df, load_stats = load_pair_training_dataframe(csv_path)
+    pair_encoder_backend = resolve_pair_encoder_backend(training_cfg)
+    if pair_encoder_backend == PAIR_ENCODER_EDGE_GNN:
+        df = df.copy()
+        df["_edge_node_id"] = np.arange(len(df), dtype=np.int64)
+
     cluster_split_meta: dict[str, Any] = {}
     if split_hygiene_enabled:
         train_df, val_df, test_df, cluster_split_meta = split_pairs_by_disjoint_semantic_clusters(
@@ -2121,7 +2130,28 @@ def run_pair_training(
 
     data_cpu = data.to("cpu")
     metadata = data_cpu.metadata()
-    pair_encoder_backend = resolve_pair_encoder_backend(training_cfg)
+
+    if pair_encoder_backend == PAIR_ENCODER_EDGE_GNN:
+        from .edge_pair_gnn_train import run_edge_gnn_pair_training
+
+        return run_edge_gnn_pair_training(
+            DEVICE=DEVICE,
+            TORCH_SEED=TORCH_SEED,
+            training_cfg=training_cfg,
+            run_dir=run_dir,
+            models_subdir=models_subdir,
+            metrics_csv=metrics_csv,
+            training_config_json=training_config_json,
+            df=df,
+            train_df=train_df,
+            val_df=val_df,
+            test_df=test_df,
+            load_stats=load_stats,
+            pair_split_note=pair_split_note,
+            cluster_split_meta=cluster_split_meta if split_hygiene_enabled else None,
+            csv_path=csv_path,
+            project_root=root,
+        )
 
     if pair_encoder_backend in (PAIR_ENCODER_MLP_RAW_EMAIL_X, PAIR_ENCODER_EXPLICIT_ONLY):
         use_emb_feats = bool(training_cfg.get("pair_scorer_use_embedding_features", True))
@@ -2909,7 +2939,7 @@ def run_pair_training(
                 "model": model.state_dict() if model is not None else {},
                 "pair_scorer": pair_scorer.state_dict(),
             }
-            save_pair_training_checkpoint(
+            ckpt_path = save_pair_training_checkpoint(
                 save_dir=ckpt_dir,
                 filename=model_save_name,
                 model=model,
@@ -2927,7 +2957,27 @@ def run_pair_training(
                 best_pair_scorer_state=best_state["pair_scorer"],
                 training_params=training_params,
             )
-            print(f"[pair_supervision] saved best checkpoint -> {ckpt_dir / model_save_name}")
+            print(f"[pair_supervision] saved best checkpoint -> {ckpt_path}")
+            if bool(training_cfg.get("save_best_val_checkpoint_history")):
+                import shutil
+
+                hist_dir = ckpt_dir / "best_val_epochs"
+                hist_dir.mkdir(parents=True, exist_ok=True)
+                hist_name = f"epoch_{int(epoch):03d}.pt"
+                hist_path = hist_dir / hist_name
+                shutil.copy2(ckpt_path, hist_path)
+                hist_manifest_path = hist_dir / "best_val_epochs_manifest.jsonl"
+                with open(hist_manifest_path, "a", encoding="utf-8") as hf:
+                    hf.write(
+                        json.dumps(
+                            {
+                                "epoch": int(epoch),
+                                "val_loss": float(va_loss),
+                                "checkpoint": str(hist_path),
+                            }
+                        )
+                        + "\n"
+                    )
         else:
             patience_counter += 1
 

@@ -122,7 +122,7 @@
   },
   "device": "cpu",
   "to_undirected": true,
-  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity_18_raw_email_only",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity_19_edge_gnn_1layer_topk16",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -165,11 +165,12 @@
   "pair_training": {
     "backends": {
       "gnn": false,
-      "mlp": true
+      "mlp": false,
+      "edge_gnn": true
     },
-    "pair_encoder_backend": "mlp_raw_email_x",
-    "pair_scorer_use_embedding_features": true,
-    "pair_scorer_use_explicit_features": false,
+    "pair_encoder_backend": "edge_gnn",
+    "pair_scorer_use_embedding_features": false,
+    "pair_scorer_use_explicit_features": true,
     "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity_13/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity_13/pair_training_dataset.csv",
     "pair_batch_size": 64,
     "pair_fanout": [
@@ -266,6 +267,16 @@
       "mode": "target_pos_to_unl_ratio",
       "target_pos_to_unl_ratio": 2.0,
       "shuffle_each_epoch": true
+    },
+    "edge_gnn": {
+      "hidden_dim": 256,
+      "num_gnn_layers": 1,
+      "dropout": 0.2,
+      "max_neighbors_per_endpoint": 16,
+      "rank_column": "semantic_cosine_max",
+      "local_head": "email_pair_mlp_compatible",
+      "train_batch_size": 64,
+      "combine_mode": "concat_local_graph"
     }
   },
   "evaluation": {

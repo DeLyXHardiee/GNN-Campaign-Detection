@@ -488,10 +488,15 @@ def _execute_anchor_like_target(
     comm_cfg.setdefault("output", {})
     comm_cfg["run"]["graph_id"] = graph_id
     comm_cfg["run"]["anchor_output_root"] = str(bundle_dir / "anchor")
-    comm_cfg["run"]["custom_edges_csv"] = str(target_edges_csv)
+    edges_override = str(community_cfg.get("custom_edges_csv") or "").strip()
+    if edges_override:
+        comm_cfg["run"]["custom_edges_csv"] = str(_resolve_path(edges_override))
+    else:
+        comm_cfg["run"]["custom_edges_csv"] = str(target_edges_csv)
     sub = str(score_params.get("community_results_subdir") or "").strip()
     community_dir = (target_root / "community" / sub) if sub else (target_root / "community")
     community_root_dir = (target_root / "community_root" / sub) if sub else (target_root / "community_root")
+    community_dir.mkdir(parents=True, exist_ok=True)
     comm_cfg["run"]["community_bundle_out_dir"] = str(community_dir.resolve())
     comm_cfg["run"]["seed_output_root"] = str(bundle_dir / "seed")
     sdir = _seed_stage_dir(bundle_dir, graph_id)

@@ -227,6 +227,169 @@ def _write_split_same_cross_histograms(
     )
 
 
+def _kde_density_normalized(scores: np.ndarray, x_grid: np.ndarray) -> np.ndarray:
+    """Gaussian KDE on ``x_grid``, rescaled so ∫ density dx = 1 over the grid."""
+    s = np.clip(np.asarray(scores, dtype=float)[np.isfinite(scores)], 0.0, 1.0)
+    y = np.zeros_like(x_grid, dtype=float)
+    if s.size == 0:
+        return y
+    if s.size == 1:
+        idx = int(np.argmin(np.abs(x_grid - float(s[0]))))
+        y[idx] = 1.0
+    else:
+        from scipy.stats import gaussian_kde
+
+        kde = gaussian_kde(s)
+        y = np.maximum(kde(x_grid), 0.0)
+    if hasattr(np, "trapezoid"):
+        area = float(np.trapezoid(y, x_grid))
+    else:
+        area = float(np.trapz(y, x_grid))
+    if area > 0.0:
+        y = y / area
+    return y
+
+
+def _write_same_cross_kde_overlay(
+    *,
+    same_scores: np.ndarray,
+    cross_scores: np.ndarray,
+    title: str,
+    out_path: Path,
+    xlabel: str = "Learned pair score",
+) -> None:
+    """One figure: same vs cross campaign KDE curves, each normalized to unit area."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    color_same = "#e67e22"
+    color_cross = "#1f77b4"
+    fill_alpha = 0.42
+
+    x_grid = np.linspace(0.0, 1.0, 256)
+    same_c = np.asarray(same_scores, dtype=float)[np.isfinite(same_scores)]
+    cross_c = np.asarray(cross_scores, dtype=float)[np.isfinite(cross_scores)]
+    y_same = _kde_density_normalized(same_c, x_grid)
+    y_cross = _kde_density_normalized(cross_c, x_grid)
+
+    save_path = path_for_write(out_path)
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    if same_c.size == 0 and cross_c.size == 0:
+        ax.text(0.5, 0.5, "No scored pairs in cohort", ha="center", va="center", transform=ax.transAxes)
+    else:
+        # Cross first, then same — overlapping regions blend via alpha.
+        if cross_c.size > 0:
+            ax.fill_between(
+                x_grid,
+                y_cross,
+                0.0,
+                color=color_cross,
+                alpha=fill_alpha,
+                linewidth=0.0,
+                zorder=1,
+            )
+            ax.plot(
+                x_grid,
+                y_cross,
+                color=color_cross,
+                linewidth=2.0,
+                label=f"Cross campaign ($n$={int(cross_c.size):,})",
+                zorder=3,
+            )
+        if same_c.size > 0:
+            ax.fill_between(
+                x_grid,
+                y_same,
+                0.0,
+                color=color_same,
+                alpha=fill_alpha,
+                linewidth=0.0,
+                zorder=2,
+            )
+            ax.plot(
+                x_grid,
+                y_same,
+                color=color_same,
+                linewidth=2.0,
+                label=f"Same campaign ($n$={int(same_c.size):,})",
+                zorder=4,
+            )
+        ax.legend(loc="upper right", frameon=True, fontsize=9)
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(bottom=0.0)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Normalized density")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.25, linestyle="--", linewidth=0.5, zorder=0)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _write_same_cross_kde_plots_for_gt(
+    *,
+    gt_path: Path,
+    plots_dir: Path,
+    df_work: pd.DataFrame,
+    scores: np.ndarray,
+    scored_mask: np.ndarray,
+) -> dict[str, Path]:
+    """Write three KDE overlays (all GT pairs, positives only, unlabeled only)."""
+    label_map, _eid_row, _camp = load_ground_truth_structures(gt_path)
+    label_map = {str(k): v for k, v in label_map.items()}
+    ei = df_work["email_i"].astype(str).values
+    ej = df_work["email_j"].astype(str).values
+    n = len(df_work)
+    scored = scored_mask
+    camp_i = np.array([label_map.get(str(ei[k])) for k in range(n)], dtype=object)
+    camp_j = np.array([label_map.get(str(ej[k])) for k in range(n)], dtype=object)
+    both = np.array(
+        [camp_i[k] is not None and camp_j[k] is not None for k in range(n)],
+        dtype=bool,
+    )
+    same_mask = both & (camp_i == camp_j)
+    cross_mask = both & (camp_i != camp_j)
+    pos_mask = (
+        df_work["pair_status"].astype(str).str.lower().eq("positive").to_numpy()
+        if "pair_status" in df_work.columns
+        else np.zeros(n, dtype=bool)
+    )
+    unl_mask = (
+        df_work["pair_status"].astype(str).str.lower().eq("unlabeled").to_numpy()
+        if "pair_status" in df_work.columns
+        else np.zeros(n, dtype=bool)
+    )
+    stem = _sanitize_filename_stem(gt_path.stem)
+    out_all = plots_dir / f"score_density_kde_same_vs_cross_{stem}.png"
+    out_pos = plots_dir / f"score_density_kde_same_vs_cross_positive_{stem}.png"
+    out_unl = plots_dir / f"score_density_kde_same_vs_cross_unlabeled_{stem}.png"
+    _write_same_cross_kde_overlay(
+        same_scores=scores[same_mask & scored],
+        cross_scores=scores[cross_mask & scored],
+        title="Pair score density — positives and unlabeled",
+        out_path=out_all,
+    )
+    _write_same_cross_kde_overlay(
+        same_scores=scores[same_mask & pos_mask & scored],
+        cross_scores=scores[cross_mask & pos_mask & scored],
+        title="Pair score density — positives only",
+        out_path=out_pos,
+    )
+    _write_same_cross_kde_overlay(
+        same_scores=scores[same_mask & unl_mask & scored],
+        cross_scores=scores[cross_mask & unl_mask & scored],
+        title="Pair score density — unlabeled only",
+        out_path=out_unl,
+    )
+    return {
+        "plot_kde_same_vs_cross_all_gt": out_all,
+        "plot_kde_same_vs_cross_positive_only": out_pos,
+        "plot_kde_same_vs_cross_unlabeled_only": out_unl,
+    }
+
+
 def _summarize_one_gt(
     *,
     gt_path: Path,
@@ -3113,6 +3276,97 @@ def _build_high_band_false_positive_json_summary(
     return out
 
 
+def run_pair_score_kde_density_plots(
+    *,
+    run_dir: Path,
+    graph_pt: Path,
+    pair_csv: Path,
+    gt_paths: list[Path],
+    output_dir: Path | None = None,
+    checkpoint_name: str = "best_model.pt",
+    device: str = "cpu",
+    to_undirected: bool = True,
+) -> dict[str, Any]:
+    """Score pairs and write same-vs-cross KDE overlays only (fast path for thesis figures)."""
+    from src.pair_train import load_pair_training_dataframe
+
+    project_root = Path(__file__).resolve().parents[2]
+    run_dir = Path(run_dir).resolve()
+    graph_pt = Path(graph_pt).resolve()
+    pair_csv = Path(pair_csv).resolve()
+    out_dir = (output_dir or (run_dir / "pair_score_separation")).resolve()
+    layout = ensure_pair_score_separation_layout(out_dir)
+    plots_dir = layout["plots"]
+
+    df, _stats = load_pair_training_dataframe(pair_csv)
+    df_work = df.reset_index(drop=True)
+    df_work["_row"] = np.arange(len(df_work), dtype=np.int64)
+
+    edge_scores_csv = (run_dir / "edge_gnn_pair_scores.csv").resolve()
+    if edge_scores_csv.is_file():
+        from seed_candidate_workflow.utils.edge_gnn_score_inference import (
+            scores_array_for_pair_dataframe,
+        )
+
+        scores, _edge_score_diag = scores_array_for_pair_dataframe(
+            edge_scores_csv, df_work, project_root=project_root
+        )
+        bundle = {"checkpoint_path": str(edge_scores_csv)}
+    else:
+        bundle = load_pair_supervision_for_inference(
+            run_dir=run_dir,
+            graph_pt=graph_pt,
+            checkpoint_name=checkpoint_name,
+            device=device,
+            to_undirected=to_undirected,
+        )
+        scores = score_pair_rows(
+            model=bundle["model"],
+            pair_scorer=bundle["pair_scorer"],
+            data_cpu=bundle["data_cpu"],
+            df_work=df_work,
+            device=bundle["device"],
+            fanout=bundle["fanout"],
+            pair_batch_size=bundle["pair_batch_size"],
+            max_unique_emails=bundle["max_unique_emails"],
+            pair_feature_columns=bundle.get("pair_feature_columns"),
+        )
+    scored_mask = np.isfinite(scores)
+
+    per_gt: list[dict[str, Any]] = []
+    for gt_path in gt_paths:
+        gt_path = Path(gt_path).resolve()
+        kde_plots = _write_same_cross_kde_plots_for_gt(
+            gt_path=gt_path,
+            plots_dir=plots_dir,
+            df_work=df_work,
+            scores=scores,
+            scored_mask=scored_mask,
+        )
+        per_gt.append(
+            {
+                "gt_path": str(gt_path),
+                **{k: rel_to_root(layout, v) for k, v in kde_plots.items()},
+            }
+        )
+
+    payload = {
+        "run_dir": str(run_dir),
+        "graph_pt": str(graph_pt),
+        "pair_csv": str(pair_csv),
+        "checkpoint": str(bundle["checkpoint_path"]),
+        "n_pair_rows_scored": int(len(df_work)),
+        "n_finite_scores": int(scored_mask.sum()),
+        "per_gt": per_gt,
+        "output_layout": {k: rel_to_root(layout, v) for k, v in layout.items() if k != "root"},
+    }
+    summary_path = layout["core_json"] / "pair_score_kde_density_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    payload["summary_path"] = str(summary_path)
+    return payload
+
+
 def run_pair_score_separation_analysis(
     *,
     run_dir: Path,
@@ -3164,24 +3418,42 @@ def run_pair_score_separation_analysis(
     if "cross_seed_component_flag" in df_work.columns:
         cross_comp = df_work["cross_seed_component_flag"].fillna(False).astype(bool).to_numpy()
 
-    bundle = load_pair_supervision_for_inference(
-        run_dir=run_dir,
-        graph_pt=graph_pt,
-        checkpoint_name=checkpoint_name,
-        device=device,
-        to_undirected=to_undirected,
-    )
-    scores = score_pair_rows(
-        model=bundle["model"],
-        pair_scorer=bundle["pair_scorer"],
-        data_cpu=bundle["data_cpu"],
-        df_work=df_work,
-        device=bundle["device"],
-        fanout=bundle["fanout"],
-        pair_batch_size=bundle["pair_batch_size"],
-        max_unique_emails=bundle["max_unique_emails"],
-        pair_feature_columns=bundle.get("pair_feature_columns"),
-    )
+    edge_scores_csv = (run_dir / "edge_gnn_pair_scores.csv").resolve()
+    score_source = "inference"
+    edge_score_diag: dict[str, Any] = {}
+    if edge_scores_csv.is_file():
+        from seed_candidate_workflow.utils.edge_gnn_score_inference import (
+            scores_array_for_pair_dataframe,
+        )
+
+        scores, edge_score_diag = scores_array_for_pair_dataframe(
+            edge_scores_csv, df_work, project_root=project_root
+        )
+        score_source = "edge_gnn_pair_scores_csv"
+        bundle = {
+            "pair_encoder_backend": "edge_gnn",
+            "checkpoint_path": str(edge_scores_csv),
+            "training_config_path": str(run_dir / "edge_gnn" / "training_config.json"),
+        }
+    else:
+        bundle = load_pair_supervision_for_inference(
+            run_dir=run_dir,
+            graph_pt=graph_pt,
+            checkpoint_name=checkpoint_name,
+            device=device,
+            to_undirected=to_undirected,
+        )
+        scores = score_pair_rows(
+            model=bundle["model"],
+            pair_scorer=bundle["pair_scorer"],
+            data_cpu=bundle["data_cpu"],
+            df_work=df_work,
+            device=bundle["device"],
+            fanout=bundle["fanout"],
+            pair_batch_size=bundle["pair_batch_size"],
+            max_unique_emails=bundle["max_unique_emails"],
+            pair_feature_columns=bundle.get("pair_feature_columns"),
+        )
     scored_mask = np.isfinite(scores)
     plot_all_scored = plots_dir / "score_distribution_all_scored_pairs.png"
     _plot_score_histogram_counts(
@@ -3280,6 +3552,13 @@ def run_pair_score_separation_analysis(
             out_same=plot_same_unl,
             out_cross=plot_cross_unl,
         )
+        kde_plots = _write_same_cross_kde_plots_for_gt(
+            gt_path=gt_path,
+            plots_dir=plots_dir,
+            df_work=df_work,
+            scores=scores,
+            scored_mask=scored_mask,
+        )
 
         cc_plot_same: Path | None = None
         cc_plot_cross: Path | None = None
@@ -3360,6 +3639,15 @@ def run_pair_score_separation_analysis(
         summary["plot_cross_campaign_positive_only"] = rel_to_root(layout, plot_cross_pos)
         summary["plot_same_campaign_unlabeled_only"] = rel_to_root(layout, plot_same_unl)
         summary["plot_cross_campaign_unlabeled_only"] = rel_to_root(layout, plot_cross_unl)
+        summary["plot_kde_same_vs_cross_all_gt"] = rel_to_root(
+            layout, kde_plots["plot_kde_same_vs_cross_all_gt"]
+        )
+        summary["plot_kde_same_vs_cross_positive_only"] = rel_to_root(
+            layout, kde_plots["plot_kde_same_vs_cross_positive_only"]
+        )
+        summary["plot_kde_same_vs_cross_unlabeled_only"] = rel_to_root(
+            layout, kde_plots["plot_kde_same_vs_cross_unlabeled_only"]
+        )
         if cc_plot_same is not None and cc_plot_cross is not None:
             summary["plot_cross_component_same_campaign"] = rel_to_root(layout, cc_plot_same)
             summary["plot_cross_component_cross_campaign"] = rel_to_root(layout, cc_plot_cross)
@@ -4336,14 +4624,16 @@ def main(argv: list[str] | None = None) -> None:
         resolve_pair_supervision_run_artifacts,
     )
 
-    try:
-        resolve_pair_supervision_run_artifacts(
-            run_dir,
-            checkpoint_name=str(args.checkpoint),
-            project_root=repo_root,
-        )
-    except FileNotFoundError as exc:
-        raise SystemExit(str(exc)) from exc
+    edge_scores_csv = (run_dir / "edge_gnn_pair_scores.csv").resolve()
+    if not edge_scores_csv.is_file():
+        try:
+            resolve_pair_supervision_run_artifacts(
+                run_dir,
+                checkpoint_name=str(args.checkpoint),
+                project_root=repo_root,
+            )
+        except FileNotFoundError as exc:
+            raise SystemExit(str(exc)) from exc
 
     try:
         pair_csv = resolve_pair_dataset_csv_path(

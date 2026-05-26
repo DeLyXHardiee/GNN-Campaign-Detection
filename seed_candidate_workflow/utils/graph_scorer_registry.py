@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -203,6 +204,124 @@ def score_seed_candidate_handcrafted(
     return ensure_scored_contract(pd.DataFrame(rows))
 
 
+def _prepare_candidate_union_with_score_map(
+    candidate_union_df: pd.DataFrame,
+    score_map: dict[tuple[str, str], float],
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Map canonical pair keys to ``pu_score`` on candidate union rows (deduped)."""
+    union = candidate_union_df.copy()
+    union["email_i"] = union["email_i"].astype(str)
+    union["email_j"] = union["email_j"].astype(str)
+    for c in ("from_seed", "from_semantic", "from_rare_artifact", "from_component", "from_2hop"):
+        if c not in union.columns:
+            union[c] = False
+        union[c] = union[c].fillna(False).astype(bool)
+    if "source_count" not in union.columns:
+        union["source_count"] = 0
+    union["source_count"] = pd.to_numeric(union["source_count"], errors="coerce").fillna(0).astype(int)
+    union["email_a"] = union.apply(lambda r: _pair(str(r["email_i"]), str(r["email_j"]))[0], axis=1)
+    union["email_b"] = union.apply(lambda r: _pair(str(r["email_i"]), str(r["email_j"]))[1], axis=1)
+
+    num_pairgraph_edges = int(len(union))
+    num_seed_edges = int(union["from_seed"].sum()) if "from_seed" in union.columns else 0
+    pu_vals = union.apply(
+        lambda r: score_map.get((str(r["email_a"]), str(r["email_b"])), float("nan")),
+        axis=1,
+    )
+    union["pu_score"] = pu_vals
+    has_score = pd.to_numeric(union["pu_score"], errors="coerce").notna()
+    num_edges_with_score = int(has_score.sum())
+    num_edges_missing_score = int((~has_score).sum())
+    missing_examples = (
+        union.loc[~has_score, ["email_a", "email_b"]]
+        .head(5)
+        .apply(lambda r: (str(r["email_a"]), str(r["email_b"])), axis=1)
+        .tolist()
+    )
+
+    cdf = (
+        union.sort_values(["email_a", "email_b", "from_seed", "pu_score"], ascending=[True, True, False, False])
+        .drop_duplicates(subset=["email_a", "email_b"], keep="first")
+        .copy()
+    )
+    dedup_df = cdf[
+        [
+            "email_a",
+            "email_b",
+            "pu_score",
+            "from_seed",
+            "from_semantic",
+            "from_rare_artifact",
+            "from_component",
+            "from_2hop",
+            "source_count",
+        ]
+    ]
+    if num_edges_missing_score > 0:
+        warnings.warn(
+            f"{num_edges_missing_score} seed-candidate edges lack a PU score "
+            f"(examples: {missing_examples[:3]}); non-seed rows will be dropped at export threshold.",
+            stacklevel=2,
+        )
+    diag = {
+        "num_pairgraph_edges": num_pairgraph_edges,
+        "num_scores_loaded": int(len(score_map)),
+        "num_edges_with_score": num_edges_with_score,
+        "num_edges_missing_score": num_edges_missing_score,
+        "num_seed_edges": num_seed_edges,
+        "num_non_seed_edges": int(num_pairgraph_edges - num_seed_edges),
+        "missing_score_example_pairs": missing_examples,
+    }
+    return dedup_df, diag
+
+
+def _finalize_scored_seed_candidate_pairgraphs(
+    dedup_pairs_df: pd.DataFrame,
+    *,
+    seed_edge_weight: float,
+    weight_mode: str,
+    export_non_seed_min_pu_score: float,
+    score_mode: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Apply PU edge-weight rules and export threshold filter (same as ``seed_candidate_pu_v1``)."""
+    cdf = dedup_pairs_df.copy()
+    cdf["edge_weight"] = np.where(
+        cdf["from_seed"],
+        float(seed_edge_weight),
+        _apply_non_seed_weight_transform(cdf["pu_score"], weight_mode=weight_mode),
+    )
+    cdf["score_mode"] = str(score_mode)
+    mask_keep = cdf["from_seed"] | (
+        pd.to_numeric(cdf["pu_score"], errors="coerce").ge(float(export_non_seed_min_pu_score))
+        & pd.to_numeric(cdf["pu_score"], errors="coerce").notna()
+    )
+    num_non_seed = int((~cdf["from_seed"]).sum())
+    num_non_seed_kept = int((mask_keep & ~cdf["from_seed"]).sum())
+    num_non_seed_dropped = num_non_seed - num_non_seed_kept
+    cdf_kept = cdf.loc[mask_keep].copy()
+    out_cols = [
+        "email_a",
+        "email_b",
+        "edge_weight",
+        "from_seed",
+        "from_semantic",
+        "from_rare_artifact",
+        "from_component",
+        "from_2hop",
+        "source_count",
+        "score_mode",
+    ]
+    if "pu_score" in cdf.columns:
+        out_cols.insert(2, "pu_score")
+    all_out = cdf[out_cols].rename(columns={"email_a": "email_i", "email_b": "email_j"})
+    thr_out = cdf_kept[out_cols].rename(columns={"email_a": "email_i", "email_b": "email_j"})
+    weight_diag = {
+        "num_non_seed_edges_kept": num_non_seed_kept,
+        "num_non_seed_edges_dropped": num_non_seed_dropped,
+    }
+    return ensure_scored_contract(all_out), ensure_scored_contract(thr_out), weight_diag
+
+
 def _apply_non_seed_weight_transform(
     pu_scores: pd.Series,
     *,
@@ -245,10 +364,10 @@ def score_seed_candidate_pu(
 
     Returns `(all_scored_rows, thresholded_scored_rows)`.
     """
+    scfg = dict(scoring_cfg or {})
     if dedup_pairs_df is None:
         if candidate_union_df is None:
             raise ValueError("score_seed_candidate_pu requires dedup_pairs_df or candidate_union_df")
-        scfg = dict(scoring_cfg or {})
         pu_cfg = dict(scfg.get("pu_run") or {})
         _ensure_gnn_on_path()
         from seed_candidate_workflow.utils.pair_model_inference import (
@@ -327,73 +446,76 @@ def score_seed_candidate_pu(
             else:
                 score_map[pk] = sf
 
-        union = candidate_union_df.copy()
-        union["email_i"] = union["email_i"].astype(str)
-        union["email_j"] = union["email_j"].astype(str)
-        for c in ("from_seed", "from_semantic", "from_rare_artifact", "from_component", "from_2hop"):
-            if c not in union.columns:
-                union[c] = False
-            union[c] = union[c].fillna(False).astype(bool)
-        if "source_count" not in union.columns:
-            union["source_count"] = 0
-        union["source_count"] = pd.to_numeric(union["source_count"], errors="coerce").fillna(0).astype(int)
-        union["email_a"] = union.apply(lambda r: _pair(str(r["email_i"]), str(r["email_j"]))[0], axis=1)
-        union["email_b"] = union.apply(lambda r: _pair(str(r["email_i"]), str(r["email_j"]))[1], axis=1)
-        union["pu_score"] = union.apply(
-            lambda r: score_map.get((str(r["email_a"]), str(r["email_b"])), float("nan")),
-            axis=1,
-        )
-        cdf = (
-            union.sort_values(["email_a", "email_b", "from_seed", "pu_score"], ascending=[True, True, False, False])
-            .drop_duplicates(subset=["email_a", "email_b"], keep="first")
-            .copy()
-        )
-        dedup_pairs_df = cdf[
-            [
-                "email_a",
-                "email_b",
-                "pu_score",
-                "from_seed",
-                "from_semantic",
-                "from_rare_artifact",
-                "from_component",
-                "from_2hop",
-                "source_count",
-            ]
-        ]
+        dedup_pairs_df, _map_diag = _prepare_candidate_union_with_score_map(candidate_union_df, score_map)
         seed_edge_weight = float(scfg.get("seed_edge_weight", scfg.get("seed_weight", 1.0)))
         weight_mode = str(scfg.get("weight_mode", "raw_score"))
         export_non_seed_min_pu_score = float(scfg.get("export_non_seed_min_pu_score", 0.0))
+    else:
+        if seed_edge_weight is None:
+            seed_edge_weight = float(scfg.get("seed_edge_weight", scfg.get("seed_weight", 1.0)))
+        if weight_mode is None:
+            weight_mode = str(scfg.get("weight_mode", "raw_score"))
+        if export_non_seed_min_pu_score is None:
+            export_non_seed_min_pu_score = float(scfg.get("export_non_seed_min_pu_score", 0.0))
 
     if seed_edge_weight is None or weight_mode is None or export_non_seed_min_pu_score is None:
         raise ValueError("PU scorer missing required weight parameters")
-    cdf = dedup_pairs_df.copy()
-    cdf["edge_weight"] = np.where(
-        cdf["from_seed"],
-        float(seed_edge_weight),
-        _apply_non_seed_weight_transform(cdf["pu_score"], weight_mode=weight_mode),
+    all_out, thr_out, _ = _finalize_scored_seed_candidate_pairgraphs(
+        dedup_pairs_df,
+        seed_edge_weight=float(seed_edge_weight),
+        weight_mode=str(weight_mode),
+        export_non_seed_min_pu_score=float(export_non_seed_min_pu_score),
+        score_mode=str(score_mode),
     )
-    cdf["score_mode"] = str(score_mode)
-    mask_keep = cdf["from_seed"] | (
-        pd.to_numeric(cdf["pu_score"], errors="coerce").ge(float(export_non_seed_min_pu_score))
-        & pd.to_numeric(cdf["pu_score"], errors="coerce").notna()
+    return all_out, thr_out
+
+
+def score_seed_candidate_edge_gnn_v1(
+    *,
+    candidate_union_df: pd.DataFrame,
+    scoring_cfg: dict[str, Any] | None = None,
+    seed_edge_weight: float | None = None,
+    weight_mode: str | None = None,
+    export_non_seed_min_pu_score: float | None = None,
+    score_mode: str = "seed_candidate_edge_gnn_v1",
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """
+    Score seed-candidate PairGraph from precomputed Edge-GNN ``edge_gnn_pair_scores.csv``.
+
+    Returns ``(all_scored, thresholded_scored, diagnostics)``.
+    """
+    from seed_candidate_workflow.utils.edge_gnn_score_inference import (
+        load_edge_gnn_pair_scores,
+        resolve_edge_gnn_pair_scores_csv,
     )
-    cdf_kept = cdf.loc[mask_keep].copy()
-    out_cols = [
-        "email_a",
-        "email_b",
-        "edge_weight",
-        "from_seed",
-        "from_semantic",
-        "from_rare_artifact",
-        "from_component",
-        "from_2hop",
-        "source_count",
-        "score_mode",
-    ]
-    all_out = cdf[out_cols].rename(columns={"email_a": "email_i", "email_b": "email_j"})
-    thr_out = cdf_kept[out_cols].rename(columns={"email_a": "email_i", "email_b": "email_j"})
-    return ensure_scored_contract(all_out), ensure_scored_contract(thr_out)
+
+    scfg = dict(scoring_cfg or {})
+    project_root = gh.find_project_root()
+    csv_path = resolve_edge_gnn_pair_scores_csv(scfg, project_root=project_root)
+    score_map, load_diag = load_edge_gnn_pair_scores(csv_path, project_root=project_root)
+    dedup_pairs_df, map_diag = _prepare_candidate_union_with_score_map(candidate_union_df, score_map)
+
+    seed_edge_weight = float(
+        seed_edge_weight
+        if seed_edge_weight is not None
+        else scfg.get("seed_edge_weight", scfg.get("seed_weight", 1.0))
+    )
+    weight_mode = str(weight_mode if weight_mode is not None else scfg.get("weight_mode", "raw_score"))
+    export_non_seed_min_pu_score = float(
+        export_non_seed_min_pu_score
+        if export_non_seed_min_pu_score is not None
+        else scfg.get("export_non_seed_min_pu_score", 0.0)
+    )
+
+    all_out, thr_out, weight_diag = _finalize_scored_seed_candidate_pairgraphs(
+        dedup_pairs_df,
+        seed_edge_weight=seed_edge_weight,
+        weight_mode=weight_mode,
+        export_non_seed_min_pu_score=export_non_seed_min_pu_score,
+        score_mode=str(score_mode),
+    )
+    diagnostics = {**load_diag, **map_diag, **weight_diag}
+    return all_out, thr_out, diagnostics
 
 
 def score_semantic_shard_handcrafted(
@@ -466,9 +588,24 @@ def score_semantic_shard_affine(
     return df
 
 
+def _score_seed_candidate_edge_gnn_v1_registry(
+    *,
+    candidate_union_df: pd.DataFrame,
+    scoring_cfg: dict[str, Any] | None = None,
+    score_mode: str = "seed_candidate_edge_gnn_v1",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    all_out, thr_out, _ = score_seed_candidate_edge_gnn_v1(
+        candidate_union_df=candidate_union_df,
+        scoring_cfg=scoring_cfg,
+        score_mode=score_mode,
+    )
+    return all_out, thr_out
+
+
 SCORER_REGISTRY: dict[str, ScorerFn] = {
     "seed_candidate_handcrafted_v1": score_seed_candidate_handcrafted,
     "seed_candidate_pu_v1": score_seed_candidate_pu,
+    "seed_candidate_edge_gnn_v1": _score_seed_candidate_edge_gnn_v1_registry,
     "semantic_shard_handcrafted_v1": score_semantic_shard_handcrafted,
     "semantic_shard_affine_v1": score_semantic_shard_affine,
 }
@@ -486,6 +623,14 @@ SCORER_SPECS: dict[str, ScorerSpec] = {
         fn=score_seed_candidate_pu,
         graph_kinds=(GRAPH_KIND_SEED_CANDIDATE,),
         param_keys=("pu",),
+        supports_thresholded_output=True,
+        required_payload_keys=("candidate_union_df",),
+    ),
+    "seed_candidate_edge_gnn_v1": ScorerSpec(
+        name="seed_candidate_edge_gnn_v1",
+        fn=_score_seed_candidate_edge_gnn_v1_registry,
+        graph_kinds=(GRAPH_KIND_SEED_CANDIDATE,),
+        param_keys=("edge_gnn",),
         supports_thresholded_output=True,
         required_payload_keys=("candidate_union_df",),
     ),
@@ -514,6 +659,7 @@ def validate_scorer_target(score_mode: str, graph_kind: str) -> None:
 SCORER_TARGET_GRAPH_KINDS: dict[str, tuple[str, ...]] = {
     "seed_candidate_handcrafted_v1": (GRAPH_KIND_SEED_CANDIDATE,),
     "seed_candidate_pu_v1": (GRAPH_KIND_SEED_CANDIDATE,),
+    "seed_candidate_edge_gnn_v1": (GRAPH_KIND_SEED_CANDIDATE,),
     "semantic_shard_handcrafted_v1": (GRAPH_KIND_SEMANTIC_SHARD,),
     "semantic_shard_affine_v1": (GRAPH_KIND_SEMANTIC_SHARD,),
 }
@@ -570,13 +716,21 @@ def apply_scorer(
                 },
             }
         return ScorerResult(scored_all=scored_all, scored_filtered=None, metadata=metadata)
-    if score_mode == "seed_candidate_pu_v1":
-        scored_all, scored_filtered = fn(
-            candidate_union_df=payload["candidate_union_df"],
-            scoring_cfg=score_params,
-            score_mode=score_mode,
-        )
-        metadata = {"score_mode": score_mode}
+    if score_mode in {"seed_candidate_pu_v1", "seed_candidate_edge_gnn_v1"}:
+        if score_mode == "seed_candidate_edge_gnn_v1":
+            scored_all, scored_filtered, edge_diag = score_seed_candidate_edge_gnn_v1(
+                candidate_union_df=payload["candidate_union_df"],
+                scoring_cfg=score_params,
+                score_mode=score_mode,
+            )
+            metadata = {"score_mode": score_mode, "edge_gnn_scoring": edge_diag}
+        else:
+            scored_all, scored_filtered = fn(
+                candidate_union_df=payload["candidate_union_df"],
+                scoring_cfg=score_params,
+                score_mode=score_mode,
+            )
+            metadata = {"score_mode": score_mode}
         if diagnostics_cfg and diagnostics_cfg.get("enabled"):
             dr = basic_score_diagnostics(
                 score_mode=score_mode,

@@ -58,6 +58,48 @@ def format_email_timestamp_utc(date_value: Any, *, project_root: Path) -> tuple[
     return raw, dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
+def load_misp_timestamps_by_external_id(
+    misp_json_path: Path, *, project_root: Path
+) -> dict[str, dict[str, str]]:
+    """
+    Lightweight MISP scan: external_id + date only (no body/url linkify).
+
+    Use for pair time-gap features when subject/body text is not needed.
+    """
+    _ensure_core_on_syspath(project_root)
+    from graph.common import to_str
+
+    events = load_misp_events_list(misp_json_path)
+    out: dict[str, dict[str, str]] = {}
+    date_types = frozenset({"email-date", "date"})
+    for ev in events:
+        event = ev.get("Event", ev) if isinstance(ev, dict) else {}
+        if not isinstance(event, dict):
+            continue
+        external_id = to_str(event.get("external_id", "")).strip()
+        if not external_id or external_id in out:
+            continue
+        date_raw = ""
+        for attr in event.get("Attribute", []) or []:
+            if not isinstance(attr, dict):
+                continue
+            a_type = to_str(attr.get("type", "")).strip().lower()
+            if a_type not in date_types:
+                continue
+            val = to_str(attr.get("value", "")).strip()
+            if val:
+                date_raw = val
+                break
+        if not date_raw:
+            date_raw = to_str(event.get("date", "")).strip()
+        date_raw, timestamp_utc = format_email_timestamp_utc(date_raw, project_root=project_root)
+        out[external_id] = {
+            "date_raw": date_raw,
+            "timestamp_utc": timestamp_utc,
+        }
+    return out
+
+
 def load_misp_subject_body_by_external_id(
     misp_json_path: Path, *, project_root: Path
 ) -> dict[str, dict[str, str]]:

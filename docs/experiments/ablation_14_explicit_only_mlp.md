@@ -61,6 +61,16 @@ Uses `mlp/training_config.json` + checkpoint automatically.
 
 `graph_id` stays `_13` (reuse seed/candidate bundle); `pu_run.run_dir` is `_14_only_mlp`.
 
+### 3c. Threshold stability (Leiden, resolution 3.0 only)
+
+See [`ablation_14_threshold_stability.md`](ablation_14_threshold_stability.md) and  
+`exp63.dedup_task_identity_14_only_mlp.threshold_stability.leiden.resolution_3.expanded_gt.json`.
+
+### 3d. nnPU prior sensitivity (\(\pi \in \{0.05,0.10,0.20,0.30\}\))
+
+See [`ablation_14_prior_sensitivity.md`](ablation_14_prior_sensitivity.md) and  
+`seed_candidate_workflow/configs/prior_sensitivity/prior_sensitivity_14_only_mlp.manifest.json`.
+
 ## Revert for normal GNN+explicit runs
 
 Set `pair_training.backends.gnn: true`, `mlp: false`, remove `pair_encoder_backend` / `pair_scorer_use_embedding_features` overrides (defaults restore GNN + full scorer).

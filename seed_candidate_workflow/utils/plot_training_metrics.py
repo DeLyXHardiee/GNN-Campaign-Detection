@@ -31,9 +31,37 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def resolve_metrics_csv_path(run_dir: Path | str, metrics_csv: str = "metrics.csv") -> Path:
+    """
+  Locate metrics.csv for a training run.
+
+  Pair-supervision MLP runs write ``mlp/metrics.csv``; legacy GNN runs may use
+  ``gnn/metrics.csv`` or ``metrics.csv`` at the run root.
+    """
+    run = Path(run_dir).expanduser().resolve()
+    rel = Path(metrics_csv)
+    if rel.is_absolute():
+        return rel.resolve()
+
+    candidates = [run / rel]
+    if rel.name == "metrics.csv" and rel.parent == Path("."):
+        candidates.extend(
+            [
+                run / "mlp" / "metrics.csv",
+                run / "gnn" / "metrics.csv",
+            ]
+        )
+    for path in candidates:
+        if path.is_file():
+            return path.resolve()
+    tried = ", ".join(str(p) for p in candidates)
+    raise FileNotFoundError(f"metrics file not found under {run} (tried: {tried})")
+
+
 def load_metrics_csv(metrics_path: Path) -> pd.DataFrame:
-    if not metrics_path.is_file():
-        raise FileNotFoundError(f"metrics file not found: {metrics_path}")
+    path = Path(metrics_path).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"metrics file not found: {path}")
     df = pd.read_csv(metrics_path, na_values=["", " "])
     if df.empty:
         raise ValueError(f"metrics CSV is empty: {metrics_path}")
@@ -157,7 +185,8 @@ def write_training_plots(
     Returns a dict with paths written and whether accuracy was skipped.
     """
     run = Path(run_dir).expanduser().resolve()
-    df = load_metrics_csv(run / metrics_csv)
+    metrics_path = resolve_metrics_csv_path(run, metrics_csv)
+    df = load_metrics_csv(metrics_path)
     plots = run / plots_subdir
     loss_path = plots / "loss_over_epochs.png"
     acc_path = plots / "accuracy_over_epochs.png"
