@@ -18,6 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from tqdm import tqdm
 
+from tqdm import tqdm
+
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .url_skip_superspreaders import resolve_url_skip_superspreaders_patterns
 try:
