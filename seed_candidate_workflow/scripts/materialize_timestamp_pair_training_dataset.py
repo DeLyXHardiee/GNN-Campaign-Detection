@@ -44,6 +44,7 @@ def materialize(
     output_pair_csv: Path,
     output_summary_json: Path | None = None,
     feature_mode: str = "log1p_seconds",
+    misp_json_path: Path | None = None,
 ) -> dict[str, Any]:
     from seed_candidate_workflow.utils import graph_structure_helpers as gh
     from seed_candidate_workflow.utils.pair_score_separation import _resolve_default_misp_json_path
@@ -53,7 +54,18 @@ def materialize(
 
     df = pd.read_csv(source_pair_csv, low_memory=False)
     root = gh.find_project_root()
-    misp_path = _resolve_default_misp_json_path(root)
+    if misp_json_path is not None:
+        misp_path = Path(misp_json_path)
+        if not misp_path.is_absolute():
+            misp_path = (root / misp_path).resolve()
+        else:
+            misp_path = misp_path.resolve()
+    else:
+        misp_path = _resolve_default_misp_json_path(root)
+    if misp_path is None:
+        raise FileNotFoundError(
+            "Could not resolve misp_json_path. Provide --misp-json-path or ensure pipeline_config.json has datasets/graph/preprocessing.misp_json_path."
+        )
     from analysis.scripts.misp_email_text_catalog import load_misp_timestamps_by_external_id
 
     catalog = load_misp_timestamps_by_external_id(Path(misp_path), project_root=root)
@@ -140,6 +152,12 @@ def main() -> int:
         / "seed_candidate_workflow/output/graph_bundles/14_only_mlp__with_timestamp__timestamp_ablation/pair_training/14_only_mlp__with_timestamp__timestamp_ablation/pair_training_dataset.csv",
     )
     p.add_argument("--feature-mode", choices=("log1p_seconds", "raw_seconds"), default="log1p_seconds")
+    p.add_argument(
+        "--misp-json-path",
+        type=Path,
+        default=None,
+        help="Override the MISP JSON path used for timestamp lookup (date_raw/timestamp_utc).",
+    )
     args = p.parse_args()
 
     out_summary = args.output_pair_csv.parent / "pair_training_dataset_timestamp_summary.json"
@@ -148,6 +166,7 @@ def main() -> int:
         output_pair_csv=args.output_pair_csv.resolve(),
         output_summary_json=out_summary,
         feature_mode=str(args.feature_mode),
+        misp_json_path=args.misp_json_path.resolve() if args.misp_json_path is not None else None,
     )
     print(json.dumps(summary, indent=2))
     return 0

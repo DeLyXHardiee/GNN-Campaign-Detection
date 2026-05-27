@@ -541,6 +541,7 @@ def run_graph_creation(
             max_misp_events=limit_eff,
             email_feature_projection=email_proj,
             zero_email_timestamps=settings.zero_email_timestamps,
+            collapse_enabled=settings.collapse_enabled,
         )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")

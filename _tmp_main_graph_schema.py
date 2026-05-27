@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shared graph schema configuration used by both PyTorch-Geometric and Memgraph builders.
 
 This module is the single source of truth for:
@@ -412,11 +412,11 @@ DEFAULT_SCHEMA = GraphSchema(
         ),
     },
     collapse_rules=(
-    ("email", "sender", "has_sender"),
-    ("email", "receiver", "has_receiver"),
-    ("email", "url", "has_url"),
-    ("email", "domain", "has_domain"),
-    ("email", "stem", "has_stem"),
+        ("email", "sender", "has_sender"),
+        ("email", "receiver", "has_receiver"),
+        ("email", "url", "has_url"),
+        ("email", "domain", "has_domain"),
+        ("email", "stem", "has_stem"),
     ),
 )
 

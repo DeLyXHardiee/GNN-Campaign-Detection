@@ -245,6 +245,8 @@ class GraphBuildSettings:
     hetero_graph_stem: str | None = None
     #: If True, email scalar ``ts`` (and attrs) are all zero; removes calendar time from GNN inputs.
     zero_email_timestamps: bool = False
+    #: If False, disable schema collapse_rules when assembling GraphIR.
+    collapse_enabled: bool = True
 
 
 def graph_build_settings_from_pipeline(
@@ -391,6 +393,12 @@ def graph_build_settings_from_pipeline(
     else:
         zero_email_timestamps = bool(zts_raw)
 
+    collapse_raw = graph_cfg.get("collapse_enabled", True)
+    if isinstance(collapse_raw, str):
+        collapse_enabled = str(collapse_raw).strip().lower() in ("1", "true", "yes", "on")
+    else:
+        collapse_enabled = bool(collapse_raw)
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
@@ -402,6 +410,7 @@ def graph_build_settings_from_pipeline(
         degree_node_filter=degree_node_filter,
         hetero_graph_stem=hetero_graph_stem,
         zero_email_timestamps=zero_email_timestamps,
+        collapse_enabled=collapse_enabled,
     )
 
 

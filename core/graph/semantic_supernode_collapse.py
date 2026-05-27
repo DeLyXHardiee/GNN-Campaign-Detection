@@ -452,6 +452,7 @@ def build_semantic_supernode_graph(
     degree_node_filter: Any = None,
     email_feature_projection: Any = None,
     zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
     max_misp_events: int | None = None,
 ) -> tuple[Any, str, str, Path]:
     """
@@ -509,6 +510,7 @@ def build_semantic_supernode_graph(
         max_misp_events=None,
         email_feature_projection=email_feature_projection,
         zero_email_timestamps=zero_email_timestamps,
+        collapse_enabled=collapse_enabled,
     )
     return graph, graph_path, meta_path, mapping_path
 
@@ -560,6 +562,7 @@ def build_graph_from_semantic_supernode_pipeline_config(
         degree_node_filter=graph_settings.degree_node_filter,
         email_feature_projection=graph_settings.email_feature_projection or EmailFeatureProjectionSettings(),
         zero_email_timestamps=graph_settings.zero_email_timestamps,
+        collapse_enabled=graph_settings.collapse_enabled,
         max_misp_events=max_misp_events,
     )
     return graph, gp, mp

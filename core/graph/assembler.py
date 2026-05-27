@@ -437,10 +437,32 @@ def _edge_builders() -> Dict[str, Callable[[Dict[str, Any], Dict[str, Dict[str, 
                 edges_idx[f"{edge_name}_src"].append(email_idx)
                 edges_idx[f"{edge_name}_dst"].append(indices["stem"][s])
 
+    def email_to_email_domain(
+        email_ctx: Dict[str, Any],
+        indices: Dict[str, Dict[str, int]],
+        edges_idx: Dict[str, List[int]],
+        docfreq_maps: Dict[str, Dict[str, Set[int]]],
+        edge_name: str,
+    ) -> None:
+        email_idx = int(email_ctx["email_idx"])
+        em = email_ctx["email"]
+        email_domain_idx = indices.get("email_domain", {})
+        seen: Set[str] = set()
+        for addr in [
+            *_as_email_list(em.get("senders")),
+            *_as_email_list(em.get("receivers")),
+        ]:
+            d = extract_email_domain(addr)
+            if d and not is_freemail_domain(d) and d in email_domain_idx and d not in seen:
+                edges_idx[f"{edge_name}_src"].append(email_idx)
+                edges_idx[f"{edge_name}_dst"].append(email_domain_idx[d])
+                seen.add(d)
+
     return {
         "email_to_entity": email_to_entity,
         "email_to_domain_from_urls": email_to_domain_from_urls,
         "email_to_stem_from_urls": email_to_stem_from_urls,
+        "email_to_email_domain": email_to_email_domain,
     }
 
 
@@ -819,8 +841,6 @@ def _assemble_nodes(
 def _assemble_edges(
     schema: GraphSchema,
     edges_idx: Dict[str, List[int]],
-    snd_dom_src: List[int], snd_dom_dst: List[int],
-    rcv_dom_src: List[int], rcv_dom_dst: List[int],
 ) -> Dict[str, Tuple[List[int], List[int]]]:
     edges: Dict[str, Tuple[List[int], List[int]]] = {}
     for edge_name in schema.edges:
@@ -828,8 +848,6 @@ def _assemble_edges(
         dst_key = f"{edge_name}_dst"
         if src_key in edges_idx and dst_key in edges_idx:
             edges[edge_name] = (edges_idx[src_key], edges_idx[dst_key])
-    edges["sender_from_domain"] = (snd_dom_src, snd_dom_dst)
-    edges["receiver_from_domain"] = (rcv_dom_src, rcv_dom_dst)
     return edges
 
 
@@ -1013,6 +1031,7 @@ def assemble_misp_graph_ir_from_parsed_emails(
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
     url_skip_superspreaders_path: Optional[str] = None,
     url_skip_substrings: Optional[Sequence[str]] = None,
 ) -> GraphIR:
@@ -1051,9 +1070,6 @@ def assemble_misp_graph_ir_from_parsed_emails(
         schema,
         registry,
         zero_email_timestamps=zero_email_timestamps,
-    )
-    snd_dom_src, snd_dom_dst, rcv_dom_src, rcv_dom_dst = _connect_email_entities_to_domains(
-        indices["sender"], indices["receiver"], indices["email_domain"]
     )
     (
         node_x,
@@ -1114,12 +1130,7 @@ def assemble_misp_graph_ir_from_parsed_emails(
         email_x,
     )
 
-    edges = _assemble_edges(
-        schema,
-        edges_idx,
-        snd_dom_src, snd_dom_dst,
-        rcv_dom_src, rcv_dom_dst,
-    )
+    edges = _assemble_edges(schema, edges_idx)
 
     email_attrs = _assemble_email_attrs(
         email_meta,
@@ -1131,7 +1142,7 @@ def assemble_misp_graph_ir_from_parsed_emails(
     )
 
     ir = GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
-    return _collapse_graph_ir(ir, schema)
+    return _collapse_graph_ir(ir, schema) if collapse_enabled else ir
 
 
 def assemble_misp_graph_ir(
@@ -1140,6 +1151,7 @@ def assemble_misp_graph_ir(
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -1156,6 +1168,7 @@ def assemble_misp_graph_ir(
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
         zero_email_timestamps=zero_email_timestamps,
+        collapse_enabled=collapse_enabled,
     )
 
 

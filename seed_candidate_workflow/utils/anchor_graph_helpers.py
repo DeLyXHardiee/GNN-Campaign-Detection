@@ -218,30 +218,16 @@ def _build_email_node_table(
     email_sets = {k: v for k, v in email_sets.items() if k not in skip_direct}
     index_to_str = {node_type: _index_to_str(meta, node_type) for node_type in email_sets}
 
-    # Sender->domain union (semantic shard step2 convention).
     sender_map = index_to_str.get("sender", _index_to_str(meta, "sender"))
     email_domain_map = index_to_str.get(
         "email_domain", _index_to_str(meta, "email_domain")
     )
-    sender_to_domain: dict[int, set[str]] = defaultdict(set)
-    if ("sender", "from_domain", "email_domain") in data.edge_types:
-        ei = data["sender", "from_domain", "email_domain"].edge_index
-        if ei is not None and ei.numel() > 0:
-            s_idx = ei[0].detach().cpu().numpy().astype(np.int64)
-            d_idx = ei[1].detach().cpu().numpy().astype(np.int64)
-            for s, d in zip(s_idx, d_idx, strict=False):
-                if 0 <= int(d) < len(email_domain_map):
-                    sender_to_domain[int(s)].add(email_domain_map[int(d)])
-
-    sender_domain_sets: list[set[str]] = [set() for _ in range(n_email)]
-    if ("email", "has_sender", "sender") in data.edge_types:
-        ei = data["email", "has_sender", "sender"].edge_index
-        if ei is not None and ei.numel() > 0:
-            e_idx = ei[0].detach().cpu().numpy().astype(np.int64)
-            s_idx = ei[1].detach().cpu().numpy().astype(np.int64)
-            for e, s in zip(e_idx, s_idx, strict=False):
-                if 0 <= int(e) < n_email:
-                    sender_domain_sets[int(e)].update(sender_to_domain.get(int(s), set()))
+    sender_domain_sets = gh.build_sender_email_domain_sets(
+        data,
+        sender_map=sender_map,
+        email_domain_map=email_domain_map,
+        n_email=n_email,
+    )
 
     attrs = meta.get("email_attrs") or {}
     subject = attrs.get("subject") or [None] * n_email

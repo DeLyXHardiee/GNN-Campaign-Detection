@@ -822,11 +822,28 @@ def _sender_domain_channel(
     idx_to_dom = _artifact_index_to_string(metadata, "email_domain")
     emails_by_dom: dict[int, set[str]] = defaultdict(set)
 
-    if ("email", "has_sender", "sender") in getattr(graph, "edge_types", []) and (
-        "sender",
-        "from_domain",
-        "email_domain",
-    ) in getattr(graph, "edge_types", []):
+    dom_str_to_idx = {str(d): int(i) for i, d in idx_to_dom.items() if d}
+    idx_to_sender = _artifact_index_to_string(metadata, "sender")
+
+    if ("email", "has_sender", "sender") in getattr(graph, "edge_types", []):
+        try:
+            from graph.common import extract_email_domain, is_freemail_domain
+        except ModuleNotFoundError:
+            from core.graph.common import extract_email_domain, is_freemail_domain
+
+        e_s = graph["email", "has_sender", "sender"].edge_index
+        for e_idx, s_idx in zip(e_s[0].tolist(), e_s[1].tolist(), strict=False):
+            eid = idx_to_eid.get(int(e_idx))
+            if not eid or not (0 <= int(s_idx) < len(idx_to_sender)):
+                continue
+            dom = extract_email_domain(str(idx_to_sender[int(s_idx)]))
+            if not dom or is_freemail_domain(dom):
+                continue
+            d_idx = dom_str_to_idx.get(dom)
+            if d_idx is not None:
+                emails_by_dom[int(d_idx)].add(eid)
+
+    if ("sender", "from_domain", "email_domain") in getattr(graph, "edge_types", []):
         e_s = graph["email", "has_sender", "sender"].edge_index
         s_d = graph["sender", "from_domain", "email_domain"].edge_index
         sender_to_domains: dict[int, set[int]] = defaultdict(set)

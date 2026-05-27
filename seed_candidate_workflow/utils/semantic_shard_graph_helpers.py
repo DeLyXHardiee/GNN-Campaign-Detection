@@ -287,33 +287,12 @@ def _build_sender_email_domain_sets(
     email_domain_map: list[str],
     n_email: int,
 ) -> list[set[str]]:
-    out = [set() for _ in range(n_email)]
-    if ("email", "has_sender", "sender") not in data.edge_types:
-        return out
-    if ("sender", "from_domain", "email_domain") not in data.edge_types:
-        return out
-
-    s_to_dom: dict[int, set[str]] = defaultdict(set)
-    ei_sd = data["sender", "from_domain", "email_domain"].edge_index
-    if ei_sd is not None and ei_sd.numel() > 0:
-        for s, d in zip(
-            ei_sd[0].detach().cpu().numpy().astype(np.int64),
-            ei_sd[1].detach().cpu().numpy().astype(np.int64),
-        ):
-            if 0 <= int(d) < len(email_domain_map):
-                s_to_dom[int(s)].add(email_domain_map[int(d)])
-
-    ei_es = data["email", "has_sender", "sender"].edge_index
-    if ei_es is not None and ei_es.numel() > 0:
-        for e, s in zip(
-            ei_es[0].detach().cpu().numpy().astype(np.int64),
-            ei_es[1].detach().cpu().numpy().astype(np.int64),
-        ):
-            if 0 <= int(e) < n_email:
-                if 0 <= int(s) < len(sender_map):
-                    out[int(e)].add(sender_map[int(s)])
-                out[int(e)].update(s_to_dom.get(int(s), set()))
-    return out
+    return gh.build_sender_email_domain_sets(
+        data,
+        sender_map=sender_map,
+        email_domain_map=email_domain_map,
+        n_email=n_email,
+    )
 
 
 def load_email_level_inputs(

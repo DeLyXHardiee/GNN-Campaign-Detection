@@ -197,14 +197,72 @@ def _edge_neighbors_email_to(
     return out
 
 
+def build_sender_email_domain_sets(
+    data,
+    *,
+    sender_map: list[str],
+    email_domain_map: list[str],
+    n_email: int,
+) -> list[set[str]]:
+    """
+    Per-email sender-side mailbox domains (``sender_email_domain_set`` channel).
+
+    Primary (``main`` heterograph topology): derive from ``email -> has_sender -> sender`` and
+    ``extract_email_domain`` on sender address strings.
+
+    Legacy fallback: ``sender -> from_domain -> email_domain`` when those edges exist.
+    """
+    try:
+        from graph.common import extract_email_domain, is_freemail_domain
+    except ModuleNotFoundError:
+        from core.graph.common import extract_email_domain, is_freemail_domain
+
+    out: list[set[str]] = [set() for _ in range(n_email)]
+    if ("email", "has_sender", "sender") not in getattr(data, "edge_types", []):
+        return out
+
+    ei_es = data["email", "has_sender", "sender"].edge_index
+    if ei_es is not None and ei_es.numel() > 0:
+        for e, s in zip(
+            ei_es[0].detach().cpu().numpy().astype(np.int64),
+            ei_es[1].detach().cpu().numpy().astype(np.int64),
+        ):
+            if not (0 <= int(e) < n_email and 0 <= int(s) < len(sender_map)):
+                continue
+            dom = extract_email_domain(sender_map[int(s)])
+            if dom and not is_freemail_domain(dom):
+                out[int(e)].add(dom)
+
+    if ("sender", "from_domain", "email_domain") in getattr(data, "edge_types", []):
+        s_to_dom: dict[int, set[str]] = defaultdict(set)
+        ei_sd = data["sender", "from_domain", "email_domain"].edge_index
+        if ei_sd is not None and ei_sd.numel() > 0:
+            for s, d in zip(
+                ei_sd[0].detach().cpu().numpy().astype(np.int64),
+                ei_sd[1].detach().cpu().numpy().astype(np.int64),
+            ):
+                if 0 <= int(d) < len(email_domain_map):
+                    s_to_dom[int(s)].add(email_domain_map[int(d)])
+        if ei_es is not None and ei_es.numel() > 0:
+            for e, s in zip(
+                ei_es[0].detach().cpu().numpy().astype(np.int64),
+                ei_es[1].detach().cpu().numpy().astype(np.int64),
+            ):
+                if 0 <= int(e) < n_email:
+                    out[int(e)].update(s_to_dom.get(int(s), set()))
+
+    return out
+
+
 def build_email_artifact_sets(
     data,
 ) -> dict[str, list[set[int]]]:
     """
     For each artifact node type T connected directly from `email`, build a list of sets:
     email_idx -> set of T node indices.
-    Special case `email_domain`: union of domains reachable via sender or receiver
-    (edges sender/receiver --from_domain--> email_domain).
+
+    ``email_domain`` is filled by direct ``email -> has_email_domain -> email_domain`` edges when
+    present. Legacy graphs without that edge still union sender/receiver ``from_domain`` paths below.
     """
     n_email = infer_num_nodes(data, "email")
     out: dict[str, list[set[int]]] = defaultdict(lambda: [set() for _ in range(n_email)])

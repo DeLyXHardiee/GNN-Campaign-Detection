@@ -401,6 +401,7 @@ def build_pair_training_dataset(
     write_parquet: bool = True,
     write_rejects_csv: bool = True,
     project_root: Path | None = None,
+    misp_json_path: Path | None = None,
     reliable_negative_pool: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
@@ -525,13 +526,20 @@ def build_pair_training_dataset(
         )
         from seed_candidate_workflow.utils.pair_score_separation import _resolve_default_misp_json_path
 
-        text_catalog, text_similarity_meta = load_misp_text_catalog_for_pairs(project_root=project_root)
+        text_catalog, text_similarity_meta = load_misp_text_catalog_for_pairs(
+            project_root=project_root,
+            misp_json_path=misp_json_path,
+        )
         root = project_root or gh.find_project_root()
         body_store = None
         body_cache_diag: dict[str, Any] = {"status": "skipped"}
         if text_catalog:
             try:
-                misp_path = _resolve_default_misp_json_path(root)
+                misp_path = (
+                    misp_json_path
+                    if misp_json_path is not None
+                    else _resolve_default_misp_json_path(root)
+                )
             except Exception:
                 misp_path = None
             if misp_path is not None and Path(misp_path).is_file():
