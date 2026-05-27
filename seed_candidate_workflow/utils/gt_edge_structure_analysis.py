@@ -36,6 +36,7 @@ CORE_ARTIFACT_TYPES: tuple[str, ...] = (
 )
 ROUTING_ARTIFACT_TYPES: tuple[str, ...] = (
     "received_host",
+    "return_path_email",
     "return_path_domain",
     "origin_ip",
 )
@@ -48,6 +49,7 @@ CHANNEL_TO_BOOL_COL: dict[str, str] = {
     "stem": "has_shared_stem",
     "attachment": "has_shared_attachment",
     "received_host": "has_shared_received_host",
+    "return_path_email": "has_shared_return_path_email",
     "return_path_domain": "has_shared_return_path_domain",
     "origin_ip": "has_shared_origin_ip",
 }

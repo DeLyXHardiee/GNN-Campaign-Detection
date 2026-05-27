@@ -1,0 +1,17 @@
+{
+  "gt_paths": [
+    "data/groundtruth/ground_truth.json",
+    "data/groundtruth/ground_truth.reparsed_urls.dedup_task_identity.json"
+  ],
+  "graph_pt": "core/graph/output/incidents_lake_misp_reparsed_urls_dedup_task_identity_no_collapse_hetero.pt",
+  "meta_json": "core/graph/output/incidents_lake_misp_reparsed_urls_dedup_task_identity_no_collapse_hetero.meta.json",
+  "embeddings_json": "core/utils/embeddings/output/embeddings.json",
+  "pair_training_csv": null,
+  "candidate_union_csv": null,
+  "anchor_run_dir": null,
+  "out_dir": "output/analysis/gt_edge_structure/reparsed_urls_dedup_routing_pairs",
+  "max_same_pairs": 8000,
+  "max_cross_pairs": 8000,
+  "seed": 0,
+  "min_support": 30
+}

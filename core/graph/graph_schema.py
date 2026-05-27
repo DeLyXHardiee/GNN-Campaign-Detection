@@ -417,6 +417,14 @@ DEFAULT_SCHEMA = GraphSchema(
     ("email", "url", "has_url"),
     ("email", "domain", "has_domain"),
     ("email", "stem", "has_stem"),
+    ("email", "email_domain", "has_email_domain"),
+    ("email", "attachment", "has_attachment"),
+    ("email", "html_structure_fingerprint", "has_html_structure_fingerprint"),
+    #("email", "origin_ip", "has_origin_ip"),
+    #("email", "received_host", "has_received_host"),
+    #("email", "helo_host", "has_helo_host"),
+    ("email", "return_path_email", "has_return_path_email"),
+    ("email", "return_path_domain", "has_return_path_domain"),
     ),
 )
 

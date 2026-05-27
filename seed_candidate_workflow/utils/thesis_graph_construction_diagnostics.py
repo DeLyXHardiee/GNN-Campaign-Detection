@@ -753,6 +753,8 @@ def _channel_stats_from_email_artifact_map(
         "max_artifact_degree": int(max(degrees) if degrees else 0),
         "induced_email_email_pairs": int(induced_pairs),
         "gt_covered_induced_pairs": int(gt_pairs),
+        "n_same_campaign_pairs": int(same_c),
+        "n_cross_campaign_pairs": int(cross_c),
         "same_campaign_pct_among_gt_covered": float(100.0 * same_c / gt_pairs) if gt_pairs else float("nan"),
         "cross_campaign_pct_among_gt_covered": float(100.0 * cross_c / gt_pairs) if gt_pairs else float("nan"),
         "n_artifacts_touching_multiple_gt_campaigns": int(multi_campaign_artifacts),
