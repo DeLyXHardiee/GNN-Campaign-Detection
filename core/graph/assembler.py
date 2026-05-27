@@ -23,9 +23,15 @@ from tqdm import tqdm
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .url_skip_superspreaders import resolve_url_skip_superspreaders_patterns
 try:
-    from core.feature_set_extraction.url_extraction_utils import shard_url_infra_classify
+    from core.feature_set_extraction.url_extraction_utils import (
+        shard_url_infra_classify,
+        parse_url_host_and_registrable_domain,
+    )
 except ModuleNotFoundError:
-    from feature_set_extraction.url_extraction_utils import shard_url_infra_classify
+    from feature_set_extraction.url_extraction_utils import (
+        shard_url_infra_classify,
+        parse_url_host_and_registrable_domain,
+    )
 from .common import (
     parse_misp_events,
     extract_email_domain,
@@ -252,6 +258,17 @@ def _node_indexers(
     def _is_popular_url(u: str) -> bool:
         return bool(popular_domains) and shard_url_infra_classify(u, popular_domains)[0] == "benign"
 
+    def _is_popular_url_exact_host(u: str) -> bool:
+        # Filter only if the bare hostname (www. stripped) exactly matches a popular domain.
+        # Subdomains like docs.google.com are kept; google.com / www.google.com are not.
+        if not popular_domains:
+            return False
+        host, _, ok = parse_url_host_and_registrable_domain(u)
+        if not ok:
+            return False
+        bare = host[4:] if host.startswith("www.") else host
+        return bare in popular_domains
+
     def sender(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
@@ -270,7 +287,7 @@ def _node_indexers(
             for u in _as_email_list(em.get("urls")):
                 if _url_should_skip_for_superspreader(u, url_skip_substrings):
                     continue
-                if _is_popular_url(u):
+                if _is_popular_url_exact_host(u):
                     continue
                 vals.append(u)
         return _dedup_index(vals)
@@ -290,7 +307,7 @@ def _node_indexers(
         vals: List[str] = []
         for em in emails:
             for u in _as_email_list(em.get("urls")):
-                if _is_popular_url(u):
+                if _is_popular_url_exact_host(u):
                     continue
                 s = parse_url_components(u).get("stem", "")
                 if _is_valid_stem(s):
