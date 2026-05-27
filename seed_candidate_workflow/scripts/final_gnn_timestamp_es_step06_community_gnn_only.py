@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 4: scored community detection sweep (expanded GT)."""
+"""Step 6: PU scoring + community sweep for GNN-only pair scorer."""
 from __future__ import annotations
 
 import argparse
@@ -12,12 +12,14 @@ _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from seed_candidate_workflow.utils.final_14_only_mlp_thesis import (  # noqa: E402
-    community_sweep_csv,
+from seed_candidate_workflow.utils.final_gnn_timestamp_es_thesis import (  # noqa: E402
+    community_sweep_in_run_dir,
     load_manifest,
     repo_root,
-    resolve_best_community_settings,
+    resolve_best_community_from_sweep,
+    resolve_repo_path,
     steps_dir,
+    training_run_dir,
 )
 
 
@@ -29,23 +31,26 @@ def main() -> int:
 
     repo = repo_root()
     manifest = load_manifest(args.manifest)
-    scoring_run_id = str(manifest["scoring_run_id"])
+    run_id = str(manifest["run_id_gnn_only"])
+    run_dir = training_run_dir(repo, run_id)
     gt_slug = str(manifest.get("gt_slug") or "ground_truth")
-    sweep = community_sweep_csv(repo, scoring_run_id, gt_slug=gt_slug)
+    sweep = community_sweep_in_run_dir(run_dir, gt_slug=gt_slug)
 
     if not (args.skip_existing and sweep.is_file()):
-        exp = (repo / str(manifest["community_experiment_config"])).resolve()
+        exp = resolve_repo_path(repo, str(manifest["community_experiment_gnn_only"]))
         subprocess.run(
             [sys.executable, str(repo / "seed_candidate_workflow/pipelines/run_experiment.py"), "--config", str(exp)],
             cwd=str(repo),
             check=True,
         )
 
-    best = resolve_best_community_settings(repo, manifest, gt_slug=gt_slug)
-    report = {"scoring_run_id": scoring_run_id, "sweep_csv": str(sweep), "best_community": best}
-    out_dir = steps_dir(repo, manifest)
-    p_json = out_dir / "step04_community_report.json"
-    p_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    if not sweep.is_file():
+        raise FileNotFoundError(f"Community sweep not found after experiment: {sweep}")
+
+    best = resolve_best_community_from_sweep(sweep)
+    report = {"run_id": run_id, "sweep_csv": str(sweep), "best_community": best}
+    out = steps_dir(repo, manifest) / "step06_community_gnn_only_report.json"
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))
     return 0
 

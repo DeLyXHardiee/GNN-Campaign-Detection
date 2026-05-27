@@ -22,6 +22,13 @@ TWOHOP_CHANNELS: tuple[str, ...] = (
     "attachment",
 )
 
+def _safe_int_from_artifact_degree(value: Any, *, default: int = 0) -> int:
+    v = pd.to_numeric(value, errors="coerce")
+    if pd.isna(v):
+        return default
+    return int(v)
+
+
 _ARTIFACT_TYPE_TO_CHANNEL: dict[str, str] = {
     "url": "url",
     "stem": "stem",
@@ -145,7 +152,7 @@ def attach_twohop_channel_columns(
         primary_col.append(primary)
         types_col.append("|".join(str(x.get("artifact_type") or "") for x in hop[:8]))
         values_col.append("|".join(str(x.get("artifact_value") or "")[:80] for x in hop[:5]))
-        degrees_col.append("|".join(str(int(pd.to_numeric(x.get("artifact_degree"), errors="coerce") or 0)) for x in hop[:5]))
+        degrees_col.append("|".join(str(_safe_int_from_artifact_degree(x.get("artifact_degree"))) for x in hop[:5]))
         rarities_col.append(
             "|".join(
                 f"{float(pd.to_numeric(x.get('rarity_score'), errors='coerce')):.3f}"

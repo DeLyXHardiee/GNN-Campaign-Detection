@@ -14,13 +14,13 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from seed_candidate_workflow.utils.final_14_only_mlp_thesis import (  # noqa: E402
-    best_community_row,
     community_sweep_csv,
     copy_if_exists,
     format_latex_community_table,
     load_manifest,
     read_training_stability,
     repo_root,
+    resolve_best_community_settings,
     steps_dir,
     thesis_dir,
     training_run_dir,
@@ -40,7 +40,7 @@ def main() -> int:
     gt_slug = str(manifest.get("gt_slug") or "ground_truth")
 
     sweep_main = community_sweep_csv(repo, str(manifest["scoring_run_id"]), gt_slug=gt_slug)
-    best_final = best_community_row(sweep_main)
+    best_final = resolve_best_community_settings(repo, manifest, gt_slug=gt_slug)
     baseline_best = dict(manifest.get("baseline_community_best") or {})
     v_delta = float(best_final["v_measure"]) - float(baseline_best.get("v_measure", 0))
     thresh = float(manifest.get("meaningful_v_delta_threshold") or 0.01)
@@ -67,6 +67,11 @@ def main() -> int:
     _cp(sdir / "step05_threshold_sensitivity_report.json", "threshold_sensitivity/threshold_sensitivity_report.json")
     _cp(sdir / "step09_epoch_community_diagnostic.csv", "epoch_diagnostic/epoch_community_diagnostic.csv")
     _cp(sdir / "step09_epoch_community_diagnostic.json", "epoch_diagnostic/epoch_community_diagnostic.json")
+    _cp(sdir / "step09_epoch_community_diagnostic.tex", "epoch_diagnostic/epoch_community_diagnostic.tex")
+    _cp(
+        sdir / "step09_epoch_community_diagnostic_v_measure.png",
+        "epoch_diagnostic/epoch_community_diagnostic_v_measure.png",
+    )
 
     ps_dir = repo / str((manifest.get("prior_sensitivity") or {}).get("consolidation_output_dir") or "")
     _cp(ps_dir / "prior_sensitivity_best_by_pi.csv", "prior_sensitivity/prior_sensitivity_best_by_pi.csv")

@@ -127,10 +127,15 @@ def best_community_row(sweep_csv: Path) -> dict[str, Any]:
     df = pd.read_csv(sweep_csv, low_memory=False)
     df["_v"] = pd.to_numeric(df["v_measure"], errors="coerce")
     best = df.sort_values("_v", ascending=False).iloc[0]
+    return _community_row_from_sweep_series(best, source=str(sweep_csv))
+
+
+def _community_row_from_sweep_series(best: pd.Series, *, source: str) -> dict[str, Any]:
     return {
         "algorithm": str(best.get("method") or ""),
         "method": str(best.get("method") or ""),
         "threshold": float(best["min_edge_weight"]) if pd.notna(best.get("min_edge_weight")) else None,
+        "min_edge_weight": float(best["min_edge_weight"]) if pd.notna(best.get("min_edge_weight")) else None,
         "resolution": float(best["resolution"]) if pd.notna(best.get("resolution")) else None,
         "homogeneity": float(best["homogeneity"]) if pd.notna(best.get("homogeneity")) else None,
         "completeness": float(best["completeness"]) if pd.notna(best.get("completeness")) else None,
@@ -139,7 +144,75 @@ def best_community_row(sweep_csv: Path) -> dict[str, Any]:
         if pd.notna(best.get("n_edges_after_threshold"))
         else None,
         "n_communities": float(best["n_communities"]) if pd.notna(best.get("n_communities")) else None,
+        "source": source,
     }
+
+
+def _community_row_from_best_json(data: dict[str, Any], *, source: Path) -> dict[str, Any]:
+    row = data.get("best_row") if isinstance(data.get("best_row"), dict) else data
+    return {
+        "algorithm": str(row.get("method") or ""),
+        "method": str(row.get("method") or ""),
+        "threshold": float(row["min_edge_weight"]) if row.get("min_edge_weight") is not None else None,
+        "min_edge_weight": float(row["min_edge_weight"]) if row.get("min_edge_weight") is not None else None,
+        "resolution": float(row["resolution"]) if row.get("resolution") is not None else None,
+        "homogeneity": float(row["homogeneity"]) if row.get("homogeneity") is not None else None,
+        "completeness": float(row["completeness"]) if row.get("completeness") is not None else None,
+        "v_measure": float(row["v_measure"]) if row.get("v_measure") is not None else None,
+        "n_edges_after_threshold": float(row["n_edges_after_threshold"])
+        if row.get("n_edges_after_threshold") is not None
+        else None,
+        "n_communities": float(row["n_communities"]) if row.get("n_communities") is not None else None,
+        "source": str(source),
+    }
+
+
+def resolve_best_community_settings(
+    repo: Path,
+    manifest: dict[str, Any],
+    *,
+    gt_slug: str | None = None,
+) -> dict[str, Any]:
+    """
+    Canonical best community hyperparameters for downstream steps (5, 9, 10).
+
+    Priority:
+      1. ``output/runs/<run_id>/community/anchor_community_best__<gt_slug>.json``
+      2. Same under scoring run (if present)
+      3. Full sweep CSV from step 4 scoring run
+    """
+    slug = gt_slug or str(manifest.get("gt_slug") or "ground_truth")
+    run_id = str(manifest["run_id"])
+
+    explicit = manifest.get("community_best_json")
+    if explicit:
+        p = resolve_repo_path(repo, str(explicit))
+        if p.is_file():
+            return _community_row_from_best_json(
+                json.loads(p.read_text(encoding="utf-8-sig")), source=p
+            )
+
+    run_best = training_run_dir(repo, run_id) / "community" / f"anchor_community_best__{slug}.json"
+    if run_best.is_file():
+        return _community_row_from_best_json(json.loads(run_best.read_text(encoding="utf-8-sig")), source=run_best)
+
+    scoring_best = (
+        scoring_run_dir(repo, str(manifest["scoring_run_id"]))
+        / "seed_candidate"
+        / "community"
+        / f"anchor_community_best__{slug}.json"
+    )
+    if scoring_best.is_file():
+        return _community_row_from_best_json(json.loads(scoring_best.read_text(encoding="utf-8-sig")), source=scoring_best)
+
+    sweep = community_sweep_csv(repo, str(manifest["scoring_run_id"]), gt_slug=slug)
+    if sweep.is_file():
+        return best_community_row(sweep)
+
+    raise FileNotFoundError(
+        "Could not resolve best community settings. Run step04 or ensure "
+        f"{run_best} exists."
+    )
 
 
 def format_latex_community_table(rows: list[dict[str, Any]], *, caption: str, label: str) -> str:
@@ -177,6 +250,10 @@ def format_latex_community_table(rows: list[dict[str, Any]], *, caption: str, la
 def copy_if_exists(src: Path, dst: Path) -> bool:
     if not src.is_file():
         return False
+    src_resolved = src.resolve()
+    dst_resolved = dst.resolve()
+    if src_resolved == dst_resolved:
+        return True
     dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
+    shutil.copy2(src_resolved, dst_resolved)
     return True

@@ -14,10 +14,10 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from seed_candidate_workflow.utils.final_14_only_mlp_thesis import (  # noqa: E402
-    best_community_row,
     community_sweep_csv,
     load_manifest,
     repo_root,
+    resolve_best_community_settings,
     steps_dir,
 )
 
@@ -67,7 +67,7 @@ def _build_thresh_exp(manifest: dict[str, Any], best: dict[str, Any]) -> dict[st
             "dedup_collapse_out_dir": "data/misp/misp_lake_dedup_task_identity",
             "sweep": {
                 "methods": [method],
-                "weight_thresholds": [round(x, 1) for x in [i / 10.0 for i in range(0, 10)]],
+                "weight_thresholds": [round(i / 10.0, 1) for i in range(0, 11)],
                 "resolutions": [resolution],
                 "use_edge_weights_in_partitioning": True,
                 "sort_by": "v-measure",
@@ -91,12 +91,12 @@ def main() -> int:
     manifest = load_manifest(args.manifest)
     gt_slug = str(manifest.get("gt_slug") or "ground_truth")
 
-    step04_path = steps_dir(repo, manifest) / "step04_community_report.json"
-    if step04_path.is_file():
-        best = json.loads(step04_path.read_text(encoding="utf-8-sig"))["best_community"]
-    else:
-        sweep_main = community_sweep_csv(repo, str(manifest["scoring_run_id"]), gt_slug=gt_slug)
-        best = best_community_row(sweep_main)
+    # Use best row only to fix algorithm + resolution. Threshold is swept 0.0–0.9, not locked.
+    best = resolve_best_community_settings(repo, manifest, gt_slug=gt_slug)
+    print(
+        f"[step05] fix method={best.get('method')!r} resolution={best.get('resolution')} "
+        f"(sweep thresholds 0.0–0.9; best full-grid threshold was {best.get('threshold')})"
+    )
 
     exp_dict = _build_thresh_exp(manifest, best)
     out_dir = steps_dir(repo, manifest)
