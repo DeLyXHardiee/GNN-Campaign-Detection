@@ -30,6 +30,7 @@ dependencies = [
     "hdbscan",
     "tqdm",
     "beautifulsoup4",
+    "linkify-it-py",
     "tldextract",
     "matplotlib",
     "pyarrow",

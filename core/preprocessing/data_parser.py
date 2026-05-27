@@ -20,7 +20,11 @@ from preprocessing.body_parser import (
 )
 from preprocessing.attachment_parser import extract_attachment_metadata_from_email
 from preprocessing.html_css_parser import get_empty_html_structure, parse_css_fast, parse_html_fast
-from preprocessing.utils.url_extractor import extract_urls_from_text, deduplicate_urls
+from preprocessing.utils.url_extractor import (
+    deduplicate_urls,
+    extract_urls_from_plain_and_html,
+    extract_urls_from_text,
+)
 
 try:
     import mailparser  # type: ignore
@@ -564,9 +568,15 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, Any]:
 def _parse_body_and_headers_with_mailparser(
     raw_bytes: bytes,
     sample_id: Optional[str] = None,
-) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Any]]:
-    """Extract body, HTML/CSS structure, and attachments; optionally headers via mailparser.
+) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Any], str]:
+    """Extract body, HTML/CSS structure, attachments, headers, and raw HTML for URL extraction.
+
     Never raises: on body/HTML parse failure returns empty body and empty structure, and logs.
+
+    Returns:
+        Tuple of ``(body_text, html_structure, css_structure, attachment_hashes,
+        attachment_metadata, headers, html_raw)`` where ``html_raw`` is the defanged HTML
+        string before structural parsing (empty if none).
     """
     empty_html = get_empty_html_structure()
     default_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
@@ -578,10 +588,13 @@ def _parse_body_and_headers_with_mailparser(
             [],
             [],
             default_headers,
+            "",
         )
 
+    html_raw = ""
     try:
         body_text, html_text, css_text = extract_body_html_css_without_headers(raw_bytes)
+        html_raw = html_text or ""
         html_structure = parse_html_fast(html_text, sample_id=sample_id)
         css_structure = parse_css_fast(css_text)
         attachment_metadata = extract_attachment_metadata_from_email(raw_bytes)
@@ -598,22 +611,47 @@ def _parse_body_and_headers_with_mailparser(
             exc_info=False,
         )
         body_text = ""
+        html_raw = ""
         html_structure = get_empty_html_structure()
         css_structure = {"style_features": {}}
         attachment_hashes = []
         attachment_metadata = []
 
     if mailparser is None:
-        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, default_headers
+        return (
+            body_text,
+            html_structure,
+            css_structure,
+            attachment_hashes,
+            attachment_metadata,
+            default_headers,
+            html_raw,
+        )
 
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
         headers = _extract_headers_from_mailparser(parsed_mail)
-        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, headers
+        return (
+            body_text,
+            html_structure,
+            css_structure,
+            attachment_hashes,
+            attachment_metadata,
+            headers,
+            html_raw,
+        )
     except Exception:
         # Keep body extracted from raw RFC email; fail closed on headers only.
-        return body_text, html_structure, css_structure, attachment_hashes, attachment_metadata, default_headers
+        return (
+            body_text,
+            html_structure,
+            css_structure,
+            attachment_hashes,
+            attachment_metadata,
+            default_headers,
+            html_raw,
+        )
 
 
 def _configure_mailparser_logging() -> None:
@@ -729,7 +767,7 @@ def parse_incidents_with_email_bodies(
             attachment_metadata: List[Dict[str, Any]] = []
             parser_headers = {field: _default_header_value(field) for field in HEADER_FIELDS}
             raw_body_bytes = _read_body_file_bytes(body_file)
-            body_text, html_text, css_text, attachment_hashes, attachment_metadata, parser_headers = _parse_body_and_headers_with_mailparser(
+            body_text, html_text, css_text, attachment_hashes, attachment_metadata, parser_headers, html_raw = _parse_body_and_headers_with_mailparser(
                 raw_body_bytes, sample_id=external_id
             )
 
@@ -745,7 +783,7 @@ def parse_incidents_with_email_bodies(
                 for field in HEADER_FIELDS
             }
 
-            urls_from_body = extract_urls_from_text(body_text)
+            urls_from_body = extract_urls_from_plain_and_html(body_text, html_raw)
             list_unsub_str = _normalize_header_value(selected_headers.get("List-Unsubscribe", ""))
             urls_from_headers = extract_urls_from_text(list_unsub_str)
             email_urls = deduplicate_urls(urls_from_body + urls_from_headers)
@@ -1077,27 +1115,13 @@ def _lake_raw_email_bytes(parsed_payload: Dict[str, Any]) -> bytes:
     return b""
 
 
-def _lake_html_css_structures_from_parsed_payload(
-    parsed_payload: Dict[str, Any],
-    sample_id: Optional[str] = None,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Build ``email_html`` / ``email_css`` feature dicts like :func:`_parse_body_and_headers_with_mailparser`.
-
-    Lake rows expose structured ``parsed`` JSON instead of raw body files; we try (in order):
-
-    1. Full raw message bytes, if present → same extraction as CSV.
-    2. HTML/CSS strings from common column names (and optional ``enrichment`` nesting).
-    """
-    empty_html = get_empty_html_structure()
-    empty_css: Dict[str, Any] = {"style_features": {}}
-
+def _lake_resolve_raw_html_css_strings(parsed_payload: Dict[str, Any]) -> Tuple[str, str]:
+    """Best-effort raw HTML and CSS strings from a lake ``parsed`` payload."""
     raw_b = _lake_raw_email_bytes(parsed_payload)
     if raw_b:
         try:
             _, html_str, css_str = extract_body_html_css_without_headers(raw_b)
-            html_structure = parse_html_fast(html_str, sample_id=sample_id) if html_str.strip() else empty_html
-            css_structure = parse_css_fast(css_str) if css_str.strip() else empty_css
-            return html_structure, css_structure if css_structure else empty_css
+            return (html_str or "").strip(), (css_str or "").strip()
         except Exception:
             pass
 
@@ -1120,7 +1144,6 @@ def _lake_html_css_structures_from_parsed_payload(
             "raw_html",
         )
 
-    # Some pipelines only store a single HTML part as ``body`` (no separate html_* column).
     if not html_raw:
         body_only = parsed_payload.get("body")
         if isinstance(body_only, str) and body_only.strip():
@@ -1131,15 +1154,36 @@ def _lake_html_css_structures_from_parsed_payload(
     if not css_raw and isinstance(enrichment, dict):
         css_raw = _first_non_empty_str(enrichment, "css", "css_text", "inline_css")
 
-    if not html_raw and not css_raw:
-        return empty_html, empty_css
-
     if not css_raw and html_raw:
         css_raw = extract_css_text_from_html(html_raw)
 
+    return (html_raw or "").strip(), (css_raw or "").strip()
+
+
+def _lake_html_css_structures_from_parsed_payload(
+    parsed_payload: Dict[str, Any],
+    sample_id: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+    """Build ``email_html`` / ``email_css`` feature dicts like :func:`_parse_body_and_headers_with_mailparser`.
+
+    Lake rows expose structured ``parsed`` JSON instead of raw body files; we try (in order):
+
+    1. Full raw message bytes, if present → same extraction as CSV.
+    2. HTML/CSS strings from common column names (and optional ``enrichment`` nesting).
+
+    Returns:
+        ``(html_structure, css_structure, html_raw)`` for reuse in URL extraction.
+    """
+    empty_html = get_empty_html_structure()
+    empty_css: Dict[str, Any] = {"style_features": {}}
+
+    html_raw, css_raw = _lake_resolve_raw_html_css_strings(parsed_payload)
+    if not html_raw and not css_raw:
+        return empty_html, empty_css, html_raw
+
     html_structure = parse_html_fast(html_raw, sample_id=sample_id) if html_raw.strip() else empty_html
     css_structure = parse_css_fast(css_raw) if css_raw.strip() else empty_css
-    return html_structure, css_structure if css_structure else empty_css
+    return html_structure, css_structure if css_structure else empty_css, html_raw
 
 
 def _parse_incidents_from_lake_rows(
@@ -1180,7 +1224,7 @@ def _parse_incidents_from_lake_rows(
         body_text = _normalize_scalar(
             parsed_payload.get("body_selectolax_cleaned") or parsed_payload.get("body")
         )
-        html_text, css_text = _lake_html_css_structures_from_parsed_payload(
+        html_text, css_text, html_raw_lake = _lake_html_css_structures_from_parsed_payload(
             parsed_payload,
             sample_id=external_id or None,
         )
@@ -1208,7 +1252,7 @@ def _parse_incidents_from_lake_rows(
             for field in HEADER_FIELDS
         }
 
-        urls_from_body = extract_urls_from_text(body_text)
+        urls_from_body = extract_urls_from_plain_and_html(body_text, html_raw_lake)
         parsed_urls: List[str] = []
         body_analysis_urls = _nested_get(parsed_payload, "enrichment", "body_analysis", "urls")
         if isinstance(body_analysis_urls, list):

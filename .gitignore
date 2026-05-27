@@ -57,3 +57,5 @@ Thumbs.db
 # Ignore cursorignore file
 .cursorignore
 .venv311/
+core/preprocessing/output/*.json
+seed_candidate_workflow/configs/*

@@ -15,18 +15,24 @@ import math
 # Whole string is a scalar epoch (seconds or ms); avoids misparsing year-like fragments as floats.
 _EPOCH_NUMERIC = re.compile(r"^-?\d+(?:\.\d+)?$")
 
-#TODO Fix this import stuff
 try:
-    # Works when running as a package, e.g. `python -m core.main`.
-    from core.preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
+    from core.preprocessing.utils.defang import defang_url_string
 except ModuleNotFoundError:
-    # Works when running as a script from `core`, e.g. `python core/main.py`.
-    from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
-import sys
+    from preprocessing.utils.defang import defang_url_string
 
-sys.path.append('../../preprocessing/utils')
+try:
+    from core.preprocessing.utils.url_extractor import (
+        extract_urls_from_text,
+        normalize_http_url,
+        parse_url_components,
+    )
+except ModuleNotFoundError:
+    from preprocessing.utils.url_extractor import (
+        extract_urls_from_text,
+        normalize_http_url,
+        parse_url_components,
+    )
 
-from preprocessing.utils.url_extractor import parse_url_components, extract_urls_from_text
 from .misp_attribute_schema import DEFAULT_MISP_ATTRIBUTE_SCHEMA
 
 
@@ -396,6 +402,32 @@ def extract_attachment_sha256s(raw_attachments: List[Any], attachment_metadata: 
     return out
 
 
+def _url_canonical_dedup_key(normalized: str) -> str:
+    """Stable key for deduplicating equivalent http(s) URLs (trailing slash tolerant)."""
+    return (normalized or "").strip().lower().rstrip("/")
+
+
+def _append_url_once_canonical_defanged(
+    accum_urls: List[str],
+    canonical_seen: Set[str],
+    raw: str,
+) -> None:
+    """
+    Append a single defanged URL to ``accum_urls`` if ``raw`` normalizes to a new http(s) URL.
+
+    Merges stored ``hxxps://`` attributes with freshly extracted ``https://`` strings so only
+    one defanged form exists per canonical link.
+    """
+    norm = normalize_http_url(to_str(raw).strip())
+    if not norm:
+        return
+    key = _url_canonical_dedup_key(norm)
+    if not key or key in canonical_seen:
+        return
+    canonical_seen.add(key)
+    accum_urls.append(defang_url_string(norm))
+
+
 def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for idx_ev, ev in enumerate(misp_events):
@@ -414,8 +446,8 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
             "senders": set(),
             "receivers": set(),
             "attachments": set(),
-            "urls": set(),
         }
+        url_canonical_seen: Set[str] = set()
         fields: Dict[str, Any] = {
             "subject": "",
             "body": "",
@@ -460,15 +492,26 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
 
             if mapping.accumulate:
                 values = extracted if isinstance(extracted, list) else [to_str(extracted)]
-                for value in values:
-                    item = to_str(value).strip()
-                    if not item:
-                        continue
-                    if mapping.lowercase_items:
-                        item = item.lower()
-                    if item not in accum_seen[mapping.field]:
-                        accum_seen[mapping.field].add(item)
-                        accum[mapping.field].append(item)
+                if mapping.field == "urls":
+                    for value in values:
+                        item = to_str(value).strip()
+                        if not item:
+                            continue
+                        if mapping.lowercase_items:
+                            item = item.lower()
+                        _append_url_once_canonical_defanged(
+                            accum["urls"], url_canonical_seen, item
+                        )
+                else:
+                    for value in values:
+                        item = to_str(value).strip()
+                        if not item:
+                            continue
+                        if mapping.lowercase_items:
+                            item = item.lower()
+                        if item not in accum_seen[mapping.field]:
+                            accum_seen[mapping.field].add(item)
+                            accum[mapping.field].append(item)
             else:
                 fields[mapping.field] = extracted
                 if mapping.field == "authentication_results":
@@ -479,9 +522,7 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
 
             if mapping.extract_urls_side_effect:
                 for url in _extract_urls_from_attr_value(raw_val):
-                    if url and url not in accum_seen["urls"]:
-                        accum_seen["urls"].add(url)
-                        accum["urls"].append(url)
+                    _append_url_once_canonical_defanged(accum["urls"], url_canonical_seen, url)
 
         external_id = to_str(event.get("external_id", ""))
         attachment_metadata = fields.get("attachment_metadata", [])

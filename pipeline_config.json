@@ -2,7 +2,7 @@
   "preprocessing": {
     "incidents_csv_path": "data/incidents/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "data/misp/incidents-lake-misp.json",
+    "misp_json_path": "data/misp/incidents-lake-misp-url-fixed.json",
     "limit": 0,
     "category_allowlist": [
       "phishing",
@@ -21,17 +21,17 @@
     ]
   },
   "datasets": {
-    "misp_json_path": "core/preprocessing/output/incidents-lake-misp.json",
-    "ground_truth_json": "data/groundtruth/ground_truth.json",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-url-fixed.json",
+    "ground_truth_json": "data/groundtruth/ground_truth_merged.json",
     "featureset_base_name": "incidents-lake-misp"
   },
   "graph": {
-    "misp_json_path": "data/misp/incidents-lake-misp.json",
-    "hetero_graph_stem": "main_gnn_pu_1_no_ts",
+    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-url-fixed.json",
+    "hetero_graph_stem": "incidents-lake-misp-url-fixed",
     "zero_email_timestamps": true,
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "graph_pt_path_override": "core/graph/output/main_gnn_pu_1_no_ts_hetero.pt",
+    "graph_pt_path_override": "core/graph/output/incidents-lake-misp-url-fixed_hetero.pt",
     "exclude_node_types": [],
     "degree_node_filter": {
       "enabled": false,
@@ -65,11 +65,17 @@
       "FS7",
       "FSOLS"
     ],
-    "max_workers": 2
+    "max_workers": 8
   },
   "featureset-clustering": {
     "feature_sets": [
+      "FS1",
+      "FS2",
       "FS3",
+      "FS4",
+      "FS5",
+      "FS6",
+      "FS7",
       "FSOLS"
     ],
     "max_tfidf_features": 100000,
@@ -81,25 +87,25 @@
       "contamination": 0.05
     },
     "dbscan": {
-      "eps_values": [0.001, 0.005, 0.01, 0.05],
+      "eps_values": [0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2],
       "min_samples": 2
     },
     "meanshift": {
-      "quantile_values": [],
+      "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
       "n_samples": 30000
     },
     "hdbscan": {
       "enabled": true,
       "min_cluster_size_values": [ 
-        2
+        2, 3, 4, 5
       ],
       "min_samples": null,
       "metric": "cosine"
     }
   },
-  "device": "cpu",
+  "device": "cuda",
   "to_undirected": true,
-  "run_id": "main_gnn_pu_1_no_ts",
+  "run_id": "test_new_schema",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -113,7 +119,7 @@
     "stage_result_json": "stage_result.json"
   },
   "training": {
-    "training_objective": "pair_supervision",
+    "training_objective": "link_prediction",
     "torch_seed": 42,
     "primary_ntype": "email",
     "hidden": 128,
@@ -124,7 +130,7 @@
     "fanout": [25, 15],
     "val_ratio": 0.1,
     "test_ratio": 0.1,
-    "epochs": 15,
+    "epochs": 1,
     "lr": 0.0002,
     "wd": 0.00002,
     "early_stopping_patience": 7,
@@ -137,7 +143,7 @@
     "supervised_edge_types": []
   },
   "pair_training": {
-    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts/pair_training/main_gnn_pu_1_no_ts/pair_training_dataset.csv",
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/bundle_seedcand_pairtrain/pair_training/bundle_seedcand_pairtrain/pair_training_dataset.csv",
     "pair_batch_size": 64,
     "pair_fanout": [25, 15],
     "pair_split_seed": 42,
@@ -240,6 +246,18 @@
       "bert_embeddings": {
         "enabled": true,
         "embeddings_json_path": "core/utils/embeddings/output/embeddings.json",
+        "config": {
+          "dbscan": {
+            "enabled": true,
+            "epsilon_values": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6],
+            "min_samples": 5
+          },
+          "hdbscan": {
+            "enabled": true,
+            "min_cluster_size_values": [2],
+            "metric": "cosine"
+          }
+        },
         "optimization": {
           "l2_normalize": true,
           "max_components": 256,
@@ -253,7 +271,7 @@
     "config": {
       "dbscan": {
         "enabled": true,
-        "epsilon_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "epsilon_values": [0.1, 0.2, 0.3, 0.4, 2.1, 2.2, 2.3, 2.4],
         "min_samples": 5
       },
       "meanshift": {

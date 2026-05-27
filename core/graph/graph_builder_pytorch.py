@@ -9,10 +9,10 @@ Capabilities:
     - ('email', 'has_sender', 'sender')
     - ('email', 'has_receiver', 'receiver')
     - ('email', 'has_url', 'url')
-    - ('url', 'has_domain', 'domain')
-    - ('url', 'has_stem', 'stem')
-    - ('sender', 'from_domain', 'email_domain')
-    - ('receiver', 'from_domain', 'email_domain')
+    - ('email', 'has_domain', 'domain')
+    - ('email', 'has_stem', 'stem')
+    - ('email', 'has_email_domain', 'email_domain')
+
     - ('email', 'has_attachment', 'attachment')
 - Component nodes are deduplicated: multiple emails sharing the same sender, etc. 
     will have edges to the same component node.
@@ -240,10 +240,10 @@ def build_hetero_graph_from_misp(
       - (email, has_sender, sender)
       - (email, has_receiver, receiver)
       - (email, has_url, url)
-      - (url, has_domain, domain)
-      - (url, has_stem, stem)
-      - (sender, from_domain, email_domain)
-      - (receiver, from_domain, email_domain)
+      - (email, has_domain, domain)
+      - (email, has_stem, stem)
+      - (email, has_email_domain, email_domain)
+
     
     Components are deduplicated: multiple emails sharing the same sender/receiver/etc. 
     will have edges to the same component node. URLs are decomposed into domain and stem.
