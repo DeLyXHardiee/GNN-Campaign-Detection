@@ -38,6 +38,7 @@ from config.pipeline_config import DegreeNodeFilterSettings, EmailFeatureProject
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .assembler import assemble_misp_graph_ir
 from .graph_filter import NodeType, filter_graph_ir, filter_graph_ir_by_degree
+from .hetero_graph_cleanup import drop_inactive_hetero_node_types
 from .normalizer import normalize_graph
 from .feature_projection import (
     SCALAR_COUNT,
@@ -230,6 +231,7 @@ def build_hetero_graph_from_misp(
     embeddings_output_dir: Optional[str] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
     zero_email_timestamps: bool = False,
+    filter_popular_domains: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -257,11 +259,16 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
+    pop_domains: frozenset = frozenset()
+    if filter_popular_domains:
+        from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
+        pop_domains = frozenset(load_url_intelligence_sets().get("popular_domains", set()))
     ir = assemble_misp_graph_ir(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
         zero_email_timestamps=zero_email_timestamps,
+        popular_domains=pop_domains,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
@@ -287,7 +294,7 @@ def build_hetero_graph_from_misp(
     _set_edges_from_ir(data, ir, schema)
 
     data = normalize_graph(data)
-    
+    data = drop_inactive_hetero_node_types(data)
     metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
 
@@ -326,6 +333,7 @@ def build_graph(
     max_misp_events: Optional[int] = None,
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
     zero_email_timestamps: bool = False,
+    filter_popular_domains: bool = True,
 ) -> Tuple[Any, str, str]:
    
     if misp_events is None and misp_json_path is None:
@@ -347,6 +355,7 @@ def build_graph(
         embeddings_output_dir=embeddings_output_dir,
         email_feature_projection=email_feature_projection,
         zero_email_timestamps=zero_email_timestamps,
+        filter_popular_domains=filter_popular_domains,
     )
 
     if out_name is None:

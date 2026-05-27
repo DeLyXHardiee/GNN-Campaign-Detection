@@ -193,6 +193,7 @@ def build_memgraph(
     embeddings_output_dir: Optional[str] = None,
     max_misp_events: Optional[int] = None,
     zero_email_timestamps: bool = False,
+    filter_popular_domains: bool = True,
 ) -> Dict[str, Any]:
 
     if misp_events is None and misp_json_path is None:
@@ -207,11 +208,20 @@ def build_memgraph(
     N = schema.nodes
     E = schema.edges
 
+    pop_domains: frozenset = frozenset()
+    if filter_popular_domains:
+        import sys as _sys, os as _os
+        _core = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        if _core not in _sys.path:
+            _sys.path.insert(0, _core)
+        from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
+        pop_domains = frozenset(load_url_intelligence_sets().get("popular_domains", set()))
     ir = assemble_misp_graph_ir(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
         zero_email_timestamps=zero_email_timestamps,
+        popular_domains=pop_domains,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)

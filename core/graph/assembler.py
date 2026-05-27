@@ -20,6 +20,10 @@ from tqdm import tqdm
 
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .url_skip_superspreaders import resolve_url_skip_superspreaders_patterns
+try:
+    from core.feature_set_extraction.url_extraction_utils import shard_url_infra_classify
+except ModuleNotFoundError:
+    from feature_set_extraction.url_extraction_utils import shard_url_infra_classify
 from .common import (
     parse_misp_events,
     extract_email_domain,
@@ -241,7 +245,11 @@ def _field_values_for_node(email: Dict[str, Any], node_key: str) -> List[str]:
 
 def _node_indexers(
     url_skip_substrings: Tuple[str, ...] = (),
+    popular_domains: frozenset = frozenset(),
 ) -> Dict[str, Callable[[List[Dict[str, Any]]], Dict[str, int]]]:
+    def _is_popular_url(u: str) -> bool:
+        return bool(popular_domains) and shard_url_infra_classify(u, popular_domains)[0] == "benign"
+
     def sender(emails: List[Dict[str, Any]]) -> Dict[str, int]:
         vals: List[str] = []
         for em in emails:
@@ -260,6 +268,8 @@ def _node_indexers(
             for u in _as_email_list(em.get("urls")):
                 if _url_should_skip_for_superspreader(u, url_skip_substrings):
                     continue
+                if _is_popular_url(u):
+                    continue
                 vals.append(u)
         return _dedup_index(vals)
 
@@ -267,6 +277,8 @@ def _node_indexers(
         vals: List[str] = []
         for em in emails:
             for u in _as_email_list(em.get("urls")):
+                if _is_popular_url(u):
+                    continue
                 d = parse_url_components(u).get("domain", "")
                 if d:
                     vals.append(d)
@@ -276,6 +288,8 @@ def _node_indexers(
         vals: List[str] = []
         for em in emails:
             for u in _as_email_list(em.get("urls")):
+                if _is_popular_url(u):
+                    continue
                 s = parse_url_components(u).get("stem", "")
                 if _is_valid_stem(s):
                     vals.append(s)
@@ -549,9 +563,12 @@ def _node_feature_builders() -> Dict[str, Callable[[str, Dict[str, Dict[str, int
     }
 
 
-def default_provider_registry(url_skip_substrings: Tuple[str, ...] = ()) -> ProviderRegistry:
+def default_provider_registry(
+    url_skip_substrings: Tuple[str, ...] = (),
+    popular_domains: frozenset = frozenset(),
+) -> ProviderRegistry:
     return ProviderRegistry(
-        node_indexers=_node_indexers(url_skip_substrings),
+        node_indexers=_node_indexers(url_skip_substrings, popular_domains),
         edge_builders=_edge_builders(),
         node_feature_builders=_node_feature_builders(),
     )
@@ -1009,6 +1026,7 @@ def assemble_misp_graph_ir(
     zero_email_timestamps: bool = False,
     url_skip_superspreaders_path: Optional[str] = None,
     url_skip_substrings: Optional[Sequence[str]] = None,
+    popular_domains: Optional[frozenset] = None,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -1029,7 +1047,8 @@ def assemble_misp_graph_ir(
         path=url_skip_superspreaders_path,
         inline_substrings=url_skip_substrings,
     )
-    registry = default_provider_registry(url_skip_patterns)
+    pop_domains = popular_domains if popular_domains is not None else frozenset()
+    registry = default_provider_registry(url_skip_patterns, pop_domains)
     emails = parse_misp_events(misp_events)
     #iterate through emails and print urls if not empty
     '''

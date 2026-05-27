@@ -525,6 +525,7 @@ def run_graph_creation(
         max_misp_events=limit_eff,
         email_feature_projection=email_proj,
         zero_email_timestamps=settings.zero_email_timestamps,
+        filter_popular_domains=settings.filter_popular_domains,
     )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
@@ -732,9 +733,9 @@ if __name__ == "__main__":
     # Use None so graph.misp_json_path + hetero_graph_stem from pipeline_config apply.
     misp_path = "core/preprocessing/output/incidents-lake-misp-url-fixed.json"
     run_graph_creation(misp_json_path=misp_path, to_memgraph=False)
-    run_gnn()
+    #run_gnn(graph_path="graph/output/incidents-lake-misp-url-fixed-collapsed_hetero.pt")
     #run_gnn_evaluation()
-    run_gnn_clustering()
+    #run_gnn_clustering(graph_path="graph/output/incidents-lake-misp-url-fixed_hetero.pt")
     #run_metric_comparison()
     #visualize_clusters()
     
