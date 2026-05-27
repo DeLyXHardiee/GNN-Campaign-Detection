@@ -311,9 +311,9 @@ def parse_url_components(url: str) -> Dict[str, Any]:
         }
 
     try:
-        parsing_url = url
-        if not url.lower().startswith(("http://", "https://")):
-            parsing_url = "http://" + url
+        parsing_url = refang_url_like_schemes(url)
+        if not parsing_url.lower().startswith(("http://", "https://")):
+            parsing_url = "http://" + parsing_url
 
         parsed = urlparse(parsing_url)
 
