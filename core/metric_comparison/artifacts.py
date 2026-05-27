@@ -52,6 +52,7 @@ def strip_payload_meta(payload: dict[str, Any]) -> dict[str, Any]:
         "params",
         "metrics",
         "n_campaigns",
+        "n_non_noise_campaigns",
         "n_noise",
     )
     return {k: payload.get(k) for k in keys if k in payload}

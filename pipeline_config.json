@@ -83,11 +83,17 @@
       "FS7",
       "FSOLS"
     ],
-    "max_workers": 2
+    "max_workers": 8
   },
   "featureset-clustering": {
     "feature_sets": [
+      "FS1",
+      "FS2",
       "FS3",
+      "FS4",
+      "FS5",
+      "FS6",
+      "FS7",
       "FSOLS"
     ],
     "max_tfidf_features": 100000,
@@ -108,7 +114,7 @@
       "min_samples": 2
     },
     "meanshift": {
-      "quantile_values": [],
+      "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
       "n_samples": 30000
     },
     "hdbscan": {
@@ -136,7 +142,7 @@
     "stage_result_json": "stage_result.json"
   },
   "training": {
-    "training_objective": "pair_supervision",
+    "training_objective": "link_prediction",
     "torch_seed": 42,
     "primary_ntype": "email",
     "hidden": 128,
@@ -310,6 +316,18 @@
       "bert_embeddings": {
         "enabled": true,
         "embeddings_json_path": "core/utils/embeddings/output/embeddings.json",
+        "config": {
+          "dbscan": {
+            "enabled": true,
+            "epsilon_values": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6],
+            "min_samples": 5
+          },
+          "hdbscan": {
+            "enabled": true,
+            "min_cluster_size_values": [2],
+            "metric": "cosine"
+          }
+        },
         "optimization": {
           "l2_normalize": true,
           "max_components": 256,

@@ -59,4 +59,4 @@ Thumbs.db
 .cursorignore
 .venv311/
 core/preprocessing/output/*.json
-seed_candidate_workflow/configs/
+seed_candidate_workflow/configs/*

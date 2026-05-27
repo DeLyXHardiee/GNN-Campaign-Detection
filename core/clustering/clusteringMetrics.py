@@ -164,7 +164,12 @@ def compute_internal_metrics(
     return {"silhouette": silhouette, "db_index": db_index, "ch_index": ch_index}
 
 
-def compute_external_metrics(true_labels: list[Any], predicted_labels: list[int]) -> dict[str, Any]:
+def _noise_singleton_label(external_id: str) -> str:
+    """Stable singleton cluster id for a noise point."""
+    return f"noise_{str(external_id)}"
+
+
+def compute_external_metrics(true_labels: list[Any], predicted_labels: list[Any]) -> dict[str, Any]:
     """
     Compute clustering external metrics (homogeneity, completeness, v-measure).
 
@@ -195,7 +200,9 @@ def _aligned_true_predicted_labels(
     sorted_ids: list[str],
     labels: list[int] | np.ndarray,
     ground_truth_labels: dict[str, Any],
-) -> tuple[list[Any], list[int]]:
+    *,
+    noise_as_singletons: bool = False,
+) -> tuple[list[Any], list[Any]]:
     """
     Align predicted cluster labels with ground-truth labels (by external_id).
 
@@ -204,13 +211,17 @@ def _aligned_true_predicted_labels(
     """
     gt_get: Callable[[str], Any] = ground_truth_labels.get
     true_labels: list[Any] = []
-    predicted_labels: list[int] = []
+    predicted_labels: list[Any] = []
     for eid, lab in zip(sorted_ids, labels):
         true = gt_get(eid)
         if true is None:
             continue
         true_labels.append(true)
-        predicted_labels.append(int(lab))
+        label_value = int(lab)
+        if noise_as_singletons and label_value == -1:
+            predicted_labels.append(_noise_singleton_label(eid))
+        else:
+            predicted_labels.append(label_value)
     return true_labels, predicted_labels
 
 
@@ -219,7 +230,7 @@ def alligned_true_predictived_labels(
     sorted_ids: list[str],
     labels: list[int] | np.ndarray,
     ground_truth_labels: dict[str, Any],
-) -> tuple[list[Any], list[int]]:
+) -> tuple[list[Any], list[Any]]:
     return _aligned_true_predicted_labels(
         sorted_ids=sorted_ids,
         labels=labels,
@@ -248,8 +259,15 @@ def compute_all_metrics(
         sorted_ids=sorted_ids,
         labels=labels,
         ground_truth_labels=ground_truth_labels,
+        noise_as_singletons=True,
     )
     external = compute_external_metrics(true_labels, predicted_labels)
+
+    _true_labels_raw, predicted_labels_raw = _aligned_true_predicted_labels(
+        sorted_ids=sorted_ids,
+        labels=labels,
+        ground_truth_labels=ground_truth_labels,
+    )
 
     n_clusters = int(len(set(labels)) - (1 if -1 in labels else 0))
     n_noise = int((labels == -1).sum())
@@ -259,7 +277,7 @@ def compute_all_metrics(
     # Two different "coverage" definitions:
     # 1) Ground-truth coverage: among all ground-truth-labeled items, how many were predicted as non-noise.
     # This remains non-noise coverage even though external metrics now include noise-labeled points.
-    n_gt_non_noise = sum(1 for lab in predicted_labels if lab != -1)
+    n_gt_non_noise = sum(1 for lab in predicted_labels_raw if lab != -1)
     coverage_ground_truth = n_gt_non_noise / max(1, len(ground_truth_labels))
     # 2) All-items coverage: among all embeddings, how many were predicted as non-noise (regardless of ground-truth presence).
     coverage_all = n_non_noise / max(1, n_embeddings)

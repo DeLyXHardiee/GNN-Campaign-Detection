@@ -570,6 +570,10 @@ def _parse_body_and_headers_with_mailparser(
     sample_id: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Any], str]:
     """Extract body, HTML/CSS structure, attachments, headers, and raw HTML for URL extraction.
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
     Never raises: on body/HTML parse failure returns empty body and empty structure, and logs.
 
     Returns:

@@ -10,9 +10,10 @@ Capabilities:
     - ('email', 'has_sender', 'sender')
     - ('email', 'has_receiver', 'receiver')
     - ('email', 'has_url', 'url')
-    - ('url', 'has_domain', 'domain')
-    - ('url', 'has_stem', 'stem')
+    - ('email', 'has_domain', 'domain')
+    - ('email', 'has_stem', 'stem')
     - ('email', 'has_email_domain', 'email_domain')
+
     - ('email', 'has_attachment', 'attachment')
 - Component nodes are deduplicated: multiple emails sharing the same sender, etc. 
     will have edges to the same component node.
@@ -241,6 +242,7 @@ def build_hetero_graph_from_misp(
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
     zero_email_timestamps: bool = False,
     collapse_enabled: bool = True,
+    filter_popular_domains: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
@@ -251,9 +253,10 @@ def build_hetero_graph_from_misp(
       - (email, has_sender, sender)
       - (email, has_receiver, receiver)
       - (email, has_url, url)
-      - (url, has_domain, domain)
-      - (url, has_stem, stem)
+      - (email, has_domain, domain)
+      - (email, has_stem, stem)
       - (email, has_email_domain, email_domain)
+
     
     Components are deduplicated: multiple emails sharing the same sender/receiver/etc. 
     will have edges to the same component node. URLs are decomposed into domain and stem.
@@ -267,12 +270,17 @@ def build_hetero_graph_from_misp(
     """
     schema = schema or DEFAULT_SCHEMA
     N = schema.nodes
+    pop_domains: frozenset = frozenset()
+    if filter_popular_domains:
+        from feature_set_extraction.domain_lists_loader import load_url_intelligence_sets
+        pop_domains = frozenset(load_url_intelligence_sets().get("popular_domains", set()))
     ir = assemble_misp_graph_ir(
         misp_events,
         schema=schema,
         embeddings_output_dir=embeddings_output_dir,
         zero_email_timestamps=zero_email_timestamps,
         collapse_enabled=collapse_enabled,
+        popular_domains=pop_domains,
     )
     if exclude_nodes:
         ir = filter_graph_ir(ir, exclude_nodes=NodeType.canonical_set(exclude_nodes, schema=schema), schema=schema)
@@ -299,7 +307,6 @@ def build_hetero_graph_from_misp(
 
     data = normalize_graph(data)
     data = drop_inactive_hetero_node_types(data)
-
     metadata = _build_metadata_from_ir(data, ir, schema)
     return data, metadata
 
@@ -340,6 +347,7 @@ def build_graph(
     email_feature_projection: Optional[EmailFeatureProjectionSettings] = None,
     zero_email_timestamps: bool = False,
     collapse_enabled: bool = True,
+    filter_popular_domains: bool = True,
 ) -> Tuple[Any, str, str]:
     if parsed_emails is not None:
         graph, metadata = build_hetero_graph_from_misp(
@@ -378,6 +386,7 @@ def build_graph(
             email_feature_projection=email_feature_projection,
             zero_email_timestamps=zero_email_timestamps,
             collapse_enabled=collapse_enabled,
+            filter_popular_domains=filter_popular_domains
         )
 
         if out_name is None:
