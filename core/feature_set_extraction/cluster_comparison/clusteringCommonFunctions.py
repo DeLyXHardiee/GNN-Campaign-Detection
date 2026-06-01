@@ -158,7 +158,7 @@ def _dense_block_to_csr(arr: np.ndarray) -> csr_matrix:
     return csr_matrix(arr)
 
 
-def _scale_and_normalize_matrix(X, scaler_type="robust", l2_normalize=True):
+def scale_and_normalize_matrix(X, scaler_type="robust", l2_normalize=True):
     """Apply feature scaling and optional row-wise L2 normalization."""
     if scaler_type == "robust":
         scaler = RobustScaler()
@@ -397,7 +397,12 @@ def preprocess_for_clustering(
         X = X.toarray()
 
     print(f"Applying scaler: {scaler_type}, l2_normalize={l2_normalize}")
+<<<<<<< HEAD
     X = _scale_and_normalize_matrix(X, scaler_type=scaler_type, l2_normalize=l2_normalize)
+=======
+    X = scale_and_normalize_matrix(X, scaler_type=scaler_type, l2_normalize=l2_normalize)
+    
+>>>>>>> 2e36c137b563ef6f78d32c478af1f5cc89dde3f5
     return X, feature_names
 
 
