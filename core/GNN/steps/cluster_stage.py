@@ -18,9 +18,15 @@ from config.pipeline_config import (
 try:
     from core.clustering.clusteringMetrics import fit_predict_labels
     from core.visualization.campaign_utils import build_campaign_artifact_payload
+    from core.feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
+        remove_outliers_from_matrix,
+    )
 except ModuleNotFoundError:
     from clustering.clusteringMetrics import fit_predict_labels
     from visualization.campaign_utils import build_campaign_artifact_payload
+    from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import (
+        remove_outliers_from_matrix,
+    )
 from src.clustering.clustering_helpers import (
     extract_email_embeddings,
     extract_ground_truth_labels,
@@ -133,6 +139,8 @@ def _prepare_embedding_map_for_clustering(
     l2_normalize: bool,
     max_components: int | None,
     random_state: int = 42,
+    remove_outliers: bool = False,
+    outlier_contamination: float = 0.05,
 ) -> dict[str, np.ndarray]:
     if not id_to_embedding_map:
         return {}
@@ -155,6 +163,17 @@ def _prepare_embedding_map_for_clustering(
         norms = np.linalg.norm(X, axis=1, keepdims=True)
         norms = np.where(norms > 0.0, norms, 1.0)
         X = X / norms
+
+    if remove_outliers:
+        X, keep_mask, n_removed = remove_outliers_from_matrix(
+            X, contamination=outlier_contamination, random_state=random_state
+        )
+        ordered_ids = [eid for eid, keep in zip(ordered_ids, keep_mask) if keep]
+        if n_removed:
+            print(
+                f"[clustering] outlier removal: removed {n_removed} / "
+                f"{len(keep_mask)} embeddings (contamination={outlier_contamination})"
+            )
 
     return {
         eid: np.asarray(X[i], dtype=np.float64).copy()
@@ -556,15 +575,25 @@ def run_clustering_stage(
     # Model name comes from training.model_save_name (stem) so it stays consistent when not running training.
     outputs: dict[str, dict[str, str]] = {}
     model_stem = Path(model_save_name).stem
-    raw_model_stem = "raw_email_embeddings"
-    transformer_model_stem = "transformer_text_embeddings"
 
     # Default `min_coverage_all` to the same threshold as ground truth coverage.
     if min_coverage_all is None:
         min_coverage_all = float(min_coverage_ground_truth)
 
+    # Preprocessing settings shared across GNN, raw, and transformer embedding paths.
+    preprocessing_cfg = (clustering_cfg or {}).get("preprocessing") or {}
+    _remove_outliers = bool(preprocessing_cfg.get("remove_outliers", True))
+    _outlier_contamination = float(preprocessing_cfg.get("outlier_contamination", 0.05))
+
     gnn_id_to_emb = extract_email_embeddings(
         model, data, device, external_ids=email_external_ids
+    )
+    gnn_id_to_emb = _prepare_embedding_map_for_clustering(
+        id_to_embedding_map=gnn_id_to_emb,
+        l2_normalize=True,
+        max_components=None,
+        remove_outliers=_remove_outliers,
+        outlier_contamination=_outlier_contamination,
     )
     outputs, best_locked_params = _run_embedding_clustering_suite(
         algorithms_cfg=clustering_cfg,
@@ -579,6 +608,13 @@ def run_clustering_stage(
     raw_graph_id_to_emb = _build_id_to_embedding_from_matrix(
         external_ids=[str(x) for x in email_external_ids],
         matrix=data["email"].x.detach().cpu().numpy(),
+    )
+    raw_graph_id_to_emb = _prepare_embedding_map_for_clustering(
+        id_to_embedding_map=raw_graph_id_to_emb,
+        l2_normalize=True,
+        max_components=None,
+        remove_outliers=_remove_outliers,
+        outlier_contamination=_outlier_contamination,
     )
 
     # Run locked-parameter clustering across epoch checkpoints so we can plot metrics vs epoch
@@ -691,25 +727,79 @@ def run_clustering_stage(
             l2_normalize=bool(optimization_cfg.get("l2_normalize", True)),
             max_components=_resolve_bert_max_components(optimization_cfg),
             random_state=int(optimization_cfg.get("random_state", 42)),
+            remove_outliers=_remove_outliers,
+            outlier_contamination=_outlier_contamination,
         )
         bert_algorithms_cfg, bert_optimization_notes = _resolve_bert_algorithms_cfg(
             default_algorithms_cfg=clustering_cfg,
             bert_cfg=bert_cfg,
             n_embeddings=int(len(bert_id_to_emb_prepared)),
         )
+
+        # If meanshift has its own max_components, prepare a separate reduced embedding
+        # map for it and run it independently from DBSCAN/HDBSCAN.
+        ms_cfg = bert_algorithms_cfg.get("meanshift")
+        ms_own_max_components = None
+        if isinstance(ms_cfg, dict) and ms_cfg.get("enabled"):
+            raw_val = ms_cfg.pop("max_components", None)
+            if raw_val is not None:
+                ms_own_max_components = int(raw_val)
+
         bert_root = clustering_out / "baseline_bert_embeddings"
-        bert_outputs, bert_best = _run_embedding_clustering_suite(
-            algorithms_cfg=bert_algorithms_cfg,
-            id_to_embedding_map=bert_id_to_emb_prepared,
-            ground_truth=ground_truth,
-            clustering_root_dir=bert_root,
-            model_stem=model_stem,
-            min_coverage_ground_truth=float(min_coverage_ground_truth),
-            min_coverage_all=float(min_coverage_all),
+
+        if ms_own_max_components is not None:
+            non_ms_cfg = {k: v for k, v in bert_algorithms_cfg.items() if k != "meanshift"}
+            ms_only_cfg = {"meanshift": ms_cfg}
+            bert_id_to_emb_ms = _prepare_embedding_map_for_clustering(
+                id_to_embedding_map=bert_id_to_emb,
+                l2_normalize=bool(optimization_cfg.get("l2_normalize", True)),
+                max_components=ms_own_max_components,
+                random_state=int(optimization_cfg.get("random_state", 42)),
+                remove_outliers=_remove_outliers,
+                outlier_contamination=_outlier_contamination,
+            )
+            bert_outputs, bert_best = _run_embedding_clustering_suite(
+                algorithms_cfg=non_ms_cfg,
+                id_to_embedding_map=bert_id_to_emb_prepared,
+                ground_truth=ground_truth,
+                clustering_root_dir=bert_root,
+                model_stem=model_stem,
+                min_coverage_ground_truth=float(min_coverage_ground_truth),
+                min_coverage_all=float(min_coverage_all),
+            )
+            ms_outputs, ms_best = _run_embedding_clustering_suite(
+                algorithms_cfg=ms_only_cfg,
+                id_to_embedding_map=bert_id_to_emb_ms,
+                ground_truth=ground_truth,
+                clustering_root_dir=bert_root,
+                model_stem=model_stem,
+                min_coverage_ground_truth=float(min_coverage_ground_truth),
+                min_coverage_all=float(min_coverage_all),
+            )
+            bert_outputs.update(ms_outputs)
+            bert_best.update(ms_best)
+            # Restore merged cfg so _write_campaigns_for_best_algorithm can access all algos.
+            bert_algorithms_cfg["meanshift"] = ms_cfg
+        else:
+            bert_outputs, bert_best = _run_embedding_clustering_suite(
+                algorithms_cfg=bert_algorithms_cfg,
+                id_to_embedding_map=bert_id_to_emb_prepared,
+                ground_truth=ground_truth,
+                clustering_root_dir=bert_root,
+                model_stem=model_stem,
+                min_coverage_ground_truth=float(min_coverage_ground_truth),
+                min_coverage_all=float(min_coverage_all),
+            )
+
+        best_bert_algo = max(bert_best, key=lambda k: float(bert_best[k].get("v_measure", 0.0))) if bert_best else None
+        bert_emb_for_campaigns = (
+            bert_id_to_emb_ms
+            if (ms_own_max_components is not None and best_bert_algo == "meanshift")
+            else bert_id_to_emb_prepared
         )
         bert_campaigns_path = _write_campaigns_for_best_algorithm(
             algorithms_cfg=bert_algorithms_cfg,
-            id_to_embedding_map=bert_id_to_emb_prepared,
+            id_to_embedding_map=bert_emb_for_campaigns,
             best_locked_params=bert_best,
             output_dir=bert_root,
             model_stem=model_stem,

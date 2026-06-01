@@ -7,7 +7,12 @@ from pathlib import Path
 import torch
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 from .loaders import make_link_loaders
-from .build_graph_splits import pick_supervised_edge_types, split_edges_and_build_train_graph
+from .build_graph_splits import (
+    pick_supervised_edge_types,
+    split_edges_and_build_train_graph,
+    split_edges_coordinated,
+    split_email_nodes_inductively,
+)
 from .model_io import save_model_checkpoint, load_training_state
 from torch import nn
 import time
@@ -99,7 +104,9 @@ def run_training(DEVICE, TORCH_SEED, data,
                  runs_parent=None,
                  models_subdir="models",
                  metrics_csv="metrics.csv",
-                 training_config_json="training_config.json"):
+                 training_config_json="training_config.json",
+                 split_strategy: str = 'edge',
+                 supervised_direction: str = 'both'):
     """
     If ``run_dir`` is set, that directory is used (pipeline: ``<RUNS_PARENT>/<run_id>/``).
 
@@ -134,7 +141,7 @@ def run_training(DEVICE, TORCH_SEED, data,
     metrics_csv_path = os.path.join(run_dir, metrics_csv)
     with open(metrics_csv_path, mode='w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['epoch', 'val_loss', 'val_acc'])
+        writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc'])
 
     data_cpu = data.to('cpu')
     print("Metadata:", data_cpu.metadata())
@@ -145,6 +152,8 @@ def run_training(DEVICE, TORCH_SEED, data,
         'layers': layers,
         'dropout': dropout,
         'score_head': score_head,
+        'split_strategy': split_strategy,
+        'supervised_direction': supervised_direction,
     }
     loader_params = {
         'neg_ratio': neg_ratio,
@@ -163,7 +172,7 @@ def run_training(DEVICE, TORCH_SEED, data,
     sup_ets = pick_supervised_edge_types(
         data,
         primary_ntype=primary_ntype,
-        direction='both',
+        direction=supervised_direction,
     )
     print("Supervised edge types:", sup_ets)
 
@@ -189,14 +198,25 @@ def run_training(DEVICE, TORCH_SEED, data,
         "lr_reduce_min": lr_reduce_min,
         "supervised_edge_types": supervised_edge_types,
         "model_save_name": model_save_name,
+        "split_strategy": split_strategy,
+        "supervised_direction": supervised_direction,
         "supervised_edge_types_resolved": [list(et) for et in sup_ets],
     }
     with open(run_dir / training_config_json, "w", encoding="utf-8") as f:
         json.dump(training_record, f, indent=2)
 
-    train_graph, train_pos, val_pos, test_pos = split_edges_and_build_train_graph(TORCH_SEED,
-        data, sup_ets, val_ratio=val_ratio, test_ratio=test_ratio
-    )
+    if split_strategy == 'edge_coordinated':
+        train_graph, train_pos, val_pos, test_pos = split_edges_coordinated(
+            TORCH_SEED, data, sup_ets, val_ratio=val_ratio, test_ratio=test_ratio
+        )
+    elif split_strategy == 'inductive_email':
+        train_graph, train_pos, val_pos, test_pos = split_email_nodes_inductively(
+            TORCH_SEED, data, sup_ets, val_ratio=val_ratio, test_ratio=test_ratio
+        )
+    else:
+        train_graph, train_pos, val_pos, test_pos = split_edges_and_build_train_graph(
+            TORCH_SEED, data, sup_ets, val_ratio=val_ratio, test_ratio=test_ratio
+        )
     print("Build train graph!")
 
     loaders = make_link_loaders(
@@ -238,7 +258,7 @@ def run_training(DEVICE, TORCH_SEED, data,
 
         with open(metrics_csv_path, mode='a', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow([epoch, va_loss, va_acc])
+            writer.writerow([epoch, tr_loss, tr_acc, va_loss, va_acc])
 
         if epoch % 5 == 0 or epoch == 1:
             save_model_checkpoint(

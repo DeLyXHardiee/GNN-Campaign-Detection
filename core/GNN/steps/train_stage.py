@@ -158,6 +158,8 @@ def run_train_stage(
             models_subdir=layout.models_subdir,
             metrics_csv=layout.metrics_csv,
             training_config_json=layout.training_config_json,
+            split_strategy=training_cfg.get("split_strategy", "edge"),
+            supervised_direction=training_cfg.get("supervised_direction", "both"),
         )
 
         model_save = training_cfg["model_save_name"]

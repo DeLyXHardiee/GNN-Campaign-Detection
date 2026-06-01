@@ -247,6 +247,8 @@ class GraphBuildSettings:
     zero_email_timestamps: bool = False
     #: If False, disable schema collapse_rules when assembling GraphIR.
     collapse_enabled: bool = True
+    #: If True (default), URL/domain/stem nodes whose registrable domain appears in popular_domains.txt are excluded.
+    filter_popular_domains: bool = True
 
 
 def graph_build_settings_from_pipeline(
@@ -411,6 +413,7 @@ def graph_build_settings_from_pipeline(
         hetero_graph_stem=hetero_graph_stem,
         zero_email_timestamps=zero_email_timestamps,
         collapse_enabled=collapse_enabled,
+        filter_popular_domains=filter_popular_domains,
     )
 
 
