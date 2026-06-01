@@ -311,7 +311,7 @@ def run_db_scan_analysis(
     min_samples: int = 5,
 ) -> dict[str, Any]:
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
-    clusterer = DBSCAN(eps=epsilon, min_samples=min_samples, metric="euclidean")
+    clusterer = DBSCAN(eps=epsilon, min_samples=min_samples, metric="cosine")
     labels = clusterer.fit_predict(embeddings)
     metrics = compute_all_metrics(id_to_embedding_map, labels, ground_truth_labels)
     metrics["clustering_type"] = "dbscan"
@@ -392,7 +392,7 @@ def fit_predict_labels(
     if algo == "dbscan":
         if epsilon is None:
             raise ValueError("fit_predict_labels(dbscan) requires epsilon=")
-        clusterer = DBSCAN(eps=float(epsilon), min_samples=int(min_samples), metric="euclidean")
+        clusterer = DBSCAN(eps=float(epsilon), min_samples=int(min_samples), metric="cosine")
         labels = clusterer.fit_predict(embeddings)
         return sorted_ids, np.asarray(labels)
 

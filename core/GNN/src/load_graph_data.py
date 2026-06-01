@@ -9,6 +9,12 @@ from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 _GRAPH_EXTS = {".pt", ".pth"}
 
+# Resolve the graph package root so the import works regardless of cwd.
+_CORE_DIR = Path(__file__).resolve().parent.parent.parent
+if str(_CORE_DIR) not in sys.path:
+    sys.path.insert(0, str(_CORE_DIR))
+from graph.hetero_graph_cleanup import drop_inactive_hetero_node_types
+
 def load_imdb(root: str = "data/IMDB"):
     """
     Loads the PyG IMDB heterogeneous graph and returns the single HeteroData object.
@@ -49,5 +55,5 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
         del data["email"].external_id
     if to_undirected:
-        return ToUndirected()(data)
-    return data
+        data = ToUndirected()(data)
+    return drop_inactive_hetero_node_types(data)

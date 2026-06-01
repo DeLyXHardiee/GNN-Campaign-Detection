@@ -196,6 +196,8 @@ class GraphBuildSettings:
     hetero_graph_stem: str | None = None
     #: If True, email scalar ``ts`` (and attrs) are all zero; removes calendar time from GNN inputs.
     zero_email_timestamps: bool = False
+    #: If True (default), URL/domain/stem nodes whose registrable domain appears in popular_domains.txt are excluded.
+    filter_popular_domains: bool = True
 
 
 def graph_build_settings_from_pipeline(
@@ -342,6 +344,12 @@ def graph_build_settings_from_pipeline(
     else:
         zero_email_timestamps = bool(zts_raw)
 
+    fpd_raw = graph_cfg.get("filter_popular_domains", True)
+    if isinstance(fpd_raw, str):
+        filter_popular_domains = str(fpd_raw).strip().lower() not in ("0", "false", "no", "off")
+    else:
+        filter_popular_domains = bool(fpd_raw)
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
@@ -353,6 +361,7 @@ def graph_build_settings_from_pipeline(
         degree_node_filter=degree_node_filter,
         hetero_graph_stem=hetero_graph_stem,
         zero_email_timestamps=zero_email_timestamps,
+        filter_popular_domains=filter_popular_domains,
     )
 
 

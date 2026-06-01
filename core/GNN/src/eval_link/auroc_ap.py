@@ -133,6 +133,103 @@ def plot_score_distributions(distributions: dict, output_dir: str | Path) -> lis
     return plot_paths
 
 
+def _relation_name(fwd_key: str) -> str:
+    """Extract clean relation name from a forward edge key.
+
+    Forward keys have the form "email_has_{X}_{X}" where X is the dst node type.
+    e.g. "email_has_sender_sender" -> "sender"
+         "email_has_email_domain_email_domain" -> "email_domain"
+    """
+    stem = fwd_key[len("email_has_"):]  # strip "email_has_" prefix
+    n = len(stem)
+    mid = (n - 1) // 2
+    if mid > 0 and stem[:mid] == stem[mid + 1:]:
+        return stem[:mid]
+    return stem  # fallback: return as-is
+
+
+def _average_fwd_rev(metrics: dict[str, dict]) -> dict[str, dict]:
+    """Average forward and reverse edge-type scores into one entry per relation.
+
+    Forward keys start with "email_has_"; reverse keys contain "rev_has".
+    Unmatched keys are included as-is.
+    """
+    fwd = {k: v for k, v in metrics.items() if k.startswith("email_has_")}
+    rev = {k: v for k, v in metrics.items() if "rev_has" in k}
+
+    # Build a lookup from relation name -> list of metric dicts to average
+    from collections import defaultdict
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for k, v in fwd.items():
+        buckets[_relation_name(k)].append(v)
+    for k, v in rev.items():
+        # reverse key: "{src}_rev_has_{rel}_{dst}" — relation name is after "rev_has_"
+        # and before the trailing "_email"; easiest: reuse _relation_name on the fwd counterpart
+        # by matching on the same relation name embedded in the rev key.
+        # Simpler heuristic: strip trailing "_email" and "rev_has_" segment.
+        inner = k  # e.g. "sender_rev_has_sender_email"
+        try:
+            after_rev = inner.split("rev_has_", 1)[1]   # "sender_email"
+            rel = after_rev.rsplit("_email", 1)[0]       # "sender"
+        except (IndexError, ValueError):
+            rel = inner
+        buckets[rel].append(v)
+
+    averaged = {}
+    for rel, vals in sorted(buckets.items()):
+        averaged[rel] = {
+            metric: float(np.mean([v[metric] for v in vals]))
+            for metric in ("auroc", "ap")
+        }
+    return averaged
+
+
+def plot_auroc_ap_summary(metrics: dict[str, dict], output_dir: Path | str) -> str:
+    """Save a horizontal grouped bar chart of AUROC and AP per relation.
+
+    Forward/reverse pairs are averaged into a single score per relation.
+    A dashed vertical line marks the macro-average for each metric.
+    Returns the path to the saved plot.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    per_relation = _average_fwd_rev(metrics)
+
+    # Sort by AUROC descending
+    labels = sorted(per_relation, key=lambda r: per_relation[r]["auroc"], reverse=True)
+    aurocs = [per_relation[r]["auroc"] for r in labels]
+    aps = [per_relation[r]["ap"] for r in labels]
+
+    macro_auroc = float(np.mean(aurocs))
+    macro_ap = float(np.mean(aps))
+
+    n = len(labels)
+    y = np.arange(n)
+    bar_h = 0.35
+
+    fig, ax = plt.subplots(figsize=(9, max(4, 0.55 * n)))
+    ax.barh(y + bar_h / 2, aurocs, bar_h, color="#1f77b4", label=f"AUROC (macro={macro_auroc:.3f})")
+    ax.barh(y - bar_h / 2, aps,    bar_h, color="#ff7f0e", label=f"AP    (macro={macro_ap:.3f})")
+
+    ax.axvline(macro_auroc, color="#1f77b4", linestyle="--", linewidth=1.1, alpha=0.7)
+    ax.axvline(macro_ap,    color="#ff7f0e", linestyle="--", linewidth=1.1, alpha=0.7)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.set_xlabel("Score")
+    ax.set_title("AUROC & AP per relation (fwd/rev averaged, sorted by AUROC)")
+    ax.set_xlim(0, 1.05)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+
+    path = output_dir / "auroc_ap_summary.png"
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return str(path)
+
+
 def run_auroc_ap_analysis(
     device: torch.device,
     model: torch.nn.Module,
@@ -148,6 +245,7 @@ def run_auroc_ap_analysis(
       - metrics: dict mapping edge_type (as string key) -> {auroc, ap}
       - plot_paths: list of paths to saved distribution plots (one per edge type)
       - metrics_path: path to saved JSON
+      - summary_plot_path: path to the per-relation summary bar chart
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -164,10 +262,13 @@ def run_auroc_ap_analysis(
     with open(metrics_path, "w") as f:
         json.dump(metrics_serializable, f, indent=2)
 
+    summary_path = plot_auroc_ap_summary(metrics_serializable, output_dir)
+
     return {
         "metrics": metrics_serializable,
         "plot_paths": plot_paths,
         "metrics_path": str(metrics_path),
+        "summary_plot_path": summary_path,
     }
 
 
