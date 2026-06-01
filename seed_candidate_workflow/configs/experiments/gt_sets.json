@@ -1,31 +1,11 @@
 {
-  "dedup_task_identity_multi_gt": [
-    "data/groundtruth/ground_truth.dedup_task_identity.json"
-  ],
-  "dedup_task_identity_merged_178_0_5_68_multi_gt": [
-    "data/groundtruth/ground_truth.dedup_task_identity.merged_178_0_5_68.json"
-  ],
-  "default_merged_178_0_5_68_multi_gt": [
-    "data/groundtruth/ground_truth.merged_178_0_5_68.json"
-  ],
-  "dedup_strict_multi_gt": [
-    "data/groundtruth/ground_truth.dedup_strict.json"
-  ],
   "default_multi_gt": [
-    "data/groundtruth/ground_truth_merged.json",
     "data/groundtruth/ground_truth.json"
   ],
   "expanded_gt_only": [
     "data/groundtruth/ground_truth.json"
   ],
-  "merged_only": [
-    "data/groundtruth/ground_truth_merged.json"
-  ],
-  "merged_and_dedup": [
-    "data/groundtruth/ground_truth_dedup.json",
-    "data/groundtruth/ground_truth_merged.json"
-  ],
-  "merged": [
-    "data/groundtruth/ground_truth_merged.json"
+  "dedup_strict_multi_gt": [
+    "data/groundtruth/ground_truth.dedup_strict.json"
   ]
 }

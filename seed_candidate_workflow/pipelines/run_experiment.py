@@ -15,16 +15,18 @@ import pandas as pd
 
 try:
     from tqdm.auto import tqdm
-except Exception:  # pragma: no cover - optional dependency
+except Exception: 
     tqdm = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-# ``config`` / ``steps`` live under ``core/`` but are imported as top-level ``config`` / ``steps``.
+# ``config`` lives under ``core/``; GNN train/score helpers under ``core/GNN/`` (``steps``, ``src``).
 _CORE_ROOT = PROJECT_ROOT / "core"
-if str(_CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CORE_ROOT))
+_GNN_ROOT = _CORE_ROOT / "GNN"
+for _p in (_CORE_ROOT, _GNN_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from seed_candidate_workflow.utils.graph_scorer_registry import SCORER_REGISTRY, apply_scorer, validate_scorer_target
 from seed_candidate_workflow.pipelines.pipeline_helpers import runner_config as rcfg
@@ -86,16 +88,6 @@ def _deep_str_replace_in_obj(obj: Any, old: str, new: str) -> None:
 
 
 def append_experiment_artifact_suffix(cfg: dict[str, Any], suffix: str) -> dict[str, str]:
-    """
-    Route bundle + scoring outputs to fresh directories so repeated runs do not overwrite
-    ``graph_bundles/<graph_id>/`` or ``scoring_runs/<scoring_run_id>/`` (including community).
-
-    Rewrites ``experiment.graph_id`` / ``experiment.scoring_run_id`` to ``{id}__{suffix}`` and
-    substitutes the old ids inside any path strings in the JSON (via placeholders so one id
-    never partially corrupts the other).
-
-    Returns a small map of old/new ids for logging.
-    """
     suf = str(suffix).strip()
     if not suf:
         raise ValueError("suffix must be non-empty")
