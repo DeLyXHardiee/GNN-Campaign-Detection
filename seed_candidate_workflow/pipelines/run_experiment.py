@@ -21,7 +21,6 @@ except Exception:
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-# ``config`` lives under ``core/``; GNN train/score helpers under ``core/GNN/`` (``steps``, ``src``).
 _CORE_ROOT = PROJECT_ROOT / "core"
 _GNN_ROOT = _CORE_ROOT / "GNN"
 for _p in (_CORE_ROOT, _GNN_ROOT):
@@ -298,7 +297,6 @@ def _run_semantic_shard_multi_gt_community_sweep(
         if "shard_a" not in edges_df.columns or "shard_b" not in edges_df.columns:
             raise ValueError("Semantic shard scorer output must include shard_a and shard_b columns")
     else:
-        # Unweighted baseline: topology-only partitioning for semantic shard comparison.
         edges_df = edges_df.copy()
         edges_df["edge_weight"] = 1.0
 
@@ -636,7 +634,6 @@ def _run_experiment_setup_gnn_score(cfg: dict[str, Any], *, dry_run: bool) -> di
     cfg_setup = copy.deepcopy(cfg)
     cfg_setup.setdefault("experiment", {})
     cfg_setup["experiment"]["mode"] = "setup_only"
-    # Always rebuild bundle artifacts for this mode so runs are not silently tied to stale graphs.
     setup_sec = dict(cfg_setup.get("setup") or {})
     pol = dict(setup_sec.get("policy") or {})
     pol["on_present"] = "rebuild"
@@ -796,8 +793,6 @@ def run_experiment(config: dict[str, Any], *, dry_run: bool = False) -> dict[str
         bundle_dir = (graph_bundle_root / graph_id).resolve()
     else:
         bundle_dir = _resolve_bundle_dir(graph_bundle_root=graph_bundle_root, graph_id=graph_id)
-    # PU scorer: empty pair_dataset_csv would read pair_dataset_csv from GNN training_config.json,
-    # which often points at an old anchor_candidates/... layout. Prefer this run's graph bundle.
     if score_mode == "seed_candidate_pu_v1":
         pu_run = dict(score_params.get("pu_run") or {})
         if not str(pu_run.get("pair_dataset_csv") or "").strip():

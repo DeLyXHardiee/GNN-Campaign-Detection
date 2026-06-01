@@ -327,7 +327,6 @@ def rebuild_raw_prediction_map(
     meta = gh.load_meta(meta_json)
     data = gh.load_hetero(graph_pt, to_undirected=to_undirected)
     ext = gh.email_external_id_list(meta)
-    # Build RAW embedding map directly (avoid dependency on src.* import paths in notebooks).
     if "email" not in data.node_types:
         raise ValueError("Node type 'email' not found in graph.")
     email_x = data["email"].x
@@ -353,20 +352,15 @@ def rebuild_raw_prediction_map(
         _ = sorted_ids, labels
         return pred_map, metrics
     except ModuleNotFoundError as e:
-        # Notebook environments sometimes lack optional clustering deps like `hdbscan`.
-        # Fallback: use KMeans over L2-normalized vectors (cosine-ish in practice).
         if "hdbscan" not in str(e).lower():
             raise
 
-        # Sort to make label assignment stable across runs.
         sorted_ids = sorted(id_to_emb.keys())
         X = np.stack([id_to_emb[eid] for eid in sorted_ids]).astype(np.float32)
-        # L2-normalize for cosine-ish similarity with Euclidean KMeans.
         norms = np.linalg.norm(X, axis=1, keepdims=True)
         norms[norms == 0.0] = 1.0
         Xn = X / norms
 
-        # Heuristic: aim for a moderate number of clusters.
         N = Xn.shape[0]
         k = int(np.clip(round(np.sqrt(N)), 2, 50))
 
@@ -429,7 +423,6 @@ def fragmentation_compare_table(
 def split_campaign_merge_outcomes(
     frag_cmp_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    # Only campaigns split under RAW baseline.
     d = frag_cmp_df[frag_cmp_df["num_pred_clusters_raw"] > 1].copy()
     if d.empty:
         return pd.DataFrame(columns=["outcome", "n_campaigns", "fraction"])
@@ -468,7 +461,6 @@ def campaign_drilldown_tables(
     sub["raw_pred"] = sub["external_id"].map(raw_pred_map)
     sub["proto_pred"] = sub["external_id"].map(proto_pred_map)
 
-    # For the involved shard pairs, show edge evidence if present.
     involved = sorted(set(sub["shard_id"].astype(str).tolist()))
     e = edges_df.copy()
     e["shard_a"] = e["shard_a"].astype(str)

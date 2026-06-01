@@ -31,12 +31,10 @@ from seed_candidate_workflow.utils.pair_similarity_features import (
 
 logger = logging.getLogger(__name__)
 
-# v2: content-addressed dirs under by_content/ (graph_id not part of fingerprint).
 BODY_SIMILARITY_CACHE_VERSION = "body_sim_v2"
 LEGACY_BODY_SIMILARITY_CACHE_VERSIONS = frozenset({"body_sim_v1", "body_sim_v2"})
 DEFAULT_CACHE_ROOT = Path("seed_candidate_workflow/output/cache/body_similarity")
 
-# Cap legacy directory scans (graph_id buckets × hash children).
 _MAX_LEGACY_CACHE_DIRS_TO_SCAN = 800
 
 

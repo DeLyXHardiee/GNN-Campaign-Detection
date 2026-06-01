@@ -748,7 +748,6 @@ def _balance_pos_unlabeled(
         diag["effective_ratio"] = float("nan")
         return out, diag
 
-    # target: n_pos / n_unl = ratio  =>  n_unl_target = n_pos / ratio
     n_unl_target = int(round(n_pos / ratio))
     n_pos_target = int(round(n_unl * ratio))
 
@@ -882,7 +881,6 @@ def build_train_epoch_cluster_aware(
             pos_df, pair_skips_pos = _cap_rows_per_group(pos_df, "cluster_pair_key", max_pair, rng)
             unl_df, pair_skips_unl = _cap_rows_per_group(unl_df, "cluster_pair_key", max_pair, rng)
         if max_single is not None and max_single > 0:
-            # cap rows sharing same endpoint cluster (either side)
             def _cap_single(sub: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
                 if sub.empty:
                     return sub, {}

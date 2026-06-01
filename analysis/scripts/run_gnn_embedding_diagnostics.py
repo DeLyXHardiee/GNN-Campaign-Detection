@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 GNN / encoder email embedding diagnostic analysis.
 

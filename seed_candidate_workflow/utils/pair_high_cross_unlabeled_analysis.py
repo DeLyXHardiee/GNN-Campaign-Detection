@@ -1054,7 +1054,6 @@ def run_pair_high_cross_unlabeled_analysis(
     table_rows: list[dict[str, Any]] = []
     joint_payload: dict[str, Any] = {}
 
-    # Main: high cross vs high same
     marg_main, rows_main = _build_same_vs_cross_marginal(
         gt_path=gt_path,
         same_df=df_same,
@@ -1105,7 +1104,6 @@ def run_pair_high_cross_unlabeled_analysis(
     table_rows.extend(jrows_main)
     joint_payload["high_cross_vs_high_same"] = joint_main
 
-    # Optional: high cross vs mid cross
     if int(cohort_masks["mid_cross_unlabeled"].sum()) > 0:
         marg_mid, rows_mid = _build_two_cohort_marginal(
             gt_path=gt_path,

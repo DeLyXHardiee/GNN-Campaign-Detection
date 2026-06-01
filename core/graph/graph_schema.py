@@ -63,8 +63,8 @@ class EdgeMapping:
 
 @dataclass(frozen=True)
 class GraphSchema:
-    nodes: Dict[str, NodeMapping]  # key by canonical name
-    edges: Dict[str, EdgeMapping]  # key by canonical relationship name
+    nodes: Dict[str, NodeMapping]                         
+    edges: Dict[str, EdgeMapping]                                      
     collapse_rules: Tuple[Tuple[str, str, str], ...] = field(default_factory=tuple)
 
     def node(self, canonical: str) -> NodeMapping:

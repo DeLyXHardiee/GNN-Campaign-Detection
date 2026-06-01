@@ -18,7 +18,6 @@ GRAPH_KIND_ALL: tuple[str, ...] = (
     GRAPH_KIND_SEMANTIC_SHARD,
 )
 
-# Legacy unscored PairGraph CSV column (pre-migration). Read paths normalize to ``graph_id``.
 LEGACY_GRAPH_ID_COLUMN = "graph_run_id"
 
 REQUIRED_UNSCORED_COLUMNS: tuple[str, ...] = (

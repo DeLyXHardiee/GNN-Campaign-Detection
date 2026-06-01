@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Lightweight postprocessing for thesis_gnn_pair_scoring_results:
 - generate training loss plots from metrics.csv if missing
@@ -61,7 +60,6 @@ def main() -> int:
     run_15 = _REPO / "output/runs/main_gnn_pu_1_no_ts_dedup_task_identity_15_gnn_only_scorer"
     run_mlp = _REPO / "output/runs/final_14_only_mlp__timestamp_feature__early_stopping"
 
-    # Training plots from metrics.csv (appendix-friendly).
     _generate_loss_plot(
         run_13 / "gnn/metrics.csv",
         training_dir / "main_gnn_pu_1_no_ts_dedup_task_identity_13__loss_from_metrics.csv.png",
@@ -73,7 +71,6 @@ def main() -> int:
         title="GNN-only scorer: train/val loss (from metrics.csv)",
     )
 
-    # Community sweep best-config table (expanded GT sweeps).
     rows = []
     for run_id, sweep_csv in (
         (

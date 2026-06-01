@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 
-# Same six core channels as pair_training_dataset_helpers / GT edge-structure analysis.
 CORE_CHANNEL_NODE_COLS: tuple[tuple[str, str], ...] = (
     ("sender_set", "sender"),
     ("stem_set", "stem"),

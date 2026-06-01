@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Quantify ``\"/\"`` URL-template stems in anchor email ``stem_set`` and their effect on overlaps.
 
@@ -69,7 +68,6 @@ from typing import Any, Iterable
 import pandas as pd
 import numpy as np
 
-# Default weak channels for corroborated_v1 (anchor_seed_helpers._corroborated_v1_default_cfg)
 _DEFAULT_WEAK_BASES = (
     "sender",
     "sender_email_domain",

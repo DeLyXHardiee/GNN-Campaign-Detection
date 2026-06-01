@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CLI entrypoint for pair score separation analysis (implementation in utils)."""
 
 from __future__ import annotations

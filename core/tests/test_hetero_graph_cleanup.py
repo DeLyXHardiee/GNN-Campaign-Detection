@@ -9,7 +9,6 @@ def test_drop_inactive_removes_empty_placeholder_node_types():
     data["email"].x = torch.randn(3, 4)
     data["sender"].x = torch.randn(2, 2)
     data["email", "has_sender", "sender"].edge_index = torch.tensor([[0, 1, 2], [0, 1, 0]], dtype=torch.long)
-    # Simulate metadata touching an excluded schema type (empty store, no edges).
     _ = data["origin_ip"]
 
     cleaned = drop_inactive_hetero_node_types(data)

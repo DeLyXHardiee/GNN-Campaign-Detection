@@ -8,7 +8,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Allow running as python -m utils.embeddings with `core` on sys.path
 if __name__ == "__main__" and __package__ is None:
     _core = Path(__file__).resolve().parent.parent.parent
     if str(_core) not in sys.path:

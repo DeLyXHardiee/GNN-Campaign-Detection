@@ -25,7 +25,6 @@ from seed_candidate_workflow.utils.scorer_diagnostics_rules import (
     CANDIDATE_RULES_DEFAULT,
 )
 
-# Graph artifact type -> pair column prefix
 CORE_ARTIFACT_TYPES: tuple[str, ...] = (
     "sender",
     "email_domain",
@@ -351,7 +350,6 @@ def _resolve_candidate_union_csv(
         return explicit.resolve()
     if pair_training_csv is None or not pair_training_csv.is_file():
         return None
-    # .../graph_bundles/<graph_id>/pair_training/<graph_id>/pair_training_dataset.csv
     graph_id = pair_training_csv.parent.name
     bundle_root = pair_training_csv.parent.parent.parent
     cand_parent = bundle_root / "candidate" / graph_id
@@ -454,7 +452,6 @@ def build_gt_pair_dataframe(
     eid_row = gh.external_id_to_row(meta)
     row_to_eid = gh.email_external_id_list(meta)
 
-    # Restrict GT campaigns to graph emails
     campaign_to_members_g: dict[Any, list[str]] = {}
     for cid, members in campaign_to_members.items():
         kept = [e for e in members if e in eid_row]
@@ -538,7 +535,6 @@ def build_gt_pair_dataframe(
     cos_arr = _cosine_for_pairs(all_idx_pairs, row_to_eid, id_to_emb)
     df["semantic_cosine"] = cos_arr
 
-    # Provenance join from pair training
     prov_stats: dict[str, Any] = {"joined": False}
     if pair_training_csv is not None and pair_training_csv.is_file():
         pt = pd.read_csv(pair_training_csv)
@@ -813,7 +809,6 @@ def _build_bool_terms(df: pd.DataFrame) -> dict[str, np.ndarray]:
         else:
             terms[prov] = np.zeros(n, dtype=bool)
 
-    # Alias for rule parser
     terms["shared_sender"] = terms.get(
         "shared_sender", df.get("has_shared_sender", pd.Series(False, index=df.index))
     )
@@ -1038,7 +1033,6 @@ def _score_candidate_rule_row(
         "support_total": support_total,
         "support_same": support_same,
         "support_cross": support_cross,
-        # legacy aliases for expanded rule_scorecard.csv
         "rule_id": rule_name,
         "same_rate": same_capture_rate,
         "cross_rate": cross_capture_rate,
@@ -1282,7 +1276,6 @@ def _joint_combination_analysis(
         key=lambda r: (-(r.get("same_rate") or 0.0), (r.get("cross_rate") or 1.0)),
     )[:top_n]
 
-    # n_shared_core_channels buckets
     same_mask, cross_mask = _masks_from_df(df)
     channel_count_rows: list[dict[str, Any]] = []
     if "n_shared_core_channels" in df.columns:
@@ -1556,7 +1549,6 @@ def _all_rule_definitions() -> list[tuple[str, str]]:
         expr = _resolve_candidate_rule(cr)
         if expr:
             rules.append((cr, expr))
-    # dedupe
     seen: set[str] = set()
     out: list[tuple[str, str]] = []
     for rid, expr in rules:
@@ -1706,7 +1698,6 @@ def resolve_gt_paths(
         default = project_root / "data" / "groundtruth" / "ground_truth.json"
         if default.is_file():
             paths.append(default.resolve())
-    # dedupe preserve order
     seen: set[str] = set()
     out: list[Path] = []
     for p in paths:
@@ -1759,7 +1750,6 @@ def run_gt_edge_structure_analysis(cfg: GtEdgeStructureRunConfig) -> dict[str, A
         encoding="utf-8",
     )
     pd.DataFrame(all_table).to_csv(table_path, index=False)
-    # Expanded scorecard: legacy diagnostic rules + curated candidate-rule templates.
     combined_scorecard = all_scorecard + all_candidate_scorecard
     pd.DataFrame(combined_scorecard).to_csv(scorecard_path, index=False)
     pd.DataFrame(all_candidate_scorecard).to_csv(candidate_scorecard_path, index=False)

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Check whether deduplicated identity collapse groups span multiple GT campaigns.
 

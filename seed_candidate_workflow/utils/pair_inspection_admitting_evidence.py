@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-# Normalized record keys written to admitting_evidence_json / HTML.
 _ADMIT_KEYS = (
     "source_family",
     "artifact_type",
@@ -498,7 +497,6 @@ def enrich_inspection_with_admitting_evidence(
     out["direct_shared_evidence_lines"] = direct_lines_col
     out["shared_evidence_brief"] = combined_brief
     out["inspection_warning_flags"] = warnings_col
-    # Back-compat: richer brief for meta row + old column name
     out["shared_artifacts_brief"] = combined_brief
     out = _attach_twohop_channel_columns_after_enrich(out, evidence_index=evidence_index)
     return out

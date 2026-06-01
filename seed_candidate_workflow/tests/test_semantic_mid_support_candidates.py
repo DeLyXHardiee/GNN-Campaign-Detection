@@ -55,7 +55,6 @@ def test_semantic_mid_sender_support_band_and_sender_gate():
         "b": np.concatenate([v * 0.88, np.zeros(3, dtype=np.float32)]),
         "c": np.concatenate([v * 0.87, np.zeros(3, dtype=np.float32)]),
     }
-    # Normalize so cosine is meaningful
     for k in list(id_to_vec):
         x = id_to_vec[k]
         id_to_vec[k] = x / np.linalg.norm(x)

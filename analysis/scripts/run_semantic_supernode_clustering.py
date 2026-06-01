@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 First-pass semantic **redundancy** clustering on existing email BERT embeddings.
 
@@ -40,9 +39,6 @@ from scipy.sparse.csgraph import connected_components
 from sklearn.metrics import homogeneity_completeness_v_measure
 from sklearn.neighbors import kneighbors_graph, radius_neighbors_graph
 
-# ---------------------------------------------------------------------------
-# Repo root / optional GT loader from seed_candidate_workflow
-# ---------------------------------------------------------------------------
 
 
 def _wrap_display_text(text: str, width: int) -> str:
@@ -725,7 +721,6 @@ def run(
 
     n_edges_final = int(adj.nnz // 2)
     labels = cluster_connected_components(adj)
-    # remap labels 0..C-1 sorted by descending size
     sizes = Counter(labels.tolist())
     sorted_clust = sorted(sizes.keys(), key=lambda c: -sizes[c])
     remap = {old: i for i, old in enumerate(sorted_clust)}
@@ -753,7 +748,6 @@ def run(
     csv_path = out_dir / "semantic_supernode_clusters.csv"
     df.to_csv(csv_path, index=False)
 
-    # Global diagnostics
     n_clusters = int(labels.max() + 1) if n else 0
     counts = cluster_sizes
     singletons = int(np.sum(counts == 1))

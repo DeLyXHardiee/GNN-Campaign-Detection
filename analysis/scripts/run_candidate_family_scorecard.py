@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Candidate-family scorecard: screen rule templates before adding them to the seed-candidate graph.
 

@@ -245,7 +245,7 @@ def _load_train_cfg_for_inference(
     if cfg_path.is_file():
         with open(cfg_path, encoding="utf-8") as f:
             return json.load(f)
-    ckpt = torch.load(str(ckpt_path), map_location=device, weights_only=False)  # nosemgrep
+    ckpt = torch.load(str(ckpt_path), map_location=device, weights_only=False)             
     enc = ckpt.get("encoder_config") or ckpt.get("pair_training_config")
     if isinstance(enc, dict) and enc:
         return enc
@@ -298,8 +298,7 @@ def load_pair_supervision_for_inference(
     data_cpu = data.to("cpu")
     metadata = data_cpu.metadata()
 
-    # map_location must be a device PyTorch can deserialize to (CPU if CUDA checkpoint on CPU-only host)
-    ckpt = torch.load(str(ckpt_path), map_location=dev, weights_only=False)  # nosemgrep
+    ckpt = torch.load(str(ckpt_path), map_location=dev, weights_only=False)             
     enc = train_cfg
     pair_backend = str(ckpt.get("pair_encoder_backend") or enc.get("pair_encoder_backend") or "").strip().lower()
     is_explicit_only = pair_backend == PAIR_ENCODER_EXPLICIT_ONLY

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Collapse duplicate emails in a MISP lake JSON using a configurable deterministic signature.
 

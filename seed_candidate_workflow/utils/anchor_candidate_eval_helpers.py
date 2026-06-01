@@ -290,7 +290,6 @@ def _compute_failure_regime_diagnostics_for_gt(
     cos = pd.to_numeric(base.get("semantic_cosine_max"), errors="coerce")
     has_ns = fs | fr | fc | fh
     sem_infra_name = pd.Series(index=base.index, dtype=object)
-    # Priority-ordered semantic / infra interaction regimes
     m_high_sem_only = fsem & cos.ge(0.97) & ~has_ns
     m_high_with_ns = cos.ge(0.97) & has_ns
     m_mid_sem_with_ns = fsem & cos.ge(0.94) & cos.lt(0.97) & has_ns
@@ -744,13 +743,11 @@ def run_candidate_evaluation_report(
     manual_seed = int(manual_cfg.get("random_seed", 1337))
     per_group_n = int(manual_cfg.get("per_group_n", 25))
 
-    # Required inputs
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
     seed_members_csv = seed_dir / "seed_union_component_members.csv"
     seed_components_csv = seed_dir / "seed_union_components.csv"
     candidate_union_csv = out_dir / "candidate_union.csv"
 
-    # Optional sources
     p_rare = out_dir / "candidates_rare_artifact.csv"
     p_stem_hi = out_dir / "candidates_shared_stem_highconf.csv"
     p_mid_sender = out_dir / "candidates_mid_sender.csv"
@@ -806,7 +803,6 @@ def run_candidate_evaluation_report(
     deg_union = _degrees_from_pairs([str(i) for i in union_emails], union_pairs)
     deg_vals_union = list(deg_union.values())
 
-    # source families (from union flags, seed explicit)
     source_pairs: dict[str, set[tuple[str, str]]] = {
         "seed": set(seed_pairs),
         "rare_artifact": set(),
@@ -850,14 +846,12 @@ def run_candidate_evaluation_report(
 
     source_present = [s for s, p in source_pairs.items() if len(p) > 0]
 
-    # GT setup (must be resolved before metadata references gt_resolution)
     gt_paths, gt_resolution = _resolve_gt_paths_with_seed_fallback(
         project_root=project_root,
         gt_cfg=gt_cfg,
         seed_dir=seed_dir,
     )
     gt_maps = _load_gt_maps(gt_paths)
-    # Metadata
     metadata = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "graph_id": str(graph_id),
@@ -904,7 +898,6 @@ def run_candidate_evaluation_report(
         "gt_resolution": gt_resolution,
     }
 
-    # candidate_universe
     quant = _quantiles([float(x) for x in deg_vals_union])
     n_zero = int(max(0, total_emails - len(union_emails)))
     b_1_5 = int(sum(1 for x in deg_vals_union if 1 <= x <= 5))
@@ -939,7 +932,6 @@ def run_candidate_evaluation_report(
         },
     }
 
-    # per_source
     per_source: dict[str, dict[str, Any]] = {}
     for src in [
         "seed",
@@ -1026,7 +1018,6 @@ def run_candidate_evaluation_report(
             item["gt"] = gt_src
         per_source[src] = item
 
-    # source_overlap
     overlap_matrix: dict[str, dict[str, int]] = {}
     for a in ["seed", "rare_artifact", "semantic", "component", "2hop"]:
         overlap_matrix[a] = {}
@@ -1082,7 +1073,6 @@ def run_candidate_evaluation_report(
         "n_candidates_infra_only": int(infra_only),
     }
 
-    # gt_eval
     gt_eval: list[dict[str, Any]] = []
     union_deg_all = _degrees_from_pairs([str(x) for x in union_emails], union_pairs)
     for gt_path, gt_map in gt_maps.items():
@@ -1175,7 +1165,6 @@ def run_candidate_evaluation_report(
             failure_regime_diagnostics.append(_null_json_floats(diag))
             failure_regime_csv_rows.extend(fr_rows)
 
-    # ablations
     present_non_seed = [s for s in ["rare_artifact", "semantic", "component", "2hop"] if len(source_pairs.get(s, set())) > 0]
     variants_def: list[tuple[str, set[str]]] = [
         ("full_union", set(["seed"] + present_non_seed)),
@@ -1188,7 +1177,6 @@ def run_candidate_evaluation_report(
         ("rare_artifact_plus_semantic", set(["seed", "rare_artifact", "semantic"]) & set(["seed"] + present_non_seed)),
         ("rare_artifact_plus_semantic_plus_component", set(["seed", "rare_artifact", "semantic", "component"]) & set(["seed"] + present_non_seed)),
     ]
-    # dedupe variants by effective source set
     seen_variant_sets: set[tuple[str, ...]] = set()
     variants: list[tuple[str, set[str]]] = []
     for name, inc in variants_def:
@@ -1264,7 +1252,6 @@ def run_candidate_evaluation_report(
             }
         )
 
-    # seed_candidate_compatibility
     if seed_members_df.empty:
         seed_members_df = pd.DataFrame(columns=["external_id", "component_id", "component_size", "is_singleton"])
     if not seed_members_df.empty:
@@ -1363,7 +1350,6 @@ def run_candidate_evaluation_report(
                     "notes": "Silver benchmark raised an exception; treat as invalid for go/no-go until fixed.",
                 }
 
-    # diagnostics
     n_union = max(1, len(union_pairs))
     semantic_only_pair_fraction = float(semantic_only / n_union)
     multi_source_pair_fraction = float(
@@ -1388,7 +1374,6 @@ def run_candidate_evaluation_report(
         "singleton_isolation_warning": singleton_isolation_warning,
     }
 
-    # generator status (called/completed/output/rows/reason)
     cfg_map = {k: dict(v) for k, v in (generator_configs or {}).items()}
     out_map = {}
     for row in (generator_outputs or []):
@@ -1431,7 +1416,6 @@ def run_candidate_evaluation_report(
         }
     diagnostics["generator_status"] = generator_status
 
-    # readiness
     blocking_reason_if_not_ready: list[str] = []
     key_positive_signals: list[str] = []
     key_warnings: list[str] = []
@@ -1522,7 +1506,6 @@ def run_candidate_evaluation_report(
         "key_positive_signals": key_positive_signals,
         "key_warnings": key_warnings,
     }
-    # manual review sample
     sample_df = union_df.copy()
     if sample_df.empty:
         sample_df = pd.DataFrame(columns=["email_i", "email_j"])
@@ -1564,7 +1547,6 @@ def run_candidate_evaluation_report(
     sample_df["same_seed_component_flag"] = sample_df.get("same_seed_component", False).astype(bool) if not sample_df.empty else False
     sample_df["time_gap_if_available"] = sample_df.get("time_gap_seconds_min", float("nan")) if not sample_df.empty else float("nan")
 
-    # optional GT labels for sample (first GT only for deterministic annotation)
     gt_first = gt_eval[0]["gt_path"] if gt_eval else None
     gt_first_map = gt_maps.get(gt_first, {}) if gt_first else {}
     if not sample_df.empty and gt_first_map:
@@ -1625,7 +1607,6 @@ def run_candidate_evaluation_report(
     p_manual = out_dir / "candidate_manual_review_sample.csv"
     manual_review_df.to_csv(p_manual, index=False)
 
-    # Write ablation csv
     ablation_df = pd.DataFrame(ablation_csv_rows)
     p_ablation = out_dir / "candidate_source_ablation.csv"
     ablation_df.to_csv(p_ablation, index=False)
@@ -1663,7 +1644,6 @@ def run_candidate_evaluation_report(
     fr_df = pd.DataFrame(failure_regime_csv_rows, columns=_fr_cols) if failure_regime_csv_rows else pd.DataFrame(columns=_fr_cols)
     fr_df.to_csv(p_failure_regimes, index=False)
 
-    # notes
     strongest_src = max(per_source.items(), key=lambda kv: kv[1].get("source_only_pairs_count", 0))[0] if per_source else "n/a"
     suspicious_src = max(per_source.items(), key=lambda kv: kv[1].get("n_candidate_pairs", 0))[0] if per_source else "n/a"
     notes_lines = [
@@ -1736,7 +1716,6 @@ def run_candidate_evaluation_report(
     p_notes = out_dir / "candidate_eval_notes.txt"
     p_notes.write_text("\n".join(notes_lines), encoding="utf-8")
 
-    # JSON summary (ordered top-level contract)
     summary = OrderedDict()
     summary["metadata"] = metadata
     summary["candidate_universe"] = candidate_universe

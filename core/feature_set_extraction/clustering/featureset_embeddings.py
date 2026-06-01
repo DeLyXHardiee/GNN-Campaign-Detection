@@ -25,16 +25,12 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
     remove_outliers_from_matrix,
 )
 
-_PACKAGE_DIR = Path(__file__).resolve().parent.parent  # core/feature_set_extraction/
+_PACKAGE_DIR = Path(__file__).resolve().parent.parent                                
 
-# Module-level cache populated lazily via get_embedding_map().
 _CACHE: dict[tuple[str, int], dict[str, np.ndarray]] = {}
 _SKIP_MESSAGES: dict[tuple[str, int], str] = {}
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 def _featuresets_dir() -> Path:
     return _PACKAGE_DIR / "output" / "featuresets"
@@ -46,7 +42,6 @@ def _load_records(fs_name: str):
     if not path.exists():
         return None, path
     with open(path, "r", encoding="utf-8") as f:
-        #TODO REMOVE 8000 LIMIT
         return json.load(f)[:8000], path
 
 
@@ -70,9 +65,6 @@ def _build_embedding_map(records, n_components: int) -> dict[str, np.ndarray]:
     return {eid: np.asarray(vec, dtype=np.float64) for eid, vec in zip(idxs, X)}
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def get_embedding_map(
     fs_name: str,

@@ -69,7 +69,7 @@ def test_collapse_merges_strict_dup_lexicographic_representative(tmp_path: Path)
     assert summ["n_duplicate_clusters_merged"] == 1
     delta = summ["delta"]
     assert delta["estimated_intra_duplicate_easy_edges_removed"] == 1
-    assert delta["all_possible_pairs_removed"] == 2  # C(3,2)-C(2,2)=3-1
+    assert delta["all_possible_pairs_removed"] == 2                     
 
     clusters = json.loads((out_dir / "collapsed_clusters.json").read_text(encoding="utf-8"))
     assert len(clusters) == 1

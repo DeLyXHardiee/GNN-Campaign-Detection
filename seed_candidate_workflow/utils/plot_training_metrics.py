@@ -75,8 +75,8 @@ def _finite_series(s: pd.Series) -> np.ndarray:
     return v
 
 
-TRAIN_COLOR = "#ff7f0e"  # orange
-VAL_COLOR = "#1f77b4"  # blue
+TRAIN_COLOR = "#ff7f0e"          
+VAL_COLOR = "#1f77b4"        
 
 
 def plot_loss_over_epochs(df: pd.DataFrame, out_path: Path, *, dpi: int = 120) -> None:

@@ -793,7 +793,6 @@ def run_pair_frontier_analysis(
     table_rows: list[dict[str, Any]] = []
     joint_payloads: dict[str, Any] = {}
 
-    # A: mid same vs mid cross
     df_mid_same = cohort_dfs["mid_same_unlabeled"]
     df_mid_cross = cohort_dfs["mid_cross_unlabeled"]
     marg_a, rows_a = _build_same_vs_cross_marginal(
@@ -846,7 +845,6 @@ def run_pair_frontier_analysis(
     table_rows.extend(jrows_a)
     joint_payloads["mid_same_vs_mid_cross"] = joint_a
 
-    # B: mid same vs high same
     df_high_same = cohort_dfs["high_same_unlabeled"]
     marg_b, rows_b = _build_two_cohort_marginal(
         gt_path=gt_path,
@@ -900,7 +898,6 @@ def run_pair_frontier_analysis(
     table_rows.extend(jrows_b)
     joint_payloads["mid_same_vs_high_same"] = joint_b
 
-    # C: mid same vs low same
     df_low_same = cohort_dfs["low_same_unlabeled"]
     marg_c, rows_c = _build_two_cohort_marginal(
         gt_path=gt_path,

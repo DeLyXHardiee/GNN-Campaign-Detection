@@ -129,5 +129,4 @@ def count_scorer_parameters(module: nn.Module) -> int:
     return int(sum(p.numel() for p in module.parameters()))
 
 
-# Backward-compatible name (same class).
 PairScorer = EmailPairMLPScorer

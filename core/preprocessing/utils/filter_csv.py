@@ -8,43 +8,29 @@ def filter_months(df, months=6):
     """
     if not months:
         return df
-        
     print(f"Filtering for best consecutive {months} months...")
     df = df.copy()
-    
     df['temp_ts'] = pd.to_datetime(df['date'], errors='coerce', utc=True)
-    
     df = df.dropna(subset=['temp_ts'])
-    
     df['month_year'] = df['temp_ts'].dt.to_period('M')
-    
     monthly_counts = df['month_year'].value_counts().sort_index()
-    
     if monthly_counts.empty:
         return df
 
-    # Reindex to fill gaps in the timeline with 0
     full_range = pd.period_range(start=monthly_counts.index.min(), end=monthly_counts.index.max(), freq='M')
-    
     if len(full_range) <= months:
          print(f"Dataset span ({len(full_range)} months) is <= requested window ({months} months). Returning all.")
          df = df.drop(columns=['temp_ts', 'month_year'])
          return df
-         
     monthly_counts = monthly_counts.reindex(full_range, fill_value=0)
 
     rolling_sums = monthly_counts.rolling(window=months).sum()
-    
     best_end_period = rolling_sums.idxmax()
     best_start_period = best_end_period - (months - 1)
-    
     print(f"Selected time range: {best_start_period} to {best_end_period} (Total emails in range: {int(rolling_sums[best_end_period])})")
-    
     mask = (df['month_year'] >= best_start_period) & (df['month_year'] <= best_end_period)
     df_filtered = df[mask].copy()
-    
     df_filtered = df_filtered.drop(columns=['temp_ts', 'month_year'])
-    
     return df_filtered
 
 def filter_phishing_emails(csv_path, months=6):
@@ -53,21 +39,15 @@ def filter_phishing_emails(csv_path, months=6):
     and save to a new file. Optionally filter by top N months.
     """
     df = pd.read_csv(csv_path)
-    
     df_phishing = df[df.get("label", 0) == 1]
-    
     print(f"Original dataset: {len(df)} emails")
     print(f"Phishing emails (label=1): {len(df_phishing)} emails")
-    
     if months:
         df_phishing = filter_months(df_phishing, months)
         print(f"Phishing emails after month filtering: {len(df_phishing)} emails")
-    
     input_dir = os.path.dirname(csv_path)
     input_base = os.path.splitext(os.path.basename(csv_path))[0]
     output_path = os.path.join(input_dir, f"{input_base}-only-phishing-{months}m.csv")
-    
     df_phishing.to_csv(output_path, index=False)
     print(f"Saved filtered dataset to: {output_path}")
 
-#filter_phishing_emails("../data/csv/TREC-07.csv")

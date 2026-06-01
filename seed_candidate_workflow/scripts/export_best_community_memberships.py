@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Re-run best community partition and export external_id -> pred_community assignments."""
 from __future__ import annotations
 
@@ -76,7 +75,6 @@ def main() -> int:
     node_ids = nodes_df["external_id"].astype(str).tolist()
     print(f"Nodes: {len(node_ids):,}  Unscored edges: {len(edges_df):,}")
 
-    # Same shape as experiment JSON ``scoring.params.pu`` (not double-wrapped).
     score_params = {
         "pu_run": {
             "run_dir": f"output/runs/{run_id}",

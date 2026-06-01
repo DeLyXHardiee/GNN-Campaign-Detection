@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compare epoch metrics for _14 MLP vs Edge-GNN (2-layer) vs Edge-GNN no-MP."""
 
 from __future__ import annotations

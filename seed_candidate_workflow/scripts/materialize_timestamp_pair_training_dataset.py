@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Materialize timestamp-enabled pair_training_dataset.csv for _14_only_mlp ablation.
 
@@ -93,7 +92,6 @@ def materialize(
     else:
         out["time_gap_seconds_min"] = raw_series
 
-    # Training path uses fillna(0) for missing numerics; document that explicitly.
     filled = pd.to_numeric(out["time_gap_seconds_min"], errors="coerce").fillna(0.0)
 
     output_pair_csv.parent.mkdir(parents=True, exist_ok=True)

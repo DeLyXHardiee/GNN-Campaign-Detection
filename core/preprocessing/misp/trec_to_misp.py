@@ -9,16 +9,12 @@ from utils.url_extractor import extract_urls_from_text
 
 def csv_to_misp(csv_path, misp_json_path):
     df = pd.read_csv(csv_path)
-    
     df = df[df.get("label", 0) == 1].reset_index(drop=False)
     df.rename(columns={"index": "orig_csv_index"}, inplace=True)
-    
     misp_events = []
     for idx, row in df.reset_index(drop=True).iterrows():
         body = row.get("body", "")
-        
         extracted_urls = extract_urls_from_text(body) if body else []
-        
         attributes = [
             {
                 "type": "email-src",
@@ -46,14 +42,12 @@ def csv_to_misp(csv_path, misp_json_path):
                 "category": "Payload delivery"
             }
         ]
-        
         for url in extracted_urls:
             attributes.append({
                 "type": "url",
                 "value": url,
                 "category": "Network activity"
             })
-        
         csv_url = row.get("url", "")
         if csv_url and str(csv_url).strip():
             attributes.append({
@@ -61,22 +55,19 @@ def csv_to_misp(csv_path, misp_json_path):
                 "value": csv_url,
                 "category": "Network activity"
             })
-        
         event = {
             "Event": {
-                "info": f"TREC-07 Email {idx}",  # idx = position in filtered CSV (0..N-1)
-                "email_index": int(idx),         # propagate this as the canonical email id
-                "orig_csv_index": int(row.get("orig_csv_index", idx)),  # original row before filtering (for reference)
+                "info": f"TREC-07 Email {idx}",                                           
+                "email_index": int(idx),                                                   
+                "orig_csv_index": int(row.get("orig_csv_index", idx)),                                                 
                 "Attribute": attributes
             }
         }
         misp_events.append(event)
-    
     for i, event in enumerate(misp_events[:10]):
         print(f"Event {i}:")
         print(json.dumps(event, indent=2))
         print("-" * 40)
-    
     out_dir = os.path.dirname(misp_json_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)

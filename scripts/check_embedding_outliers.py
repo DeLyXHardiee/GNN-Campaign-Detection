@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Check SBERT embeddings for NaN/Inf values that would corrupt normalization.
 Reports per-field counts and lists affected entry keys.
@@ -30,7 +29,6 @@ def main() -> None:
     total = len(by_key)
     print(f"Entries: {total}\n")
 
-    # field -> list of (entry_key, nan_count, inf_count)
     bad: dict[str, list] = defaultdict(list)
 
     for entry_key, entry in by_key.items():

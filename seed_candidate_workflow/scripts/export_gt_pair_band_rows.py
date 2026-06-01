@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Export GT-stratified pair rows by score band for manual review.
 

@@ -157,7 +157,6 @@ def load_member_expansion_table(path: Path) -> dict[str, list[str]]:
         tab = load_semantic_supernode_member_table(path)
         if tab:
             return tab
-        # Dedup mapping JSON uses the same node schema as semantic supernodes.
         raw = json.loads(path.read_text(encoding="utf-8"))
         nodes = raw.get("nodes")
         if isinstance(nodes, list) and nodes:

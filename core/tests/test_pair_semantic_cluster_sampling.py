@@ -63,7 +63,6 @@ def test_disjoint_cluster_split_no_leak():
 def test_cluster_cap_and_balance_preserves_some_of_each_class():
     email_to_cluster = {"e1": 1, "e2": 1, "e3": 2, "e4": 3, "e5": 4}
     train = annotate_pair_rows_with_semantic_clusters(_mini_pairs(), email_to_cluster)
-    # duplicate many rows same cluster pair
     dup = pd.concat([train] * 20, ignore_index=True)
     dup["is_positive"] = dup["pair_status"] == "positive"
     dup["is_unlabeled"] = dup["pair_status"] == "unlabeled"

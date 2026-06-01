@@ -147,7 +147,6 @@ def _build_weighted_email_graph(
             continue
         w = float(r[weight_col]) if use_edge_weights_in_partitioning else 1.0
         if g.has_edge(a, b):
-            # deterministic and conservative: keep max weight if duplicates appear.
             g[a][b]["weight"] = max(float(g[a][b]["weight"]), w)
         else:
             g.add_edge(a, b, weight=w)
@@ -464,7 +463,6 @@ def _validate_output_contract(df: pd.DataFrame, *, sort_by: str) -> None:
             float(pd.to_numeric(df.iloc[i][c], errors="coerce"))
             for c in cols
         )
-        # Descending: each row must be >= the next (best row first).
         if prev_key is not None and prev_key < key:
             raise AssertionError(
                 f"Per-GT sweep CSV must be lexicographically descending by {cols}; "
@@ -532,7 +530,6 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             graph_id=graph_id,
             anchor_output_root=anchor_output_root,
         )
-        # Anchor-run loaded edges are unscored by default after refactor.
         if "email_i" not in edges_df.columns or "email_j" not in edges_df.columns:
             if "email_a" in edges_df.columns and "email_b" in edges_df.columns:
                 edges_df["email_i"] = edges_df["email_a"].astype(str)
@@ -628,7 +625,6 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         edges_df["email_a"] = edges_df["email_i"]
         edges_df["email_b"] = edges_df["email_j"]
     else:
-        # Unweighted Option A: topology-only community detection.
         edges_df = edges_df.copy()
         edges_df["email_i"] = edges_df["email_i"].astype(str)
         edges_df["email_j"] = edges_df["email_j"].astype(str)

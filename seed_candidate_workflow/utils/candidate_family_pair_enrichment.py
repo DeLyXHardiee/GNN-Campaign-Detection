@@ -170,7 +170,6 @@ def enrich_gt_pair_dataframe(
     out = pd.concat([out.reset_index(drop=True), feat_df.reset_index(drop=True)], axis=1)
     out = out.loc[:, ~out.columns.duplicated(keep="last")]
 
-    # HTML fingerprint direct share
     if "shared_html_fp" not in out.columns:
         out["shared_html_fp"] = 0
     sh = out["shared_html_fp"]
@@ -178,12 +177,10 @@ def enrich_gt_pair_dataframe(
         sh = sh.iloc[:, 0]
     out["direct_shared_html_fp"] = sh.fillna(0).astype(int)
 
-    # Alias for rule names
     out["shared_nontrivial_stem"] = out.get(
         "shared_stem_nontrivial", out.get("has_shared_stem", 0)
     )
 
-    # 2-hop channel flags (optional admitting evidence)
     evidence_index: dict[tuple[str, str], list[dict[str, Any]]] | None = None
     if admitting_evidence_dir is not None and admitting_evidence_dir.is_dir():
         try:
@@ -217,7 +214,6 @@ def enrich_gt_pair_dataframe(
             "pass admitting_evidence_dir for exact channel attribution."
         )
 
-    # Quantile cutoffs for rarity-weighted support (for catalog thresholds)
     rw = pd.to_numeric(out.get("rarity_weighted_support_sum"), errors="coerce")
     rw_fin = rw[np.isfinite(rw)]
     if len(rw_fin) > 10:

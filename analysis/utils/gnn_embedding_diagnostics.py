@@ -456,7 +456,6 @@ def build_high_cosine_nonedge_pairs(
     mat_n = _normalize_rows(mat.astype(np.float64))
     n = mat_n.shape[0]
     rng = np.random.default_rng(random_state)
-    # Blockwise sample: random email anchors, top neighbors
     max_anchors = min(n, max(500, max_pairs // 10))
     anchor_idx = rng.choice(n, size=max_anchors, replace=False) if n > max_anchors else np.arange(n)
     rows: list[dict[str, Any]] = []
@@ -660,7 +659,7 @@ def build_recommendations(
     same_minus = primary.get("same_minus_cross_mean_cosine")
     retr_primary = retrieval_df.loc[retrieval_df.index[:0]]
     if not retrieval_df.empty and "embedding_source" in retrieval_df.columns:
-        retr_primary = retrieval_df  # filled per-source externally
+        retr_primary = retrieval_df                                
 
     useful = auroc is not None and float(auroc) >= 0.65
     return {

@@ -16,7 +16,6 @@ from tqdm import tqdm
 MODEL_NAME = "intfloat/multilingual-e5-large"
 _CACHE_FILENAME = "embeddings.json"
 
-# Default output folder for this component (utils/embeddings/output)
 DEFAULT_OUTPUT_DIR: Path = Path(__file__).resolve().parent / "output"
 
 
@@ -65,7 +64,6 @@ def _save_cache(
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / _CACHE_FILENAME
-    # Ground-truth join key (same as cache key: external_id or str(email_index))
     serializable = {}
     for k, v in by_key.items():
         if isinstance(v, dict):
@@ -181,7 +179,6 @@ def get_embeddings(
             body_vecs[pos] = entry["body"]
         _save_cache(out, cache, subj_dim, body_dim)
 
-    # Fill any remaining None with empty lists
     for i in range(len(emails)):
         if subj_vecs[i] is None:
             subj_vecs[i] = []

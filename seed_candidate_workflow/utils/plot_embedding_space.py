@@ -258,7 +258,6 @@ def write_embedding_space_plot(
 
     from src.clustering.clustering_helpers import extract_email_embeddings  # noqa: E402
 
-    # Full list must match graph node order; encoder runs on the full graph once.
     ids_full = [str(x) for x in external_ids]
     id_to_emb = extract_email_embeddings(
         bundle["model"],

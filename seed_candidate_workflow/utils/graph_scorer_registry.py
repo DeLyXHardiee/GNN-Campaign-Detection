@@ -652,7 +652,6 @@ SCORER_SPECS: dict[str, ScorerSpec] = {
 
 
 def validate_scorer_target(score_mode: str, graph_kind: str) -> None:
-    # Centralized compatibility check so orchestration can stay graph-target agnostic.
     validate_score_mode_target_compatibility(score_mode=score_mode, graph_kind=graph_kind)
 
 

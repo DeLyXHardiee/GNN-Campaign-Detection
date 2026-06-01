@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Deduplicate (or thin) ground-truth JSON by similarity on selected email fields.
 
@@ -81,7 +80,6 @@ def canonical_similarity_string(record: dict[str, Any], *, body_max_chars: int |
         body = body[:body_max_chars]
     urls = _normalize_ws(str(record.get("urls") or ""))
     attachments = _normalize_attachments(record.get("attachments"))
-    # Delimiters reduce accidental field-boundary collisions.
     return "\x1f".join((sender, receiver, date, subject, body, urls, attachments))
 
 
@@ -215,7 +213,6 @@ def rebuild_clusters(
         if i not in keep_indices:
             continue
         out[fi.cluster_key].append(fi.email)
-    # Drop empty cluster keys
     return {k: v for k, v in out.items() if v}
 
 

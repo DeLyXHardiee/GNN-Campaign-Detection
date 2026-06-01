@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Bridge-candidate retrieval + scoring experiment for missing (non-edge) pairs.
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Dedup-GT vs expanded-GT evaluation gap analysis (read-only on existing artifacts).
 

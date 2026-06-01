@@ -748,7 +748,6 @@ def run_candidate_family_scorecard(cfg: CandidateFamilyScorecardRunConfig) -> di
                     }
                 )
 
-        # Rank within GT: promising first, then by oracle_v_gain
         action_rank = {
             "promising_for_learning": 0,
             "too_clean_graph_only": 1,

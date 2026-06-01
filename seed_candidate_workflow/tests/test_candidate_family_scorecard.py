@@ -74,7 +74,7 @@ def test_score_one_family_synthetic(tmp_path: Path):
         }
     )
     gt_map = {"a": "C1", "b": "C1", "c": "C2", "d": "C3"}
-    graph_pairs = {("a", "b")}  # only same-campaign edge in graph
+    graph_pairs = {("a", "b")}                                    
     spec = CandidateFamilySpec(
         family_name="sem_sender",
         rule_expression="semantic_ge_0_90_AND_shared_sender",

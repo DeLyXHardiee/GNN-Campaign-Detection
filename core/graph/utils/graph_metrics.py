@@ -31,7 +31,7 @@ def _safe_load_graph(graph_path: str):
         raise FileNotFoundError(f"Graph file not found: {resolved}")
 
     torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
-    graph = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    graph = torch.load(                                                                       
         str(resolved), map_location="cpu", weights_only=True
     )
     if not isinstance(graph, HeteroData):
@@ -147,7 +147,6 @@ def get_max_degree_node_in_largest_component(graph_path: str, metadata: Dict[str
         if best_global is None:
             return None
 
-        # Map global index back to node_type and local_index
         best_type = node_types[0]
         best_local = 0
         for nt in node_types:
@@ -331,23 +330,12 @@ def get_top_urls(metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, in
     node_maps = metadata.get("node_maps", {})
     email_meta = node_maps.get("email", {}).get("index_to_meta", [])
     edge_counts_dict = metadata.get("edge_counts", {})
-    
     has_url_edges = edge_counts_dict.get("email->url:has_url", 0) > 0
-    
     if not has_url_edges:
         return []
-    
-    # We need to count URL references from the graph structure
-    # For simplicity, we use the url node mapping and assume frequency correlates with index
     url_strings = node_maps.get("url", {}).get("index_to_string", [])
-    
-    # Return URLs with their indices (as a proxy for frequency for now)
-    # A better approach would be to load the actual graph and count edges
     if url_strings:
-        # For now, return all URLs with placeholder counts
-        # TODO: Load actual graph to get real edge counts per URL
         return [(url, 1) for url in url_strings[:top_n]]
-    
     return []
 
 
@@ -370,26 +358,17 @@ def get_top_receivers_from_graph(graph_path: str, metadata: Dict[str, Any], top_
 def count_url_references_from_graph(graph_path: str, metadata: Dict[str, Any], top_n: int = 5) -> List[Tuple[str, int]]:
     try:
         graph = _safe_load_graph(graph_path)
-        
         url_strings = metadata.get("node_maps", {}).get("url", {}).get("index_to_string", [])
-        
         if not url_strings:
             return []
-        
         url_counts = Counter()
-        
         if ("email", "has_url", "url") in graph.edge_types:
             edge_index = graph["email", "has_url", "url"].edge_index
-            
-            # edge_index[1] contains URL node indices
             url_indices = edge_index[1].tolist()
-            
             for url_idx in url_indices:
                 if 0 <= url_idx < len(url_strings):
                     url_counts[url_strings[url_idx]] += 1
-        
         return url_counts.most_common(top_n)
-        
     except ImportError:
         print("Warning: torch not available, cannot count URL references from graph")
         return []
@@ -661,20 +640,16 @@ def analyze_graph(meta_path: str, graph_path: Optional[str] = None) -> None:
 if __name__ == "__main__":
     import sys
     import os
-    
     default_meta = os.path.join("../output", "incidents-lake-misp_hetero.meta.json")
     default_graph = os.path.join("../output", "incidents-lake-misp_hetero.pt")
-    
     if len(sys.argv) > 1:
         meta_path = sys.argv[1]
         graph_path = sys.argv[2] if len(sys.argv) > 2 else None
     else:
         meta_path = default_meta
         graph_path = default_graph if os.path.exists(default_graph) else None
-    
     if not os.path.exists(meta_path):
         print(f"Error: Metadata file not found: {meta_path}")
         print(f"\nUsage: python graph_metrics.py [meta_path] [graph_path]")
         sys.exit(1)
-    
     analyze_graph(meta_path, graph_path)

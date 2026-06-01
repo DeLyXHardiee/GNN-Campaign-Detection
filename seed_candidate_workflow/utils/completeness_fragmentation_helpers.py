@@ -144,9 +144,8 @@ def subgroup_bridge_tables(
         }
         cos_vals = []
         for i, j in pair_list:
-            ei = members[0]  # placeholder not used
+            ei = members[0]                        
             _ = ei
-            # map rows back to external ids via inverse lookup for cosine
         inv = {v: k for k, v in eid_to_row.items()}
         for i, j in pair_list:
             a, b = inv.get(i), inv.get(j)

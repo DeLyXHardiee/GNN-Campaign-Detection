@@ -37,7 +37,6 @@ def get_pipeline_config(*, project_root: Path | None = None) -> Mapping[str, Any
     return MappingProxyType(load_pipeline_config(project_root=project_root))
 
 
-# Single-process global config mapping loaded once at import time.
 PIPELINE_CONFIG: Mapping[str, Any] = get_pipeline_config()
 
 
@@ -241,13 +240,9 @@ class GraphBuildSettings:
     max_misp_events: int | None = None
     email_feature_projection: EmailFeatureProjectionSettings | None = None
     degree_node_filter: DegreeNodeFilterSettings | None = None
-    #: When set, saved graph is ``{output_dir}/{hetero_graph_stem}_hetero.pt`` (branch/run tag).
     hetero_graph_stem: str | None = None
-    #: If True, email scalar ``ts`` (and attrs) are all zero; removes calendar time from GNN inputs.
     zero_email_timestamps: bool = False
-    #: If False, disable schema collapse_rules when assembling GraphIR.
     collapse_enabled: bool = True
-    #: If True (default), URL/domain/stem nodes whose registrable domain appears in popular_domains.txt are excluded.
     filter_popular_domains: bool = True
 
 
@@ -437,9 +432,6 @@ def default_hetero_graph_pt_path(*, project_root: Path | None = None) -> str:
     return os.path.join(s.output_dir, f"{base}_hetero.pt")
 
 
-# ---------------------------------------------------------------------------
-# Featureset clustering settings
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class FeaturesetClusteringSettings:
@@ -448,23 +440,18 @@ class FeaturesetClusteringSettings:
     dataset_base: str
     ground_truth_json: str | None
     feature_sets: list[str]
-    # DBSCAN
     eps_values: list[float]
     min_samples: int
-    # Mean Shift
     quantile_values: list[float]
     n_samples: int
-    # HDBSCAN
     hdbscan_enabled: bool
     min_cluster_size_values: list[int]
     hdbscan_min_samples: int | None
     hdbscan_metric: str
-    # Shared embedding
     n_components_values: list[int]
     max_tfidf_features: int | None
     remove_outliers: bool
     outlier_contamination: float
-    # Cluster-selection thresholds
     min_coverage_ground_truth: float
     min_coverage_all: float
 

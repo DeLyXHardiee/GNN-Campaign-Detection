@@ -23,7 +23,6 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-# Ensure imports from core/* work in standalone analysis entry points.
 _CORE_ROOT = Path(__file__).resolve().parents[2]
 if str(_CORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_CORE_ROOT))
@@ -63,7 +62,6 @@ from .pu_loss import (
     resolve_pair_loss_type,
 )
 
-# Legacy config string (used only when ``pair_loss_type`` is omitted / inferred).
 PLACEHOLDER_LOSS_BCE_POS_VS_UNLABELED_AS_NEG = "bce_pos_vs_unlabeled_as_neg"
 
 
@@ -75,7 +73,6 @@ def reliable_negative_supervision_active(training_cfg: dict[str, Any], pair_loss
         return True
     return pair_loss_type == PAIR_LOSS_NNPU_WITH_RELIABLE_NEGATIVES
 
-# Pair encoder: full hetero message passing vs raw ``email.x`` only (no neighborhoods).
 PAIR_ENCODER_GNN = "gnn"
 PAIR_ENCODER_MLP_RAW_EMAIL_X = "mlp_raw_email_x"
 PAIR_ENCODER_EXPLICIT_ONLY = "explicit_only"
@@ -99,14 +96,6 @@ def resolve_pair_encoder_backend(training_cfg: dict[str, Any]) -> str:
     )
 
 PAIR_FEATURE_BOOL_COLS = [
-    # --- run _13 ablation: provenance / component flags (re-enable by uncommenting) ---
-    # "from_seed",
-    # "from_rare_artifact",
-    # "from_semantic",
-    # "from_component",
-    # "from_2hop",
-    # "same_seed_component_flag",
-    # "cross_seed_component_flag",
     "has_shared_sender",
     "has_shared_stem",
     "has_shared_url",
@@ -119,12 +108,7 @@ PAIR_FEATURE_BOOL_COLS = [
 ]
 
 PAIR_FEATURE_NUMERIC_COLS = [
-    # --- run _13 ablation: provenance / channel strength numerics (re-enable by uncommenting) ---
-    # "source_count",
     "semantic_cosine_max",
-    # "rare_artifact_rarity_max",
-    # "twohop_rarity_max",
-    # "component_cosine_max",
     "time_gap_seconds_min",
     "shared_sender_count",
     "shared_stem_count",
@@ -144,11 +128,9 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "path_token_jaccard_combined",
 ]
 
-# Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
 PAIR_FEATURE_COLUMNS = PAIR_FEATURE_BOOL_COLS + PAIR_FEATURE_NUMERIC_COLS
 
-# Optional override for train/infer when training_cfg sets pair_feature_columns_exclude.
 _ACTIVE_PAIR_FEATURE_COLUMNS: list[str] | None = None
 
 _RESCUE_ALIGNED_SCORER_FEATURE_COLS = (
@@ -331,7 +313,6 @@ def split_pairs_train_val_test(
     return df.iloc[i_train].reset_index(drop=True), df.iloc[i_val].reset_index(drop=True), df.iloc[i_test].reset_index(drop=True)
 
 
-# Mirrors core/graph/assembler.py EMAIL_BOOL_ATTR_KEYS + AUTH_ATTR_KEYS for meta.json email_attrs rows.
 _GRAPH_META_BOOL_ATTR_KEYS = (
     "cyrillic_domain",
     "contains_symbols",
@@ -538,7 +519,6 @@ def apply_train_near_duplicate_email_filter(
         )
 
     out_stats["n_unique_scope_emails_before"] = len(flat)
-    # Backward-compatible alias (scope is train ∪ val endpoints, not train-only).
     out_stats["n_unique_train_emails_before"] = len(flat)
 
     flat.sort(key=lambda x: int(x.email["graph_email_idx"]))
@@ -1915,7 +1895,7 @@ def save_pair_training_checkpoint(
         "best_pair_scorer_state_dict": best_pair_scorer_state,
         "training_params": training_params,
     }
-    torch.save(payload, path)  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    torch.save(payload, path)                                                                       
     return path
 
 
@@ -2300,7 +2280,6 @@ def run_pair_training(
                 "Per-epoch cluster sampling does not append reliable_negative rows unless "
                 "reliable_negative_emphasis or hybrid nnPU+RN loss is enabled."
             ),
-            
         },
         "semantic_cluster_sampling": {
             "enabled": sc_enabled,

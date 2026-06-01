@@ -39,7 +39,6 @@ def resolve_pair_loss_type(training_cfg: dict[str, Any]) -> str:
             f"Unknown pair_loss_type: {raw!r}; use {PAIR_LOSS_PLACEHOLDER_BCE!r}, {PAIR_LOSS_NNPU!r}, "
             f"or {PAIR_LOSS_NNPU_WITH_RELIABLE_NEGATIVES!r}."
         )
-    # Backward compatibility: explicit placeholder mode in config without pair_loss_type
     legacy = str(training_cfg.get("pair_placeholder_loss_mode", "") or "").lower()
     if "bce_pos_vs_unlabeled" in legacy:
         return PAIR_LOSS_PLACEHOLDER_BCE

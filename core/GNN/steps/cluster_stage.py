@@ -442,7 +442,6 @@ def run_clustering_stage(
         path=str(Path(graph_path).expanduser()),
         to_undirected=bool(to_undirected),
     )
-    # Load metadata for email external_id (graph does not store it; PyG loaders require tensor-only node stores)
     meta_path = Path(graph_path).expanduser().with_suffix(".meta.json")
     if not meta_path.exists():
         raise FileNotFoundError(
@@ -467,7 +466,6 @@ def run_clustering_stage(
         flush=True,
     )
 
-    # --- Diagnostic prints (ground truth vs graph identity overlap) ---
     _graph_id_list = [str(x) for x in email_external_ids]
     _graph_ids = set(_graph_id_list)
     _gt_ids = set(map(str, ground_truth.keys()))
@@ -562,7 +560,6 @@ def run_clustering_stage(
         flush=True,
     )
     print("[clustering diag] ==========\n", flush=True)
-    # --- end diagnostic prints ---
 
     model, predictor, checkpoint = load_model_checkpoint(
         device=device, metadata=data.metadata(), filename=checkpoint_path
@@ -571,16 +568,12 @@ def run_clustering_stage(
 
     baselines_cfg = baselines_cfg if isinstance(baselines_cfg, dict) else {}
 
-    # clustering_cfg is a dict: algo_name -> { "enabled": bool, ...params }.
-    # Model name comes from training.model_save_name (stem) so it stays consistent when not running training.
     outputs: dict[str, dict[str, str]] = {}
     model_stem = Path(model_save_name).stem
 
-    # Default `min_coverage_all` to the same threshold as ground truth coverage.
     if min_coverage_all is None:
         min_coverage_all = float(min_coverage_ground_truth)
 
-    # Preprocessing settings shared across GNN, raw, and transformer embedding paths.
     preprocessing_cfg = (clustering_cfg or {}).get("preprocessing") or {}
     _remove_outliers = bool(preprocessing_cfg.get("remove_outliers", True))
     _outlier_contamination = float(preprocessing_cfg.get("outlier_contamination", 0.05))
@@ -617,8 +610,6 @@ def run_clustering_stage(
         outlier_contamination=_outlier_contamination,
     )
 
-    # Run locked-parameter clustering across epoch checkpoints so we can plot metrics vs epoch
-    # without doing a full epsilon/quantile sweep for every checkpoint.
     models_dir = Path(checkpoint_path).parent
     epoch_ckpts: list[Path] = []
     for p in models_dir.glob("model_epoch_*.pt"):
@@ -736,8 +727,6 @@ def run_clustering_stage(
             n_embeddings=int(len(bert_id_to_emb_prepared)),
         )
 
-        # If meanshift has its own max_components, prepare a separate reduced embedding
-        # map for it and run it independently from DBSCAN/HDBSCAN.
         ms_cfg = bert_algorithms_cfg.get("meanshift")
         ms_own_max_components = None
         if isinstance(ms_cfg, dict) and ms_cfg.get("enabled"):
@@ -778,7 +767,6 @@ def run_clustering_stage(
             )
             bert_outputs.update(ms_outputs)
             bert_best.update(ms_best)
-            # Restore merged cfg so _write_campaigns_for_best_algorithm can access all algos.
             bert_algorithms_cfg["meanshift"] = ms_cfg
         else:
             bert_outputs, bert_best = _run_embedding_clustering_suite(

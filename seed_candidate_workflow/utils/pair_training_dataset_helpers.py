@@ -301,7 +301,6 @@ def _reliable_negative_eligible_mask(
     fc = df["from_component"].astype(bool)
     fr = df["from_rare_artifact"].astype(bool)
 
-    # Route 1 — weak semantic-only
     route1 = (
         fs
         & cos.le(sem_max).fillna(False)
@@ -313,7 +312,6 @@ def _reliable_negative_eligible_mask(
     include_twohop_route = bool(cfg.get("include_twohop_only_route", False))
     include_component_route = bool(cfg.get("include_component_only_route", False))
 
-    # Route 2 — weak 2hop-only bridge (disabled by default for conservative rollback)
     if include_twohop_route:
         th_thr = float(cfg.get("twohop_rarity_max_le", 6.0))
         th = pd.to_numeric(df["twohop_rarity_max"], errors="coerce")
@@ -328,7 +326,6 @@ def _reliable_negative_eligible_mask(
     else:
         route2 = pd.Series(False, index=df.index, dtype=bool)
 
-    # Route 3 — weak component-only bridge (disabled by default for conservative rollback)
     if include_component_route:
         route3 = fc & ~fs & ~fr & ~f2
     else:
@@ -442,7 +439,6 @@ def build_pair_training_dataset(
     if cand.empty or not {"email_i", "email_j"}.issubset(cand.columns):
         raise ValueError(f"candidate_union.csv missing required columns or empty: {candidate_union_csv}")
 
-    # Canonicalize candidate rows; detect duplicates (keep first, deterministic sort).
     cand = cand.copy()
     cand["_pk"] = [
         _pair_key(a, b) for a, b in zip(cand["email_i"].astype(str), cand["email_j"].astype(str), strict=False)
@@ -453,7 +449,6 @@ def build_pair_training_dataset(
     cand_pairs = set(cand["_pk"].tolist())
     seed_only = sorted(seed_pairs - cand_pairs)
 
-    # Base rows from candidate union
     rows: list[dict[str, Any]] = []
     for _, r in cand.iterrows():
         pk = r["_pk"]
@@ -481,7 +476,6 @@ def build_pair_training_dataset(
             }
         )
 
-    # Seed-only pairs (should normally be empty when candidate generation invariant holds)
     for pk in seed_only:
         rows.append(
             {
@@ -508,7 +502,6 @@ def build_pair_training_dataset(
 
     df = pd.DataFrame(rows)
     df = df.sort_values(["email_i", "email_j"]).reset_index(drop=True)
-    # Align boolean with rarity scalar (union writer should keep these consistent; coerce if not).
     _rar_num = pd.to_numeric(df["rare_artifact_rarity_max"], errors="coerce")
     df["from_rare_artifact"] = df["from_rare_artifact"].astype(bool) | _rar_num.notna()
     nodes_by_email, shared_ctx = _load_anchor_node_sets_by_email(
@@ -605,12 +598,9 @@ def build_pair_training_dataset(
         df["path_token_jaccard_combined"] = 0.0
         text_similarity_meta = {"status": "error", "error": str(exc)}
 
-    # Every row is part of the candidate-universe handoff; seed-only extras are still
-    # "candidate stage" outputs for training contract purposes.
     df["is_candidate_pair"] = True
     df["is_seed_pair"] = df["_is_seed_pair"].astype(bool)
 
-    # Component context from union columns (needed before reliable-negative rules)
     sci = pd.to_numeric(df["email_i_seed_component_id"], errors="coerce")
     scj = pd.to_numeric(df["email_j_seed_component_id"], errors="coerce")
     df["seed_component_i"] = sci
@@ -623,10 +613,9 @@ def build_pair_training_dataset(
     both_comp = sci.notna() & scj.notna() & (sci >= 0) & (scj >= 0)
     df["cross_seed_component_flag"] = both_comp & (sci != scj)
 
-    # Graph email indices
     ext_to_idx: dict[str, int] | None = None
     meta_path_resolved: str | None = None
-    graph_meta_missing_reason: str | None = None  # why explicit path was not used
+    graph_meta_missing_reason: str | None = None                                  
     if graph_meta_json is not None:
         gpath = graph_meta_json.expanduser().resolve()
         if gpath.is_file():
@@ -653,7 +642,6 @@ def build_pair_training_dataset(
         df["graph_email_idx_i"] = np.nan
         df["graph_email_idx_j"] = np.nan
 
-    # Nullable integer indices for CSV
     df["graph_email_idx_i"] = pd.to_numeric(df["graph_email_idx_i"], errors="coerce").astype("Int64")
     df["graph_email_idx_j"] = pd.to_numeric(df["graph_email_idx_j"], errors="coerce").astype("Int64")
 
@@ -661,14 +649,12 @@ def build_pair_training_dataset(
     miss_j = df["graph_email_idx_j"].isna()
     both_mapped = (~miss_i) & (~miss_j)
 
-    # Supervision labels (after structural flags exist)
     df["pair_status"] = np.where(df["is_seed_pair"], "positive", "unlabeled")
     df.loc[df["is_seed_pair"], "from_seed"] = True
 
     rn_pool = reliable_negative_pool or {}
     rn_summary = _apply_reliable_negative_pool_inplace(df, both_mapped=both_mapped, pool_cfg=rn_pool)
 
-    # Rejects CSV (optional): mapping failures (main dataset still retains all pairs).
     rejects: list[dict[str, Any]] = []
     if write_rejects_csv:
         bad = df.loc[miss_i | miss_j]
@@ -686,7 +672,6 @@ def build_pair_training_dataset(
                 }
             )
 
-    # Final output columns (exact contract)
     df["split"] = np.nan
     out_df = pd.DataFrame(
         {

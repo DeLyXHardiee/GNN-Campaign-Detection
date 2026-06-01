@@ -30,9 +30,7 @@ def test_cmp_condition_counts():
     same = np.array([True, True, True, False, False])
     cross = ~same
     stats = _cmp_condition(cond, same, cross)
-    # same arm: indices 0,1,2 -> cond true on 0,1 => 2/3
     assert stats["same_rate"] == pytest.approx(2 / 3)
-    # cross arm: indices 3,4 -> cond true on 3 => 1/2
     assert stats["cross_rate"] == pytest.approx(0.5)
     assert stats["precision_like"] == pytest.approx(2 / 3)
     assert stats["support_total"] == 3

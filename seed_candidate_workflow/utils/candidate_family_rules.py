@@ -26,7 +26,6 @@ def _parse_threshold(raw: str) -> float:
         days = float(s[:-1])
         return float(days * 86400.0)
     if "_" in s and s.replace("_", "").replace(".", "").isdigit():
-        # 0_4 -> 0.4
         return float(s.replace("_", "."))
     return float(s)
 
@@ -94,7 +93,6 @@ def _eval_single_token(df: pd.DataFrame, key: str, n: int) -> np.ndarray:
             return fin & (vals >= thr)
         return fin & (vals < thr if op == "lt" else vals <= thr)
 
-    # Legacy / boolean aliases
     bool_terms = _build_bool_terms(df)
     cos = _resolve_semantic_cosine(df)
 
@@ -156,7 +154,6 @@ def _eval_single_token(df: pd.DataFrame, key: str, n: int) -> np.ndarray:
     if key == "twohop_via_html_fp":
         if "twohop_via_html_fp" in df.columns:
             return _bool_column(df, "twohop_via_html_fp")
-        # Approximation when admitting-evidence index unavailable
         f2 = bool_terms.get("from_2hop", np.zeros(n, dtype=bool))
         hfp = bool_terms.get("shared_html_fp", np.zeros(n, dtype=bool))
         return f2 & hfp
@@ -184,7 +181,6 @@ def eval_family_rule_expr(df: pd.DataFrame, expr: str) -> np.ndarray:
     if n == 0:
         return np.zeros(0, dtype=bool)
 
-    # Legacy evaluator only for simple single-token rules without enriched features.
     if "_AND_" not in expr and not _needs_extended(expr):
         try:
             return _eval_rule_expr_legacy(df, expr)

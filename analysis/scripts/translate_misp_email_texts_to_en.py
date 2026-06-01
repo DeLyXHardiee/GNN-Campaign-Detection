@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Translate MISP email **subject** and **body** using **deep-translator**'s
 ``GoogleTranslator(source="auto", target=...)`` (same stack as many small apps:

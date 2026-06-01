@@ -27,7 +27,6 @@ def _load_env_file(path: Path) -> None:
 
 
 def main() -> None:
-    # Support local .env files when variables are not exported in shell.
     _load_env_file(Path(__file__).resolve().parent / ".env")
     _load_env_file(_CORE_ROOT.parent / ".env")
 

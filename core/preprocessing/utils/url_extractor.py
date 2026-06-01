@@ -85,7 +85,6 @@ def refang_url_like_schemes(text: str) -> str:
     """Undo preprocessing defang so extractors see real schemes."""
     if not text:
         return ""
-    # Order matters: replace ``hxxps`` before ``hxxp`` so the latter does not corrupt the former.
     out = _replace_case_insensitive(text, "hxxps://", "https://")
     out = _replace_case_insensitive(out, "hxxp://", "http://")
     return out
@@ -322,8 +321,6 @@ def parse_url_components(url: str) -> Dict[str, Any]:
     raw_in = str(url).strip()
 
     try:
-        # Refang before scheme checks; otherwise ``http://`` + ``hxxps://host`` yields
-        # netloc ``hxxps:`` and path ``//host/`` (urllib.parse bug-class on merged schemes).
         s = _strip_wrapping_punct(refang_url_like_schemes(raw_in))
         if not s:
             return {
@@ -442,7 +439,6 @@ def collect_urls_for_misp_event_attributes(attributes: List[Dict[str, Any]]) -> 
         elif t == "html" and isinstance(v, str) and v.strip():
             html_raw = v
         elif t == "header_List-Unsubscribe" and isinstance(v, str):
-            # RFC 2369 often wraps URIs in <...>; linkify-it does not see URLs inside brackets.
             list_unsub = v.replace("<", " ").replace(">", " ")
 
     from_content = extract_urls_from_plain_and_html(body, html_raw)

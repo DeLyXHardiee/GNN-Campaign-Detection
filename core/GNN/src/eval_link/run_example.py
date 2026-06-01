@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Example script: run AUROC/AP and Recall@K analysis from saved graph + checkpoint.
 
@@ -19,7 +18,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Allow running as script: ensure package root (core/GNN) is on path
 _PKG_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(_PKG_ROOT))
@@ -43,7 +41,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Default: graph path relative to repo/data; override via CLI or edit here
     data_path = args.data_path or str(
         _PKG_ROOT.parent.parent / "graph" / "output" / "incidents-20260211-misp_hetero.pt"
     )

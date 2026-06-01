@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Build heterograph + mapping + BERT overlay from MISP lake + semantic_supernode_clusters.csv.
 

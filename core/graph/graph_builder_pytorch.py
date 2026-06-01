@@ -246,7 +246,6 @@ def build_hetero_graph_from_misp(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Build a HeteroData graph from a list of MISP events.
-    
         New schema: Email nodes are central hubs connected to component nodes:
         - Node types: email, sender, receiver, url, domain, stem, email_domain
     - Edge types: 
@@ -257,12 +256,10 @@ def build_hetero_graph_from_misp(
       - (email, has_stem, stem)
       - (email, has_email_domain, email_domain)
 
-    
     Components are deduplicated: multiple emails sharing the same sender/receiver/etc. 
     will have edges to the same component node. URLs are decomposed into domain and stem.
     Email addresses are normalized (lowercase, angle brackets removed) and connected to 
     their domain nodes to increase connectivity.
-    
     Email features include normalized scalars: ts_minmax, len_body_z,
     n_urls_z, len_subject_z, and optional SBERT embeddings of subject/body.
 
@@ -317,7 +314,6 @@ def save_graph(
     out_dir: str = "results",
     out_name: str = "hetero_graph.pt",
 ) -> Tuple[str, str]:
-    
     _ensure_dir(out_dir)
     graph_path = os.path.join(out_dir, out_name)
 

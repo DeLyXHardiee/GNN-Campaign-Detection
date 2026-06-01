@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Guardrail: fail if seed union components collapsed or pair_training is dominated by same_seed_component rows.
 

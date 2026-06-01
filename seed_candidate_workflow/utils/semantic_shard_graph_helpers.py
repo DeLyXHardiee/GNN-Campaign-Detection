@@ -45,7 +45,6 @@ def is_noise_stem(stem: str) -> bool:
         return True
     if s == "*":
         return True
-    # Root-level globs and pasted markup: /*, /**, /*], /**], /], etc. (no real path segment)
     if re.fullmatch(r"/[\*\]]+\s*$", s):
         return True
     return False
@@ -66,7 +65,7 @@ class ShardEdgeChannelScoring:
     """Per-infrastructure-column scoring controls for shard–shard edge weights."""
 
     weight: float
-    scoring_mode: str = "legacy"  # "legacy" | "routed"
+    scoring_mode: str = "legacy"                       
     idf_exponent: float = 1.0
     idf_scale: float = 1.0
     max_shard_df: int | None = None
@@ -335,12 +334,9 @@ def load_email_level_inputs(
     email_sets = {k: v for k, v in email_sets.items() if k not in skip_email_adjacent}
 
     rows: list[dict[str, Any]] = []
-    # Preload index->string maps for any node types we actually have.
     index_to_str_map: dict[str, list[str]] = {
         node_type: _index_to_str(meta, node_type) for node_type in email_sets.keys()
     }
-    # Derived "sender_email_domain_set" depends on these maps even if
-    # the corresponding node types are absent from `email_sets`.
     index_to_str_map.setdefault("sender", _index_to_str(meta, "sender"))
     index_to_str_map.setdefault("email_domain", _index_to_str(meta, "email_domain"))
 
@@ -356,12 +352,10 @@ def load_email_level_inputs(
             "ts": float(ts[i]) if i < len(ts) and ts[i] is not None else np.nan,
         }
 
-        # URL / domain / stem: only via url-node traversal (+ popular-domain filter).
         rec["url_set"] = set(url_sets[i]) if i < len(url_sets) else set()
         rec["domain_set"] = set(domain_sets[i]) if i < len(domain_sets) else set()
         rec["stem_set"] = filter_noise_stems_from_set(set(stem_sets[i]) if i < len(stem_sets) else set())
 
-        # Other infrastructure: direct email-adjacent artifact nodes (unchanged).
         for node_type, idx_sets in email_sets.items():
             idxs = idx_sets[i] if i < len(idx_sets) else set()
             xs = index_to_str_map.get(node_type) or []
@@ -371,7 +365,6 @@ def load_email_level_inputs(
                 if j is not None
             )
 
-        # Derived "sender-side email_domain" set (often referenced as sender_email_domain_set).
         rec["sender_email_domain_set"] = set(sender_domain_sets[i])
         rows.append(rec)
     return pd.DataFrame(rows), benign_diag
@@ -442,12 +435,10 @@ def build_shard_nodes(
                     out.update(str(x) for x in v if str(x))
             return out
 
-        # Compute requested infra set-columns for this shard.
         shard_infra_sets: dict[str, set[str]] = {ch: _u(ch) for ch in infra_channels}
         if "stem_set" in shard_infra_sets:
             shard_infra_sets["stem_set"] = filter_noise_stems_from_set(shard_infra_sets["stem_set"])
 
-        # Keep the original core summary columns for interpretability.
         sender_set = shard_infra_sets.get("sender_set", set())
         sender_dom_set = shard_infra_sets.get("sender_email_domain_set", set())
         url_set = shard_infra_sets.get("url_set", set())
@@ -485,8 +476,6 @@ def build_shard_nodes(
                 "domain_set": domain_set,
                 "stem_set": stem_set,
                 "attachment_set": att_set,
-                # Also include any extra requested infrastructure channels (as set columns)
-                # so candidate generation and scoring can use them.
                 **{ch: shard_infra_sets[ch] for ch in infra_channels if ch not in {"sender_set", "sender_email_domain_set", "url_set", "domain_set", "stem_set", "attachment_set"}},
                 "ts_min": ts_min,
                 "ts_max": ts_max,
@@ -524,8 +513,6 @@ def build_candidate_edges(
     ),
     show_progress: bool = False,
 ) -> pd.DataFrame:
-    # candidate_infra_channels cleanly separates "which channels create candidates" from
-    # "which channels score edges later".
     if candidate_infra_channels is None:
         candidate_infra_channels = infra_channels
     n = len(shard_nodes_df)
@@ -535,7 +522,6 @@ def build_candidate_edges(
     if n > 0:
         np.fill_diagonal(sims, -np.inf)
 
-    # Optional progress bars (tqdm is optional).
     def _iter_with_progress(iterable, *, total: int | None = None, desc: str = ""):
         if not show_progress:
             return iterable
@@ -546,7 +532,6 @@ def build_candidate_edges(
         except Exception:
             return iterable
 
-    # Semantic candidates: top-k neighbors above threshold.
     topk = max(int(semantic_top_k), 0)
     for i in _iter_with_progress(range(n), total=n, desc="Semantic candidates"):
         if topk <= 0:
@@ -563,8 +548,6 @@ def build_candidate_edges(
             if float(sims[i, j]) >= float(semantic_min_cos):
                 cand.add((i, int(j)))
 
-    # Infra candidates (optimized):
-    # Build inverted index artifact -> shard indices and connect shard pairs that share any artifact.
     for ch in _iter_with_progress(candidate_infra_channels, total=len(candidate_infra_channels), desc="Infra channels"):
         inv: dict[str, list[int]] = defaultdict(list)
         vals = shard_nodes_df[ch].tolist() if ch in shard_nodes_df.columns else []
@@ -577,7 +560,6 @@ def build_candidate_edges(
             m = len(idxs)
             if m < 2:
                 continue
-            # Deduplicate indices in case input sets contain repeated converted values.
             uniq = sorted(set(int(x) for x in idxs))
             for a_i in range(len(uniq)):
                 ia = uniq[a_i]
@@ -642,7 +624,6 @@ def build_weighted_edges(
             }
         channel_scoring = scoring_specs_from_weights_legacy(channel_weights)
 
-    # Score only channels present in shard_nodes with explicit scoring specs.
     active_channels = [
         ch
         for ch in scoring_infra_channels
@@ -663,8 +644,6 @@ def build_weighted_edges(
         sem = float(np.clip(sims[i, j], -1.0, 1.0))
         sem_pos = max(0.0, sem)
 
-        # IMPORTANT: scoring uses ONLY exact/shared overlap + frequency-aware weighting.
-        # Jaccard is computed as a diagnostic output column and is NOT used in infra_score.
         infra_score = 0.0
         rec: dict[str, Any] = {
             "shard_a": ai["shard_id"],
@@ -683,11 +662,10 @@ def build_weighted_edges(
             inter = sa & sb
             uni = sa | sb
             cnt = int(len(inter))
-            jac = float(cnt / max(1, len(uni)))  # diagnostic only (not used in score)
+            jac = float(cnt / max(1, len(uni)))                                       
             shard_c = shard_df_maps[ch]
 
             n_cut = 0
-            # legacy: sum of raw log-idf weights on kept overlap; routed: sum of effective_idf = scale * raw^exp
             idf_diag_sum = 0.0
             contrib_pre_cap = 0.0
 
@@ -703,7 +681,6 @@ def build_weighted_edges(
                     idf_diag_sum = float(idf_sum)
                     contrib_pre_cap = w * (1.0 - math.exp(-idf_sum)) if idf_sum > 0 else 0.0
                 else:
-                    # routed: per-artifact saturated pieces, stronger transform, then optional cap
                     acc = 0.0
                     for x in inter:
                         df = int(shard_c.get(x, 0))
@@ -739,8 +716,6 @@ def build_weighted_edges(
             1.0 if t_overlap > 0 else (math.exp(-t_gap_days / 30.0) if pd.notna(t_gap_days) else 0.0)
         )
 
-        # Explicit interpretable weighted formula.
-        # edge_weight = 0.45 * semantic + 0.45 * infra + 0.10 * temporal
         edge_weight = (float(semantic_weight) * sem_pos) + (float(infra_weight) * infra_score) + (float(temporal_weight) * temporal_score)
         rec.update(
             {
@@ -839,8 +814,6 @@ def save_step2_graph_artifacts(
     p_summary = out / "semantic_shard_step2_graph_summary.json"
 
     node_out = shard_nodes_df.copy()
-    # Serialize set-valued infrastructure columns so the nodes CSV remains readable.
-    # Any column ending with "_set" is treated as set-like in this prototype.
     for c in [c for c in node_out.columns if c.endswith("_set") or c == "sender_email_domain_set"]:
         if c not in node_out.columns:
             continue

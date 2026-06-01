@@ -51,9 +51,6 @@ for p in (_GNN_ROOT, _GNN_SRC, _CORE, _REPO):
         sys.path.insert(0, s)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _load_external_ids(meta_json: Path) -> list[str]:
     with open(meta_json, encoding="utf-8") as f:
@@ -127,9 +124,6 @@ def _extract_embeddings(model, data_cpu, device, ids: list[str]) -> np.ndarray:
     return np.stack([id_to_emb[eid] for eid in ids], axis=0).astype(np.float64)
 
 
-# ---------------------------------------------------------------------------
-# PCA stats
-# ---------------------------------------------------------------------------
 
 def _fit_pca(X: np.ndarray, top_n: int = 32):
     """Fit full PCA and return (pca_object, stats_dict)."""
@@ -176,9 +170,6 @@ def _pca_stats(X: np.ndarray, top_n: int = 32) -> dict:
     return stats
 
 
-# ---------------------------------------------------------------------------
-# PC interpretation helpers
-# ---------------------------------------------------------------------------
 
 def _load_email_scalar_attrs(meta_json: Path, n_emails: int) -> pd.DataFrame:
     """Load scalar email attributes from meta.json as a (n_emails, F) DataFrame."""
@@ -220,9 +211,6 @@ def _compute_email_degrees(data_cpu, n_emails: int) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-# ---------------------------------------------------------------------------
-# Plotting functions
-# ---------------------------------------------------------------------------
 
 _FIG_W = 7.0
 _FIG_H = 4.5
@@ -436,9 +424,6 @@ def plot_tsne(
     _save(fig, out_dir / "tsne_embeddings.png")
 
 
-# ---------------------------------------------------------------------------
-# PC interpretation plots
-# ---------------------------------------------------------------------------
 
 def plot_pc_correlation_heatmap(
     pc_scores: np.ndarray,
@@ -454,7 +439,6 @@ def plot_pc_correlation_heatmap(
     feature_df = pd.concat(
         [attr_df.reset_index(drop=True), degree_df.reset_index(drop=True)], axis=1
     )
-    # Drop columns where there is no variance
     feature_df = feature_df.loc[:, feature_df.std(ddof=0) > 0]
 
     combined = pd.concat([pc_df, feature_df], axis=1)
@@ -532,7 +516,6 @@ def plot_pc_loadings(pca, out_dir: Path, top_k: int = 5, top_dims: int = 30) -> 
     D = components.shape[1]
     top_dims = min(top_dims, D)
 
-    # Select dims with largest max-abs loading across the top-k PCs
     max_abs = np.max(np.abs(components), axis=0)
     top_idx = np.sort(np.argsort(max_abs)[::-1][:top_dims])
     sub = components[:, top_idx]
@@ -556,9 +539,6 @@ def plot_pc_loadings(pca, out_dir: Path, top_k: int = 5, top_dims: int = 30) -> 
     _save(fig, out_dir / "pc_loadings.png")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
     _RUN = "output/runs/gnn_embeddings_clustering_train_full_graph_fixed_leak (5)"
@@ -589,12 +569,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"GT      : {gt_json}")
     print(f"Output  : {out_dir}\n")
 
-    # 1. Training curves
     print("[1/6] Training curves …")
     metrics_csv = run_dir / "metrics.csv"
     plot_training_curves(metrics_csv, out_dir)
 
-    # 2. Load model + extract embeddings (once)
     print("[2/6] Loading model and extracting embeddings …")
     meta_json = graph_pt.with_suffix(".meta.json")
     external_ids = _load_external_ids(meta_json)
@@ -602,7 +580,6 @@ def main(argv: list[str] | None = None) -> int:
     X = _extract_embeddings(model, data_cpu, device, external_ids)
     print(f"       Embedding matrix: {X.shape}  (N={X.shape[0]}, D={X.shape[1]})")
 
-    # 3. PCA
     print("[3/9] PCA analysis …")
     pca_obj, stats = _fit_pca(X, top_n=args.top_pcs)
     print(f"       effective_rank_shannon = {stats['effective_rank_shannon']:.2f}")
@@ -618,15 +595,12 @@ def main(argv: list[str] | None = None) -> int:
     plot_pca_cumulative(stats, out_dir)
     plot_dim_std(X, out_dir)
 
-    # 4. Embedding norm histogram
     print("[4/9] Norm histogram …")
     plot_norm_histogram(X, out_dir)
 
-    # 5. Cosine similarity histogram
     print("[5/9] Cosine similarity histogram …")
     plot_cosine_histogram(X, out_dir, n_sample=args.cosine_sample)
 
-    # 6. t-SNE
     print("[6/9] t-SNE projection …")
     label_map: dict | None = None
     if gt_json.is_file():
@@ -636,7 +610,6 @@ def main(argv: list[str] | None = None) -> int:
         print("       No GT file found — t-SNE will be uncoloured")
     plot_tsne(X, external_ids, label_map, out_dir, max_points=args.max_tsne_points)
 
-    # 7. PC interpretation — correlation with email attributes
     print("[7/9] PC interpretation — correlation heatmap …")
     n_emails = X.shape[0]
     top_k = min(args.interpret_pcs, pca_obj.n_components_)
@@ -645,14 +618,12 @@ def main(argv: list[str] | None = None) -> int:
     degree_df = _compute_email_degrees(data_cpu, n_emails)
     plot_pc_correlation_heatmap(pc_scores, attr_df, degree_df, out_dir)
 
-    # 8. PC interpretation — campaign separability (η²)
     print("[8/9] PC interpretation — campaign separability (η²) …")
     if label_map is not None:
         plot_pc_campaign_eta2(pc_scores, external_ids, label_map, out_dir)
     else:
         print("       Skipped (no GT label map)")
 
-    # 9. PC loadings
     print("[9/9] PC loadings heatmap …")
     plot_pc_loadings(pca_obj, out_dir, top_k=top_k)
 

@@ -31,7 +31,7 @@ from seed_candidate_workflow.utils.pair_similarity_features import (
 logger = logging.getLogger(__name__)
 
 PairMode = Literal["token", "char4"]
-PairRow = tuple[str, str, float, float]  # email_i, email_j, primary_jaccard, secondary_jaccard
+PairRow = tuple[str, str, float, float]                                                        
 
 
 def _show_progress(generator_cfg: dict[str, Any]) -> bool:

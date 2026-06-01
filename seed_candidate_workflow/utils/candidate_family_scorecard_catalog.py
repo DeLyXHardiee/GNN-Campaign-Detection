@@ -58,7 +58,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
     families: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
 
-    # --- A. Strong semantic support ---
     families.extend(
         [
             _fam("semantic_ge_0_93", "semantic_ge_0_93", "A_strong_semantic"),
@@ -96,7 +95,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         ]
     )
 
-    # --- B. Medium-semantic recovery ---
     families.extend(
         [
             _fam(
@@ -147,7 +145,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         )
     )
 
-    # --- C. URL / path / template ---
     families.extend(
         _grid_numeric("path_token_jaccard_combined", "path_token_jaccard_combined", [0.2, 0.4, 0.6], "C_url_path")
     )
@@ -179,7 +176,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         }
     )
 
-    # --- D. Subject/body split ---
     families.extend(_grid_numeric("body_cosine", "body_cosine", [0.85, 0.90, 0.93], "D_subject_body"))
     families.extend(
         [
@@ -210,7 +206,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
     )
     families.extend(_grid_numeric("subject_cosine", "subject_cosine", [0.85, 0.90, 0.93], "D_subject_body"))
 
-    # --- E. Sender / sender-family ---
     families.extend(
         [
             _fam("sender_exact_match", "sender_exact_match", "E_sender"),
@@ -236,7 +231,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         )
     )
 
-    # --- F. Support excluding weak channels ---
     families.extend(
         [
             _fam(
@@ -271,7 +265,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         )
     )
 
-    # --- G. 2-hop corroborated ---
     families.extend(
         [
             _fam("from_2hop_AND_shared_sender", "from_2hop_AND_shared_sender", "G_2hop"),
@@ -312,7 +305,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
             )
         )
 
-    # --- H. HTML fingerprint ---
     families.extend(
         [
             _fam("twohop_via_html_fp", "twohop_via_html_fp", "H_html_fp"),
@@ -340,7 +332,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         ]
     )
 
-    # --- I. Time-aware ---
     for gap in ("3d", "7d", "14d"):
         families.extend(
             [
@@ -367,7 +358,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
             ]
         )
 
-    # --- Pipeline reference slices (existing union provenance) ---
     families.extend(
         [
             _fam(
@@ -436,7 +426,6 @@ def build_rich_v1_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]
         ]
     )
 
-    # --- Legacy narrow set (for continuity) ---
     families.extend(
         [
             _fam("semantic_ge_0_90_AND_shared_sender", "semantic_ge_0_90_AND_shared_sender", "legacy"),

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Write a scored seed-candidate PairGraph CSV (email_i, email_j, edge_weight, …) for gap analysis.
 

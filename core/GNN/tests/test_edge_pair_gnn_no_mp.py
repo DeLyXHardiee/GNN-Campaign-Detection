@@ -28,7 +28,6 @@ def test_num_gnn_layers_zero_no_convs_and_ignores_edges() -> None:
     edge_index = torch.zeros((2, 0), dtype=torch.long)
     logits_a = model(x, edge_index)
 
-    # Random edges must not change output when num_gnn_layers=0.
     edge_index2 = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
     logits_b = model(x, edge_index2)
     assert logits_a.shape == (5,)
@@ -69,7 +68,6 @@ def test_num_gnn_layers_positive_uses_message_passing() -> None:
     x = torch.randn(3, 4)
     no_edges = torch.zeros((2, 0), dtype=torch.long)
     with_edges = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-    # With no edges, SAGE still runs; outputs may differ from multi-edge case.
     out0 = model(x, no_edges)
     out1 = model(x, with_edges)
     assert out0.shape == (3,)

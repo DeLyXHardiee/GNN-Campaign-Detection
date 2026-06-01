@@ -64,7 +64,7 @@ def _pair_time_gap_seconds(ts_map: dict[str, float], a: str, b: str) -> float:
 
 @dataclass(frozen=True)
 class MutualNeighborInfo:
-    rank: int  # 1-based
+    rank: int           
     cosine: float
 
 
@@ -99,27 +99,24 @@ def _compute_mutual_topk_cosine_candidates(
 
     emb = np.stack([id_to_vec[eid] for eid in semantic_node_ids]).astype(np.float32)
     n = emb.shape[0]
-    k_plus = min(int(semantic_top_k) + 1, n)  # +1 to include self
+    k_plus = min(int(semantic_top_k) + 1, n)                      
 
     nn = NearestNeighbors(n_neighbors=k_plus, metric="cosine", algorithm="brute")
     nn.fit(emb)
     dists, neigh = nn.kneighbors(emb, return_distance=True)
 
-    # Build directed neighbor lists (thresholded) with ranks.
     neighbor_info: dict[tuple[str, str], MutualNeighborInfo] = {}
-    # Also keep outgoing neighbor sets for mutual computation.
     outgoing: dict[str, list[str]] = {eid: [] for eid in semantic_node_ids}
 
     thr = float(semantic_min_cos)
     for local_i in range(n):
         i_eid = semantic_node_ids[local_i]
-        # Iterate neighbors in returned order: smaller cosine distance => higher cosine similarity.
         rank = 0
         for local_j, dist in zip(neigh[local_i], dists[local_i], strict=False):
             j_eid = semantic_node_ids[int(local_j)]
             if j_eid == i_eid:
                 continue
-            cs = float(1.0 - float(dist))  # cosine similarity
+            cs = float(1.0 - float(dist))                     
             if cs < thr:
                 continue
             rank += 1
@@ -135,9 +132,6 @@ def _compute_mutual_topk_cosine_candidates(
                 a, b = (i_eid, j_eid) if i_eid <= j_eid else (j_eid, i_eid)
                 mutual_pairs.add((a, b))
 
-    # Caller will fill time_gap_seconds; compute later.
-    # For cosine/ranks, take from i->j direction (a is <= b lexicographically, but that might not match rank_i_to_j direction).
-    # We'll define rank_i_to_j relative to the row's email_i/email_j ordering: i = email_i, j = email_j.
     rows: list[dict[str, Any]] = []
     for a, b in mutual_pairs:
         info_ab = neighbor_info.get((a, b))
@@ -184,13 +178,11 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
     if not anchor_run_dir.is_dir():
         raise FileNotFoundError(f"Anchor graph run directory not found: {anchor_run_dir}")
 
-    # Load anchor nodes (for timestamps + embedding loading).
     nodes_df, _edges_df, _candidates, _summary, _g = load_anchor_graph_artifacts(
         anchor_run_dir, load_graph_pickle=False
     )
     nodes_df["external_id"] = nodes_df["external_id"].astype(str)
 
-    # Load embed config from anchor graph run config snapshot (so this stage doesn't need paths in its own config).
     p_anchor_run_cfg = anchor_run_dir / "anchor_graph_run_config.json"
     if not p_anchor_run_cfg.is_file():
         raise FileNotFoundError(f"Missing anchor_graph_run_config.json: {p_anchor_run_cfg}")
@@ -216,7 +208,6 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
         tfidf_max_features=tfidf_max_features,
     )
 
-    # Candidate parameters.
     semantic_cfg = candidate_cfg.get("semantic_reciprocal_v1") or {}
     semantic_top_k = int(semantic_cfg.get("semantic_top_k", 50))
     semantic_min_cos = float(semantic_cfg.get("semantic_min_cos", 0.9))
@@ -225,14 +216,12 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
     if time_gating_enabled and max_time_gap_seconds is None:
         max_time_gap_seconds = 86400.0
 
-    # Timestamp map.
     ts_map: dict[str, float] = {}
     if "ts" in nodes_df.columns:
         for eid, ts in zip(nodes_df["external_id"].astype(str).tolist(), nodes_df["ts"].tolist(), strict=False):
             v = pd.to_numeric(ts, errors="coerce")
             ts_map[eid] = float(v) if pd.notna(v) else float("nan")
 
-    # Mutual semantic candidates.
     mutual_df, _neighbor_info = _compute_mutual_topk_cosine_candidates(
         node_ids=node_ids,
         id_to_vec=id_to_vec,
@@ -240,7 +229,6 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
         semantic_min_cos=semantic_min_cos,
     )
 
-    # Fill time gaps + optional time gating.
     if not mutual_df.empty:
         mutual_df["time_gap_seconds"] = [
             _pair_time_gap_seconds(ts_map, a, b) for a, b in zip(
@@ -256,8 +244,6 @@ def run_anchor_semantic_reciprocal_candidate_generation(config: dict[str, Any]) 
                 )
             ].copy()
 
-    # Note: seed backbone inclusion is enforced at the candidate-union level
-    # in the unified candidate stage, not in this generator.
     candidates_df = mutual_df
     if not candidates_df.empty:
         candidates_df = candidates_df.drop_duplicates(

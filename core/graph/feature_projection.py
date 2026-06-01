@@ -23,15 +23,12 @@ from typing import Tuple
 
 from .common import AUTH_ONEHOT_DIM
 
-# Layout of raw email.x (must match assembler and extract_bert_embeddings)
-SCALAR_COUNT = 4  # ts, len_body, n_urls, len_subject
-HTML_CSS_LEN = 40  # len(create_html_css_features({}, {}))
-BOOL_ATTR_COUNT = 7  # cyrillic_domain, contains_symbols, body_has_tracking_*, etc.
+SCALAR_COUNT = 4                                     
+HTML_CSS_LEN = 40                                         
+BOOL_ATTR_COUNT = 7                                                                
 
-# Non-BERT feature dim: scalars + html_css + bools + auth_onehot (AUTH_ONEHOT_DIM from common)
-OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM  # 69
+OTHER_FEATURE_DIM = SCALAR_COUNT + HTML_CSS_LEN + BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM      
 
-# After projection with defaults (both *_out_dim null): BERT -> OTHER_FEATURE_DIM + structured passthrough
 PROJECTED_EMAIL_FEATURE_DIM = 2 * OTHER_FEATURE_DIM
 
 
@@ -169,7 +166,6 @@ class EmailFeatureProjection:
         torch = _get_torch()
         if x.dim() != 2:
             raise ValueError("Expected 2D tensor [N, raw_dim]")
-        # Other part: scalars [0:4], html_css [4+bert_dim : 4+bert_dim+40], bools+auth_onehot [-7-18:]
         start_html = SCALAR_COUNT + self.bert_in_dim
         end_html = start_html + self.html_css_len
         trail_len = BOOL_ATTR_COUNT + AUTH_ONEHOT_DIM

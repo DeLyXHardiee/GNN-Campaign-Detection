@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Write semantic-supernode-compatible member mapping JSON from MISP dedup collapse sidecars."""
 
 from __future__ import annotations

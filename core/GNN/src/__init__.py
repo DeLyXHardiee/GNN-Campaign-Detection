@@ -3,12 +3,6 @@
 import os
 import warnings
 
-# PyG emits this UserWarning *every time* a NeighborSampler/NeighborLoader is
-# constructed (once per batch in pair_supervision training). With thousands of
-# batches per epoch this drowns the actual training output. The runtime falls
-# back to torch-sparse automatically, so the warning is purely cosmetic. We
-# install a narrow filter here (and propagate via PYTHONWARNINGS so DataLoader
-# worker processes inherit it) instead of installing pyg-lib.
 _NEIGHBOR_SAMPLER_WARNING = (
     "Using 'NeighborSampler' without a 'pyg-lib' installation is deprecated"
 )
@@ -27,8 +21,6 @@ if _pyw_directive not in _existing_pyw:
 from .load_graph_data import load_hetero_pt, load_imdb
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 
-# Lazy imports: train, model_io, embed, loaders require torch-sparse/pyg-lib.
-# Only load them when the user actually needs training or loaders.
 def __getattr__(name):
     if name == "run_training":
         from .train import run_training

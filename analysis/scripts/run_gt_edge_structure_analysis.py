@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 GT edge-structure analysis: same-campaign vs cross-campaign pairwise evidence.
 

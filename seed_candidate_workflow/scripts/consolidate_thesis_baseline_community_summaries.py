@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Merge thesis anchor/candidate graph community sweeps into one CSV + JSON for results/appendix.
 

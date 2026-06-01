@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """One-off repair: stray digit after comma before \"value\" (invalid JSON)."""
 from __future__ import annotations
 

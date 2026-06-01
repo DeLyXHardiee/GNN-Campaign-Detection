@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Union anchor_graph_edges_unscored.csv and seed_candidate_pairgraph_unscored.csv into one
 broad unlearned pair-evidence graph for thesis community-detection baselines.

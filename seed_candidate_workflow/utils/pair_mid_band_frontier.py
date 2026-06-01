@@ -1,4 +1,4 @@
-﻿"""
+"""
 Mid-band frontier analysis for pair score separation (analysis-only).
 
 Compares GT-covered unlabeled pairs in the uncertain score middle band:
@@ -62,7 +62,6 @@ MID_BAND_EXTRA_JOINT_RULES: tuple[str, ...] = (
     "n_shared_core_channels_ge_1_AND_shared_sender",
 )
 
-# Used for marginal mean comparisons (extends FEATURE_KEYS_DEFAULT).
 MID_BAND_MARGINAL_FEATURE_KEYS: tuple[str, ...] = tuple(
     dict.fromkeys(
         [

@@ -315,7 +315,6 @@ def _recommendation_tag_for_channel(row: dict[str, Any]) -> str:
     if same_rate is None or cross_rate is None:
         return "ambiguous"
     sr, cr = float(same_rate), float(cross_rate)
-    # Cross-heavy among low-band pairs with this channel
     if cr >= 0.65 and sr <= 0.45:
         return "likely_too_noisy"
     if sr >= 0.55 and cr <= 0.45:

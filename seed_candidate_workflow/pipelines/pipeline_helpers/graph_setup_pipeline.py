@@ -228,7 +228,6 @@ def _build_semantic_shard_pairgraph(
         _payload, id_to_semantic, _summary = ssh.load_transformer_cache(embeddings_json)
         if pbar is not None:
             pbar.update(1)
-        # Notebook parity: shard clustering should run on embeddings intersected with graph email IDs.
         graph_external_ids = set(gh.email_external_id_list(gh.load_meta(meta_json)))
         id_to_semantic = {eid: vec for eid, vec in id_to_semantic.items() if eid in graph_external_ids}
         if not id_to_semantic:
@@ -552,7 +551,6 @@ def run_graph_setup(
     need_seed = seed_enabled or need_candidate
     need_anchor = anchor_enabled or need_seed
 
-    # Anchor
     if not anchor_enabled:
         if not anchor_exists and need_anchor:
             raise FileNotFoundError("setup.enable.anchor=false but anchor artifact is missing")
@@ -573,7 +571,6 @@ def run_graph_setup(
         else:
             component_actions["anchor"] = "reused_existing"
 
-    # Seed
     if seed_enabled:
         bundle["seed_root"].mkdir(parents=True, exist_ok=True)
         seed_cfg = _read_json(seed_cfg_path)
@@ -605,7 +602,6 @@ def run_graph_setup(
         else:
             component_actions["seed"] = "skipped"
 
-    # Candidate
     if candidate_enabled:
         bundle["candidate_root"].mkdir(parents=True, exist_ok=True)
         candidate_cfg = _read_json(candidate_cfg_path)
@@ -655,7 +651,6 @@ def run_graph_setup(
         if not p_seed_all.is_file():
             raise FileNotFoundError(f"Missing seed_edges_all.csv: {p_seed_all}")
 
-    # Seed-candidate pairgraph
     seed_candidate_dir = bundle["seed_candidate_root"] / graph_id
     p_seed_candidate = seed_candidate_dir / "seed_candidate_pairgraph_unscored.csv"
     if seed_candidate_enabled:
@@ -674,7 +669,6 @@ def run_graph_setup(
             raise FileNotFoundError("setup.enable.seed_candidate=false but seed_candidate pairgraph is missing")
         component_actions["seed_candidate"] = "reused_existing" if p_seed_candidate.is_file() else "skipped"
 
-    # Pair training
     p_pair_training = bundle["pair_training_root"] / graph_id / "pair_training_dataset.csv"
     if pair_enabled:
         if p_pair_training.is_file() and on_present == "reuse":
@@ -703,7 +697,6 @@ def run_graph_setup(
             raise FileNotFoundError("setup.enable.pair_training=false but pair_training_dataset.csv is missing")
         component_actions["pair_training"] = "reused_existing" if p_pair_training.is_file() else "skipped"
 
-    # Semantic shard graph
     semantic_shard_enabled = bool(enable_cfg.get("semantic_shard", False))
     semantic_shard_dir = bundle["semantic_shard_root"] / graph_id
     p_sem_pair = semantic_shard_dir / "semantic_shard_pairgraph_unscored.csv"

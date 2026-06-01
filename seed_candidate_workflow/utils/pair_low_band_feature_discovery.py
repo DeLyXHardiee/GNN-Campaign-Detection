@@ -43,9 +43,6 @@ from seed_candidate_workflow.utils.pair_score_separation import (
 )
 from seed_candidate_workflow.utils.raw_gnn_notebook import load_ground_truth_structures
 
-# ---------------------------------------------------------------------------
-# Text / set helpers
-# ---------------------------------------------------------------------------
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
 _SENDER_DISPLAY_RE = re.compile(r"^(.+?)\s*<([^>]+)>$")
@@ -53,7 +50,7 @@ _DIGITS_RE = re.compile(r"\d+")
 _ROOT_STEM = "/"
 _STRONG_CHANNELS = ("sender_set", "url_set", "attachment_set", "sender_email_domain_set", "stem_set")
 _WEAK_DOMAIN_COL = "domain_set"
-_INFORMATIVE_BODY_MIN_DF_FRAC = 0.02  # top ~98% rare-ish within cohort corpus
+_INFORMATIVE_BODY_MIN_DF_FRAC = 0.02                                          
 _LOW_BAND_SEP_MIN = 0.05
 _ALIGNMENT_MARGIN_MIN = 0.02
 _EXCLUDE_FROM_TOP_RECOMMENDATIONS = frozenset(
@@ -250,7 +247,6 @@ def _compute_pair_features_row(
     tg = float(pd.to_numeric(row.get("time_gap_seconds_min"), errors="coerce"))
     out["time_gap_seconds_min"] = tg if np.isfinite(tg) else np.nan
 
-    # --- shared channel booleans ---
     shared_url = ch.get("url_set") or set()
     shared_sender = ch.get("sender_set") or set()
     shared_attachment = ch.get("attachment_set") or set()
@@ -296,7 +292,6 @@ def _compute_pair_features_row(
         (len(shared_url) > 0 or len(shared_stem_nt) > 0) and len(shared_sender) == 0
     )
 
-    # rarity-weighted support
     rw = 0.0
     for col, inter in (
         ("sender_set", shared_sender),
@@ -310,7 +305,6 @@ def _compute_pair_features_row(
             rw += _idf_weight(df_c, n_docs)
     out["rarity_weighted_support_sum"] = float(rw)
 
-    # --- subject ---
     si = _normalize_subject(text_i.get("subject", ""))
     sj = _normalize_subject(text_j.get("subject", ""))
     ti = _tokenize(si, min_len=1)
@@ -322,7 +316,6 @@ def _compute_pair_features_row(
     out["subject_char3gram_jaccard"] = _jaccard(_char_ngrams(si, 3), _char_ngrams(sj, 3))
     out["subject_levenshtein_ratio"] = _levenshtein_ratio(si, sj)
 
-    # --- body ---
     bi = str(text_i.get("body") or "")
     bj = str(text_j.get("body") or "")
     from seed_candidate_workflow.utils.pair_similarity_features import (
@@ -340,7 +333,6 @@ def _compute_pair_features_row(
     br_j = bt_j & body_rare_tokens
     out["body_rare_token_jaccard"] = _jaccard(br_i, br_j)
 
-    # --- URL / path ---
     url_tokens_i: list[str] = []
     url_tokens_j: list[str] = []
     regs_i: set[str] = set()
@@ -393,7 +385,6 @@ def _compute_pair_features_row(
     norm_urls_j = {str(u).strip().lower() for u in (nb.get("url_set") or set())}
     out["normalized_url_jaccard"] = _jaccard(norm_urls_i, norm_urls_j)
 
-    # --- sender family ---
     def _first_sender(row: dict[str, Any]) -> str:
         ss = row.get("sender_set") or set()
         return str(next(iter(ss), "")) if ss else ""
@@ -408,7 +399,6 @@ def _compute_pair_features_row(
         _tokenize(disp_i, min_len=1), _tokenize(disp_j, min_len=1)
     )
 
-    # --- temporal ---
     tsi = float(na.get("ts", float("nan")))
     tsj = float(nb.get("ts", float("nan")))
     if np.isfinite(tsi) and np.isfinite(tsj) and tsi > 0 and tsj > 0:
@@ -429,7 +419,6 @@ def _compute_pair_features_row(
     else:
         out["log_time_gap_seconds_min"] = np.nan
 
-    # --- channel patterns ---
     out["ch_shared_sender_or_attachment"] = int(
         len(shared_sender) > 0 or len(shared_attachment) > 0
     )

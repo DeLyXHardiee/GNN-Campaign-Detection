@@ -23,8 +23,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-# GNN code uses package ``src`` under core/GNN/src; mirror core/main.py and the
-# seed_candidate_workflow wrapper script so ``python -m`` from repo root works.
 _GNN_ROOT = Path(__file__).resolve().parents[2] / "core" / "GNN"
 if str(_GNN_ROOT) not in sys.path:
     sys.path.insert(0, str(_GNN_ROOT))
@@ -279,7 +277,6 @@ def _write_same_cross_kde_overlay(
     if same_c.size == 0 and cross_c.size == 0:
         ax.text(0.5, 0.5, "No scored pairs in cohort", ha="center", va="center", transform=ax.transAxes)
     else:
-        # Cross first, then same — overlapping regions blend via alpha.
         if cross_c.size > 0:
             ax.fill_between(
                 x_grid,
@@ -1301,7 +1298,6 @@ def _build_band_joint_separator_for_gt(
         bin_out[name] = cmp
         _append_cmp("binary_joint_comparisons", name, cmp)
 
-    # Bucketed semantic analysis
     bucket_defs: list[tuple[str, np.ndarray]] = []
     for bname, low, high in SEMANTIC_BUCKET_RULES_DEFAULT:
         mask = np.ones(n, dtype=bool)
@@ -1340,7 +1336,6 @@ def _build_band_joint_separator_for_gt(
             sem_out[bname][cname] = cmp
             _append_cmp("semantic_bucket_analysis", cname, cmp)
 
-    # Candidate rule templates
     rule_defs: list[tuple[str, np.ndarray]] = []
     for rname in CANDIDATE_RULES_DEFAULT:
         expr = rname.split("__", 1)[1] if "__" in rname else rname
@@ -1401,7 +1396,6 @@ def _build_band_joint_separator_for_gt(
         "ranked_joint_separators_favoring_same_top10": favor_same,
         "ranked_joint_separators_favoring_cross_top10": favor_cross,
     }
-    # Backward-compatible keys for low-band consumers.
     if band_kind == "low":
         out["low_band_thresholds"] = band_thresholds
         out["counts"]["n_same_campaign_low_score"] = n_same
@@ -1981,8 +1975,6 @@ def _inject_semantic_cosine_for_manual_review(df: pd.DataFrame) -> pd.DataFrame:
     out["embedding_cosine_subj_body_cache"] = emb_list
     out["semantic_cosine_for_display"] = disp
     out["semantic_cosine_source"] = src_raw
-    # Review HTML/CSV metric chips read ``semantic_cosine``; pair CSV often leaves
-    # ``semantic_cosine_max`` null for 2-hop-only rows while the embed cache has values.
     out["semantic_cosine"] = disp
     meta_path = emb_path.resolve() if emb_path is not None else None
     out.attrs["semantic_cosine_injection"] = {
@@ -3672,7 +3664,6 @@ def run_pair_score_separation_analysis(
         )
         low_sep_per_gt.append(low_sep)
         low_sep_rows.extend(low_rows)
-        # Joint-condition separators in low band (same vs cross)
         df_eval = df_work.loc[(both & scored)].copy()
         df_eval["score"] = scores[(both & scored)]
         same_eval = same_mask[(both & scored)]

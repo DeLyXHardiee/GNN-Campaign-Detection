@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Rank URL nodes by email-link degree and count same/cross-campaign pairs per URL.
 

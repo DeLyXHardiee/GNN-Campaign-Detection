@@ -17,7 +17,6 @@ from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph
 
 
 def _to_set_cell(x: Any) -> set[str]:
-    # Fallback if nodes_df didn't deserialize *_set columns.
     if isinstance(x, set):
         return {str(v) for v in x if v is not None and str(v).strip()}
     if isinstance(x, (list, tuple)):
@@ -33,12 +32,10 @@ def _to_set_cell(x: Any) -> set[str]:
             return {str(v) for v in obj if v is not None and str(v).strip()}
     except Exception:
         pass
-    # Some cached formats may use "|" separators.
     return {v.strip() for v in s.split("|") if v.strip()}
 
 
 def _artifact_idf(df_val: int, n_docs: int) -> float:
-    # Same spirit as seed-stage helper: higher idf => rarer.
     return float(math.log((1.0 + n_docs) / (1.0 + max(1, int(df_val))))) if n_docs > 0 else float("nan")
 
 
@@ -58,7 +55,6 @@ def _resolve_latest_seed_dir(
             f"No seed generation dirs starting with {seed_stage_name_prefix!r} under {base}"
         )
 
-    # Names include ISO-ish timestamps; lexicographic sort is stable for that format.
     dirs_sorted = sorted(dirs, key=lambda p: p.name)
     return dirs_sorted[-1]
 
@@ -89,13 +85,10 @@ def generate_candidates_rare_artifact_v1(
     n_docs = int(len(nodes_df))
     include_time_gap_seconds = bool(generator_cfg.get("include_time_gap_seconds", True))
 
-    # Artifact specs are configured with both the node set column and edge overlap flag base name.
     artifact_specs = generator_cfg.get("artifact_specs") or []
     if not isinstance(artifact_specs, list) or not artifact_specs:
         raise ValueError("rare_artifact_v1 requires artifact_specs: non-empty list")
 
-    # Precompute document frequencies per spec node-set column.
-    # doc freq = number of emails containing the artifact value at least once.
     df_counts_by_col: dict[str, Counter[str]] = {}
     ts_map: dict[str, float] = {}
     for _, r in nodes_df.iterrows():
@@ -106,7 +99,6 @@ def generate_candidates_rare_artifact_v1(
             except Exception:
                 ts_map[eid] = float("nan")
 
-    # Build value counters.
     cols_needed = [str(s.get("node_set_col")) for s in artifact_specs if str(s.get("node_set_col", "")).strip()]
     for col in cols_needed:
         if col not in nodes_df.columns:
@@ -118,7 +110,6 @@ def generate_candidates_rare_artifact_v1(
                 c[str(v)] += 1
         df_counts_by_col[col] = c
 
-    # Build a fast node->set mapping for required cols.
     node_sets: dict[str, dict[str, set[str]]] = defaultdict(dict)
     for _, r in nodes_df.iterrows():
         eid = str(r["external_id"])
@@ -128,7 +119,6 @@ def generate_candidates_rare_artifact_v1(
 
     candidates_rows: list[dict[str, Any]] = []
 
-    # Helper: deduplicate within run
     max_rows = generator_cfg.get("max_candidate_rows")
     max_total_rows = int(max_rows) if max_rows is not None else None
 
@@ -137,17 +127,14 @@ def generate_candidates_rare_artifact_v1(
     max_df = None if max_df is None else int(max_df)
     max_shared_per_edge_per_artifact = int(generator_cfg.get("max_shared_values_per_edge_per_artifact", 25))
 
-    # Iterate anchor graph edges (much narrower than all-pairs).
     for _, e in edges_df.iterrows():
         a = str(e["email_a"])
         b = str(e["email_b"])
         if a == b:
             continue
 
-        # Ensure deterministic ordering.
         email_i, email_j = (a, b) if a < b else (b, a)
 
-        # Skip if we already reached global cap (best-effort).
         if max_total_rows is not None and len(candidates_rows) >= max_total_rows:
             break
 
@@ -168,7 +155,6 @@ def generate_candidates_rare_artifact_v1(
             if not shared_vals:
                 continue
 
-            # Filter shared values by rarity.
             df_counter = df_counts_by_col.get(node_set_col) or Counter()
             scored: list[tuple[float, str, int]] = []
             for v in shared_vals:
@@ -185,7 +171,7 @@ def generate_candidates_rare_artifact_v1(
             if not scored:
                 continue
 
-            scored.sort(key=lambda x: x[0], reverse=True)  # highest idf first
+            scored.sort(key=lambda x: x[0], reverse=True)                     
             for idf, val, df_val in scored[:max_shared_per_edge_per_artifact]:
                 row: dict[str, Any] = {
                     "email_i": email_i,
@@ -207,13 +193,11 @@ def generate_candidates_rare_artifact_v1(
 
     candidates_df = pd.DataFrame(candidates_rows)
 
-    # Deduplicate rows.
     if not candidates_df.empty:
         candidates_df = candidates_df.drop_duplicates(
             subset=["email_i", "email_j", "source", "artifact_type", "artifact_value"]
         ).reset_index(drop=True)
 
-    # Coverage diagnostics (for reporting only).
     candidate_pairs = set(zip(candidates_df["email_i"].astype(str).tolist(), candidates_df["email_j"].astype(str).tolist(), strict=False))
     seed_pairs_set = set(seed_pairs or set())
     missing = seed_pairs_set - candidate_pairs
@@ -251,7 +235,6 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
 
     nodes_df, edges_df, _candidates, _summary, _g = load_anchor_graph_artifacts(anchor_run_dir, load_graph_pickle=False)
 
-    # Resolve seed stage latest dir.
     seed_output_root_raw = str(seed_cfg.get("seed_output_root") or "").strip()
     seed_output_root = (
         Path(seed_output_root_raw).expanduser().resolve()
@@ -269,7 +252,6 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
         raise FileNotFoundError(f"Missing seed_edges_all.csv: {seed_edges_all_csv}")
     seed_pairs = _load_seed_pairs(seed_edges_all_csv)
 
-    # Output dir.
     out_root_raw = str(out_cfg.get("output_root") or "").strip()
     out_root = (
         Path(out_root_raw).expanduser().resolve()
@@ -286,7 +268,6 @@ def run_anchor_rare_artifact_candidate_generation(config: dict[str, Any]) -> dic
         raise ValueError(f"Unsupported candidate generator: {gen_name!r}")
     generator_cfg = candidate_cfg.get("rare_artifact_v1") or candidate_cfg.get("generator_cfg") or {}
 
-    # Ensure overlap columns are present; otherwise candidate might be empty (fine).
     candidates_df, sup = generate_candidates_rare_artifact_v1(
         nodes_df=nodes_df,
         edges_df=edges_df,

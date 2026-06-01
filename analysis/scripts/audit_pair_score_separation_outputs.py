@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Read-only audit of pair_score_separation output layout and feature visibility.
 

@@ -474,7 +474,6 @@ def build_semantic_supernode_graph(
     )
     overlay_parent = Path(embeddings_overlay_dir) if embeddings_overlay_dir else Path(out_dir)
     overlay_parent.mkdir(parents=True, exist_ok=True)
-    # Dedicated subdir so we never overwrite the global SBERT cache
     overlay_dir = overlay_parent / "semantic_supernode_embeddings_overlay"
     if overlay_dir.exists():
         shutil.rmtree(overlay_dir)

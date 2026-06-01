@@ -249,7 +249,6 @@ def _top_clusters_positive(df: pd.DataFrame, sig: str, top_k: int = 20) -> list[
         return []
     ci = f"cluster_id_i__{sig}"
     cj = f"cluster_id_j__{sig}"
-    # cluster id is same on both ends when dup_same_cluster
     cc = pos[ci].astype(str)
     vc = cc.value_counts()
     out: list[dict[str, Any]] = []
@@ -359,7 +358,6 @@ def run_pair_duplicate_pressure(
     for sig in SIG_TYPES:
         enriched_frames[sig] = _attach_dup_flags_for_sig(df, maps[sig], sig=sig, misp_ids=misp_ids)
 
-    # Primary working frame: strict flags on base df columns + strict dup columns
     work = enriched_frames["strict_full_email"].copy()
 
     summary: dict[str, Any] = {
@@ -416,7 +414,6 @@ def run_pair_duplicate_pressure(
                 "note": "graph_meta_json not provided; skipped potential_vs_realized",
             }
 
-    # Email degree for strict + max strict duplicate group_size per endpoint (hub diagnostic)
     deg_df = _email_pair_degree_positive(work, "strict_full_email")
     strict_mem = mem_full.loc[mem_full["signature_type"].astype(str) == "strict_full_email", ["external_id", "group_size"]].copy()
     if not strict_mem.empty:
@@ -449,7 +446,6 @@ def run_pair_duplicate_pressure(
             }
     summary["by_pair_status"] = pair_status_block
 
-    # Cross-tab (strict only)
     xtab = _cross_tab_semantic_and_shared(work, "strict_full_email")
     p_xtab = out_dir / "pair_duplicate_cross_tab_strict_semantic_shared.csv"
     pd.DataFrame(xtab).to_csv(p_xtab, index=False)
@@ -462,7 +458,6 @@ def run_pair_duplicate_pressure(
     pd.DataFrame(top_clusters_all).to_csv(p_top, index=False)
 
     if apply_split:
-        # Mirrors core/GNN/src/pair_train.split_pairs_train_val_test (shuffle then contiguous slices).
         n = len(work)
         rng = np.random.default_rng(int(pair_split_seed))
         perm = rng.permutation(n)
@@ -500,7 +495,6 @@ def run_pair_duplicate_pressure(
     p_sum.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
 
     if write_augmented_parquet:
-        # merge all sig cluster id columns into one wide frame (work already has strict; add others' extra cols)
         aug = work.copy()
         for sig in SIG_TYPES:
             if sig == "strict_full_email":

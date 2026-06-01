@@ -267,7 +267,6 @@ def generate_corroborated_seed_edges_v1(
         if not (rule_by_weak or rule_by_sem):
             continue
 
-        # Aggregate rarity from available infra idf sums for supporting channels.
         rarity_parts: list[float] = []
         for ch in support_channels:
             base = _channel_col(ch).replace("_set", "")
@@ -652,7 +651,6 @@ def _component_homogeneity_on_gt(
             "component_homogeneity_mean": float("nan"),
             "component_homogeneity_weighted": float("nan"),
         }
-    # Weighted by number of GT-covered emails in each component.
     weighted_num = 0.0
     weighted_den = 0.0
     for comp in comps:
@@ -847,7 +845,6 @@ def _b_cubed_precision(
     cross["prec"] = pd.to_numeric(cross["n"], errors="coerce") / pd.to_numeric(
         cross["comp_n"], errors="coerce"
     )
-    # B-cubed precision averaged over emails (weight by n in contingency cell).
     weighted = (cross["prec"] * cross["n"]).sum()
     n_eval = float(len(d))
     y_true = d["gt_label"].tolist()
@@ -1022,14 +1019,12 @@ def _campaign_touch_distribution(
     if n_campaigns == 0:
         return {}
 
-    # touch>=1 and touch>=2
     touched_counts = []
     has_non_singleton = 0
     for camp, ids in campaign_to_ids.items():
         t = len(ids & touched_union)
         touched_counts.append(t)
         if t > 0:
-            # non-singleton component among touched
             sub = union_members_df[
                 union_members_df["external_id"].astype(str).isin(list(ids & touched_union))
             ]
@@ -1039,7 +1034,6 @@ def _campaign_touch_distribution(
     n_touch1 = int(sum(1 for x in touched_counts if x >= 1))
     n_touch2 = int(sum(1 for x in touched_counts if x >= 2))
 
-    # internal seed edge per campaign
     internal_campaigns: set[str] = set()
     if not union_edges_df.empty:
         for _, r in union_edges_df.iterrows():
@@ -1078,7 +1072,6 @@ def _corroborated_redundancy_diagnostics(
             "n_merge_two_hard_components": 0,
             "pct_merge_two_hard_components": float("nan"),
         }
-    # Build hard components (using same node universe used for union component build).
     hard_members_df, _hard_components_df, _hard_summary = _build_union_components(
         all_node_ids=[str(x) for x in all_node_ids],
         seed_edges_all=hard_edges.rename(columns={"email_i": "email_i", "email_j": "email_j"}) if not hard_edges.empty else hard_edges,
@@ -1161,7 +1154,6 @@ def _manual_review_sample(
         corroborated_edges.get("semantic_support", False).astype(bool)
     ].copy() if not corroborated_edges.empty else corroborated_edges
 
-    # edges from largest union components: pick 25 edges with largest component size
     edges_with_comp = seed_edges_all.copy()
     edges_with_comp["component_id_after_union"] = edges_with_comp["email_i"].astype(str).map(lambda x: comp_map.get(str(x), (None, None))[0])
     edges_with_comp["component_size_after_union"] = edges_with_comp["email_i"].astype(str).map(lambda x: comp_map.get(str(x), (None, None))[1])
@@ -1199,7 +1191,6 @@ def _manual_review_sample(
             else None,
             axis=1,
         )
-        # Keep required cols
         keep = [
             "email_i",
             "email_j",
@@ -1212,7 +1203,6 @@ def _manual_review_sample(
             "gt_campaign_i_if_available",
             "gt_campaign_j_if_available",
         ]
-        # evidence_types: include evidence_fields_json if present for corroborated
         if "evidence_fields_json" in d.columns:
             d["evidence_types"] = d["evidence_fields_json"]
             if "evidence_types" not in keep:

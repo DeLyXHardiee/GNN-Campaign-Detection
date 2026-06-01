@@ -185,5 +185,5 @@ def test_epoch_sampling_caps_positives_when_pos_dominate() -> None:
 
     assert diag.get("balance_cap_applied_to") == "positive"
     tb = dict(diag.get("train_balance") or {})
-    assert int(tb.get("n_pos_after", 0)) == 100  # 50 unl * 2.0
+    assert int(tb.get("n_pos_after", 0)) == 100                
     assert int(tb.get("n_unl_after", 0)) == 50

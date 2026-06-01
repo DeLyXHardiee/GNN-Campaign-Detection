@@ -18,9 +18,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-# Optional heavy deps imported lazily where needed
 
-# Conceptual groups for campaign-focused interpretation (not mutually exhaustive).
 CORE_INFRA_ARTIFACT_TYPES: frozenset[str] = frozenset(
     {"sender", "url", "domain", "stem", "email_domain"}
 )
@@ -62,7 +60,6 @@ def resolve_graph_analysis_paths(project_root: Path | None = None) -> GraphAnaly
 
     cfg = load_pipeline_config(project_root=root)
     graph_pt = Path(default_hetero_graph_pt_path(project_root=root))
-    # Campaign analyses use deduplicated GT by default (first label per external_id).
     dedup = root / "data" / "groundtruth" / "ground_truth_dedup.json"
     if dedup.is_file():
         gt = dedup
@@ -816,7 +813,6 @@ def artifact_bridge_stats(
             "pairs_per_artifact_node": float("nan"),
             "pairs_per_multiemail_artifact": float("nan"),
         }
-    # invert: artifact_idx -> set of emails
     inv: dict[int, set[int]] = defaultdict(set)
     buckets = email_sets[artifact_type]
     for eid, arts in enumerate(buckets):
@@ -826,7 +822,6 @@ def artifact_bridge_stats(
         sizes = []
     else:
         sizes = [len(s) for s in inv.values()]
-    # distinct unordered email pairs sharing at least one artifact
     pair_set: set[tuple[int, int]] = set()
     sum_choose2 = 0
     for _a, emails in inv.items():
@@ -1038,7 +1033,6 @@ def stem_url_analysis(
         out["mean_urls_per_stem"] = float("nan")
         out["median_urls_per_stem"] = float("nan")
 
-    # stem -> domains via emails
     stem_to_domains: dict[int, set[int]] = defaultdict(set)
     if ("email", "has_stem", "stem") in data.edge_types and (
         "email", "has_domain", "domain"

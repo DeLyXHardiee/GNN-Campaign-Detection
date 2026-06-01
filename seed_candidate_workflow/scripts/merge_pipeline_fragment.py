@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deep-merge a pipeline fragment JSON into repo-root pipeline_config.json."""
 from __future__ import annotations
 

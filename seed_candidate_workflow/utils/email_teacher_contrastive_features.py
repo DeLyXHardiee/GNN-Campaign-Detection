@@ -19,7 +19,6 @@ import numpy as np
 
 from seed_candidate_workflow.utils.graph_structure_helpers import external_id_to_row, load_hetero, load_meta
 
-# Match core.graph.feature_projection layout for *raw* email rows
 _SCALAR = 4
 _HTML = 40
 _BOOL = 7

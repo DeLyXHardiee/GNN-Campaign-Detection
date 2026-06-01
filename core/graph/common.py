@@ -12,7 +12,6 @@ from typing import Set
 from datetime import datetime, timezone
 import math
 
-# Whole string is a scalar epoch (seconds or ms); avoids misparsing year-like fragments as floats.
 _EPOCH_NUMERIC = re.compile(r"^-?\d+(?:\.\d+)?$")
 
 try:
@@ -269,10 +268,9 @@ def _coerce_received_hops(value: Any) -> List[Dict[str, Any]]:
     return []
 
 
-# One-hot encoding for SPF/DKIM/DMARC for GNN message passing. "unknown" = missing/other.
 AUTH_ONEHOT_VOCAB = ("pass", "fail", "neutral", "softfail", "none", "unknown")
 AUTH_ONEHOT_DIM_PER_FIELD = len(AUTH_ONEHOT_VOCAB)
-AUTH_ONEHOT_DIM = 3 * AUTH_ONEHOT_DIM_PER_FIELD  # spf + dkim + dmarc
+AUTH_ONEHOT_DIM = 3 * AUTH_ONEHOT_DIM_PER_FIELD                      
 
 
 def auth_value_to_onehot(value: str) -> List[float]:
@@ -476,7 +474,6 @@ def parse_misp_events(misp_events: List[dict]) -> List[Dict[str, Any]]:
                     fallback = normalize_email_address(to_str(raw_val))
                     extracted = [fallback] if fallback and "@" in fallback else []
             elif mapping.strategy == "url_list":
-                #extracted = _extract_urls_from_attr_value(raw_val)
                 extracted = _extract_strings_from_attr_value(raw_val)
             elif mapping.strategy == "string_list":
                 extracted = _extract_strings_from_attr_value(raw_val)
@@ -604,7 +601,6 @@ def compute_lexical_features(s: str) -> List[float]:
     num_non_alnum = sum(not ch.isalnum() for ch in s)
     digit_ratio = float(num_digits) / L
     hyphen_ratio = float(num_hyphens) / L
-    # entropy
     freq: Dict[str, int] = {}
     for ch in s:
         freq[ch] = freq.get(ch, 0) + 1

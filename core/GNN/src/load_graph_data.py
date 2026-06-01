@@ -9,7 +9,6 @@ from torch_geometric.data.storage import BaseStorage, NodeStorage, EdgeStorage
 torch.serialization.add_safe_globals([HeteroData, BaseStorage, NodeStorage, EdgeStorage])
 _GRAPH_EXTS = {".pt", ".pth"}
 
-# Resolve the graph package root so the import works regardless of cwd.
 _CORE_DIR = Path(__file__).resolve().parent.parent.parent
 if str(_CORE_DIR) not in sys.path:
     sys.path.insert(0, str(_CORE_DIR))
@@ -45,20 +44,16 @@ def load_hetero_pt(path: str = "../../graph/output/incidents-20260211-misp_heter
         raise ValueError(f"Unsupported graph extension for {resolved}")
     if not resolved.is_file():
         raise FileNotFoundError(f"Graph file not found: {resolved}")
-    data = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    data = torch.load(                                                                       
         str(resolved), map_location="cpu", weights_only=True
     )
     if not isinstance(data, HeteroData):
         raise TypeError(f"Expected HeteroData in {resolved}, got {type(data)}")
-    # Remove non-tensor node attributes so PyG loaders (e.g. LinkNeighborLoader) do not fail.
-    # external_id is a list; get it from the companion .meta.json (email_attrs.external_id) when needed.
     if "email" in data.node_stores and hasattr(data["email"], "external_id"):
         del data["email"].external_id
     if to_undirected:
         data = ToUndirected()(data)
 
-    # Graphs built with exclude_node_types may still carry empty placeholder node
-    # stores from older metadata passes; strip them before GNN / neighbor sampling.
     try:
         from graph.hetero_graph_cleanup import drop_inactive_hetero_node_types
     except ImportError:

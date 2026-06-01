@@ -587,7 +587,6 @@ def _resolve_unified_channel_configuration(
         if not isinstance(raw_cfg, dict):
             raw_cfg = {}
         enabled = bool(raw_cfg.get("enabled", True))
-        # New explicit names are aliases; preserve old behavior/values.
         candidate_enabled = bool(
             raw_cfg.get(
                 "edge_create_enabled",
@@ -1014,8 +1013,6 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         graph_pt = _resolve_input_path(inputs.get("graph_pt"), default_paths.graph_pt)
         if graph_pt is None:
             raise ValueError("graph_pt must be set in config inputs or resolvable by default.")
-        # Resolve relative meta_json against project_root (not cwd); bare Path(...).resolve()
-        # duplicates "core/" when cwd is repo/core and config paths start with "core/...".
         meta_json = _resolve_input_path(
             inputs.get("meta_json"),
             graph_pt.with_suffix(".meta.json"),
@@ -1088,7 +1085,6 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         edges_df["email_j"] = edges_df["email_b"].astype(str)
         edges_df["graph_kind"] = "anchor"
         edges_df["graph_id"] = graph_id
-        # Anchor graph does not use seed/candidate generator provenance; semantic candidate is exposed.
         edges_df["from_seed"] = False
         if "from_semantic_candidate" in edges_df.columns:
             edges_df["from_semantic"] = edges_df["from_semantic_candidate"].fillna(False).astype(bool)

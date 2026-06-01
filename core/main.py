@@ -21,7 +21,6 @@ from metric_comparison import run_metric_comparison_for_run
 from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
 from preprocessing.misp_converter import incidents_to_misp_file
 
-# Make `core/GNN/steps/*` and `core/GNN/src/*` importable from here.
 _GNN_ROOT = Path(__file__).resolve().parent / "GNN"
 if str(_GNN_ROOT) not in sys.path:
     sys.path.insert(0, str(_GNN_ROOT))
@@ -80,7 +79,7 @@ def run_gnn(
     graph_path: str | Path | None = None,
     run_dir: str | Path | None = None,
     runs_parent: str | Path | None = None,
-    checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
+    checkpoint_path: str | Path | None = None,                                                 
     device_pref: str | None = None,
 ):
     cfg = PIPELINE_CONFIG
@@ -296,7 +295,6 @@ def run_preprocessing_trec(
         df = pd.read_csv(incidents_csv_path_resolved, encoding="utf-8-sig")
     df = df.fillna("")
 
-    # Align source columns with the incident schema used by synthetic data preprocessing.
     column_rename_map = {
         "date": "date_sent",
         "body": "email_body",
@@ -417,7 +415,6 @@ def run_preprocessing_lake():
     prep_cfg = cfg.get("preprocessing", {})
     prep_lake_cfg = cfg.get("preprocessing_lake", {})
 
-    # Allow running without manual export when credentials are in local .env files.
     _load_env_file(Path(__file__).resolve().parent / "lake" / ".env")
     _load_env_file(Path(__file__).resolve().parent.parent / ".env")
 
@@ -746,9 +743,6 @@ def run_pipeline():
 if __name__ == "__main__":
     import argparse
 
-    # Dedup MISP hetero graph: `python core/main.py graph`
-    # GNN train: `python core/main.py` or `python core/main.py gnn`
-    # Paths from repo-root pipeline_config.json (graph.*, pair_training.*, run_id, …).
     _ap = argparse.ArgumentParser(
         description="Core pipeline stages (reads repo-root pipeline_config.json). "
         "With no positional argument, runs GNN training (gnn)."

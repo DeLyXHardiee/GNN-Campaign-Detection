@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Pair-level duplicate / easy-edge pressure analysis.
 

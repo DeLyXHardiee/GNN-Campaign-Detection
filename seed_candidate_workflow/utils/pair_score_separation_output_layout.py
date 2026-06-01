@@ -461,7 +461,6 @@ def build_navigation_index(
     }
 
 
-# Back-compat alias used by batch-1 callers
 def primary_outputs_block(
     *,
     layout: dict[str, Path],

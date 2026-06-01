@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Optional CLI wrapper around run_train_stage. Prefer the standard path:
 

@@ -119,7 +119,6 @@ def _pick_best_row_for_gt_from_summary(
         if br:
             return br, f"multi_gt_summary:{summary_path.name}:best_rows_by_gt:exact_gt_path"
 
-    # Basename match when unambiguous (e.g. same filename under different roots).
     name_hits: list[tuple[dict[str, Any], str]] = []
     for row in _rows_per():
         gp_raw = row.get("gt_path")
@@ -754,7 +753,6 @@ def run_dedup_vs_expanded_gap_analysis(cfg: DedupExpandedGapConfig) -> dict[str,
         "interpretation": _interpret_best_to_best(same_partition=same_part_for_best, deltas=b2b_deltas),
     }
 
-    # Structural / lossy-campaign diagnosis: fixed expanded-selected partition (Question A).
     pred_graph = pred_exp_sel
     pred_expanded = pred_expanded_sel
     structural_partition = {

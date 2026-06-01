@@ -32,9 +32,6 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Config (ablation-friendly)
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -55,14 +52,9 @@ class Method1RefinementConfig:
     stability_mix: float = 0.55
     trust_epsilon: float = 1e-6
     clip_trust: tuple[float, float] = (0.0, 1.0)
-    # Monotonic trust remap: trust_cal = clip(trust_raw, lo, hi) ** trust_gamma (gamma > 0)
     trust_gamma: float = 1.0
-    # ``multiplicative``: refined = orig * trust_cal
-    # ``softened``: refined = orig * (blend_floor + (1 - blend_floor) * trust_cal)
-    # ``convex``: refined = convex_alpha * norm(orig) + (1 - convex_alpha) * trust_cal
     blend_rule: str = "multiplicative"
     blend_floor: float = 0.0
-    # Used only when blend_rule == ``convex``; weight on normalized original edge weight
     convex_alpha: float = 0.5
 
     def to_dict(self) -> dict[str, Any]:
@@ -78,9 +70,6 @@ class Method1RefinementConfig:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
-# ---------------------------------------------------------------------------
-# Features and views
-# ---------------------------------------------------------------------------
 
 
 def build_method1_edge_feature_frame(

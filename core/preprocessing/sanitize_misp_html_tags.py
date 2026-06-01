@@ -1,5 +1,3 @@
-#py .\sanitize_misp_html_tags.py --misp-path .\output\incidents-lake-misp.json
-#run as main with this
 
 
 import argparse
@@ -7,7 +5,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, Tuple
 
-# Canonical common HTML tags allowed in extracted tag-count features.
 COMMON_HTML_TAGS = {
     "a", "abbr", "address", "area", "article", "aside", "audio",
     "b", "base", "bdi", "bdo", "blockquote", "body", "br", "button",
@@ -101,7 +98,6 @@ def sanitize_payload(payload: Any) -> Dict[str, int]:
         "direct_records_updated": 0,
     }
 
-    # Direct-record format support: [ {"external_id": "...", ...}, ... ]
     if isinstance(payload, list):
         for record in payload:
             if not (isinstance(record, dict) and record.get("external_id")):
@@ -115,7 +111,6 @@ def sanitize_payload(payload: Any) -> Dict[str, int]:
                     record["html"] = new_html
                     stats["direct_records_updated"] += 1
 
-    # Event/Attribute format support
     for event in _iter_misp_events(payload):
         stats["events_seen"] += 1
         attributes = event.get("Attribute", [])

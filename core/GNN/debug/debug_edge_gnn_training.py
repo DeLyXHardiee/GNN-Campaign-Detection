@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Investigate Edge-GNN training collapse vs explicit-only MLP (_14).
 
@@ -144,7 +143,6 @@ def _prob_logit_stats(
         from sklearn.metrics import average_precision_score, roc_auc_score
 
         y = torch.zeros(int(is_pos.numel() + is_unl.numel()), dtype=torch.long)
-        # rebuild on combined mask subset only
         mask = is_pos | is_unl
         y = is_pos[mask].long()
         scores = probs[mask].cpu().numpy()
@@ -222,7 +220,6 @@ def _run_checkpoint_diagnostics(
     with torch.no_grad():
         h0 = model.input_mlp(x_dev)
         logits_full = model(x_dev, ei)
-        # layer-wise
         h = h0
         stages = [("after_input_mlp", h0)]
         for i, conv in enumerate(model.convs):
@@ -233,7 +230,6 @@ def _run_checkpoint_diagnostics(
 
     print(f"\n=== Checkpoint diagnostics ({ckpt_path.name}) ===")
     for name, h in stages:
-        # proxy logits: linear probe from hidden to scalar using output layer only on that stage
         proxy = model.output_mlp(h).squeeze(-1)
         print(f"\n--- stage: {name} ---")
         print(_prob_logit_stats(proxy, ip, iu, label=name))
@@ -265,7 +261,6 @@ def main() -> int:
     df, load_stats = load_pair_training_dataframe(pair_csv)
     print("load_stats:", json.dumps(load_stats, indent=2))
 
-    # Invariants
     df = df.copy()
     df["_edge_node_id"] = np.arange(len(df), dtype=np.int64)
     split_seed = int(pt.get("pair_split_seed", pt.get("torch_seed", 42)))
@@ -299,7 +294,6 @@ def main() -> int:
     print("\n=== Line-graph degree by label ===")
     print(json.dumps(_line_graph_degree_stats(edge_index, n, is_pos_np, is_unl_np), indent=2))
 
-    # Split masks
     train_ids = set(train_df["_edge_node_id"].astype(int).tolist())
     val_ids = set(val_df["_edge_node_id"].astype(int).tolist())
     test_ids = set(test_df["_edge_node_id"].astype(int).tolist())

@@ -50,7 +50,6 @@ class LakeAPIClient:
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._timeout = timeout
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _get(self, path: str, **kwargs) -> httpx.Response:
         r = httpx.get(
@@ -77,13 +76,11 @@ class LakeAPIClient:
         r.raise_for_status()
         return r
 
-    # ── Health ────────────────────────────────────────────────────────────────
 
     def health(self) -> dict:
         """Return the API health status."""
         return self._get("/health").json()
 
-    # ── Table discovery ───────────────────────────────────────────────────────
 
     def tables(self) -> list[str]:
         """List tables accessible to the current principal."""
@@ -97,7 +94,6 @@ class LakeAPIClient:
         """Return the fast row count for a table (read from delta log, no full scan)."""
         return self._get(f"/tables/{table}/count").json()["count"]
 
-    # ── Query (full result) ───────────────────────────────────────────────────
 
     def query(self, sql: str, limit: int = 10000) -> list[dict]:
         """Execute SQL and return rows as a list of dicts (JSON format)."""
@@ -130,7 +126,6 @@ class LakeAPIClient:
         r.raise_for_status()
         return r.content
 
-    # ── Query (streaming) ─────────────────────────────────────────────────────
 
     def query_stream(self, sql: str) -> Iterator[pa.RecordBatch]:
         """Execute SQL and stream results as PyArrow RecordBatches.
@@ -155,7 +150,7 @@ class LakeAPIClient:
                     f"{self._base}/query/stream",
                     headers={**self._headers, "Accept": "application/vnd.apache.arrow.stream"},
                     json={"sql": sql},
-                    timeout=None,  # streaming — no timeout
+                    timeout=None,                          
                     verify=False,
                 ) as response:
                     _log_error_response_body(response)

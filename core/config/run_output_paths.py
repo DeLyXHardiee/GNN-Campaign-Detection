@@ -19,7 +19,6 @@ from typing import Any
 
 from config.pipeline_config import output_runs_parent_from_pipeline, sanitize_run_id
 
-# First successful allocation or explicit override wins for the process.
 _SESSION_RUN_DIR: Path | None = None
 
 _ENV_RUN_OUTPUT = "PIPELINE_RUN_OUTPUT_DIR"

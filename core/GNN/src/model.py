@@ -176,4 +176,3 @@ class DistMultPredictor(nn.Module):
         return (src * r * dst).sum(dim=-1)
 
 
-    

@@ -80,7 +80,6 @@ def resolve_gnn_paths(
     layout: GnnPathLayout = g["path_layout"]
     runs_parent_eff = _effective_runs_parent(runs_parent, layout, project_root=project_root)
 
-    # run_dir — unified allocation under runs_parent (see config.run_output_paths)
     if run_dir is None or str(run_dir).strip() == "":
         run_dir_path = resolve_session_run_output_dir(
             cfg,
@@ -91,7 +90,6 @@ def resolve_gnn_paths(
     else:
         run_dir_str = str(Path(run_dir).resolve())
 
-    # checkpoint_path
     if checkpoint_path is None or str(checkpoint_path).strip() == "":
         objective = str(g["training_cfg"].get("training_objective", "link_prediction")).lower().strip()
         if objective == "pair_supervision":
@@ -109,13 +107,11 @@ def resolve_gnn_paths(
     else:
         checkpoint_path_str = str(Path(checkpoint_path).resolve())
 
-    # graph_path
     if graph_path is None or str(graph_path).strip() == "":
         graph_path_str = default_hetero_graph_pt_path()
     else:
         graph_path_str = str(Path(graph_path).resolve())
 
-    # ground_truth_path (clustering only)
     if not require_ground_truth:
         ground_truth_path_str = ""
     elif ground_truth_path is None or str(ground_truth_path).strip() == "":

@@ -545,7 +545,6 @@ def build_scorer_input_feature_sanity(df: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-# --- URL / path token features (unchanged) ---
 
 _ROOT_STEM = "/"
 

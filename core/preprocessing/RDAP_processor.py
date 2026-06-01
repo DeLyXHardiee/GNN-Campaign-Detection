@@ -29,9 +29,6 @@ _REQUEST_HEADERS = {
     "Accept": "application/rdap+json, application/json;q=0.9",
 }
 
-# -----------------------------
-# Utility: Extract root domain
-# -----------------------------
 def extract_domain(hostname: str) -> str:
     if not hostname:
         return None
@@ -49,7 +46,6 @@ def normalize_domain_input(value: str) -> Optional[str]:
     if not text:
         return None
 
-    # If a full URL is passed in, keep only the hostname before domain extraction.
     if "://" in text:
         parsed = urlsplit(text)
         text = parsed.netloc or parsed.path
@@ -90,7 +86,6 @@ def _load_rdap_bootstrap() -> Dict[str, List[str]]:
                 if key:
                     mapping[key] = urls
     except Exception:
-        # Network/bootstrap failures should not crash lookup flow.
         mapping = {}
 
     _RDAP_BOOTSTRAP_CACHE = mapping
@@ -106,10 +101,8 @@ def _candidate_rdap_urls_for_domain(domain: str) -> List[str]:
         for base in bootstrap[tld]:
             urls.append(f"{base}/domain/{domain}")
 
-    # Keep rdap.org as a fallback only.
     urls.append(f"https://rdap.org/domain/{domain}")
 
-    # Deduplicate while preserving order.
     seen = set()
     ordered: List[str] = []
     for u in urls:
@@ -126,7 +119,6 @@ def _is_retryable_status(status_code: int) -> bool:
 def _compute_retry_delay_seconds(response, attempt_index: int) -> float:
     retry_after = response.headers.get("Retry-After", "") if response is not None else ""
     if retry_after:
-        # Retry-After can be either delta-seconds or an HTTP date.
         try:
             return max(0.0, float(retry_after))
         except Exception:
@@ -174,9 +166,6 @@ def _extract_registrar_fields(data: dict) -> Dict[str, Optional[str]]:
     }
 
 
-# -----------------------------
-# Step 1: Extract domains
-# -----------------------------
 def extract_domains_from_received(value_list):
     domains = set()
 
@@ -220,10 +209,8 @@ def extract_domains_from_records(records):
         if not isinstance(record, dict):
             continue
 
-        # Event-level URL extraction.
         domains.update(_extract_domains_from_urls(record.get("urls", [])))
 
-        # Parsed events store hop data under received_hops.
         received_hops = record.get("received_hops")
         if isinstance(received_hops, list):
             for hop in received_hops:
@@ -234,7 +221,6 @@ def extract_domains_from_records(records):
                     if domain:
                         domains.add(domain)
 
-        # Backward-compat: record itself may be a received hop.
         for key in ("helo_host", "by_host"):
             domain = normalize_domain_input(record.get(key))
             if domain:
@@ -243,9 +229,6 @@ def extract_domains_from_records(records):
     return list(domains)
 
 
-# -----------------------------
-# RDAP Fetch
-# -----------------------------
 def fetch_rdap(domain):
     last_error = None
     for url in _candidate_rdap_urls_for_domain(domain):
@@ -289,16 +272,12 @@ def fetch_rdap(domain):
     }
 
 
-# -----------------------------
-# Cache handling
-# -----------------------------
 def _acquire_cache_lock(timeout_seconds: int = RDAP_LOCK_TIMEOUT_SECONDS):
     os.makedirs(RDAP_CACHE_DIR, exist_ok=True)
     deadline = time.time() + timeout_seconds
 
     while True:
         try:
-            # O_EXCL makes lock creation atomic across processes.
             fd = os.open(RDAP_CACHE_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             try:
                 os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
@@ -325,7 +304,6 @@ def _load_cache_unlocked():
         with open(RDAP_CACHE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    # Backward-compatible one-time fallback from legacy cache location.
     if os.path.exists(LEGACY_RDAP_CACHE_FILE):
         with open(LEGACY_RDAP_CACHE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -334,8 +312,6 @@ def _load_cache_unlocked():
 
 
 def load_cache():
-    # Reads stay lock-free so feature extraction can proceed while cache updates happen.
-    # Writers use atomic replace, so readers observe either old or new complete JSON.
     return _load_cache_unlocked()
 
 
@@ -346,7 +322,6 @@ def _save_cache_unlocked(cache):
         json.dump(cache, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
-    # Atomic replace prevents partially written cache files.
     os.replace(tmp_path, RDAP_CACHE_FILE)
 
 
@@ -366,13 +341,9 @@ def _is_retryable_cached_error(entry):
     if not error_text:
         return False
 
-    # Retry cached rate-limit errors so they are not treated as permanently done.
     return "429" in error_text or "too many requests" in error_text
 
 
-# -----------------------------
-# Ensure cache exists / populate
-# -----------------------------
 def ensure_rdap_cache(records):
     domains = extract_domains_from_records(records)
     cache_snapshot = load_cache()

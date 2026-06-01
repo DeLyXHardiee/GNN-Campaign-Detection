@@ -183,7 +183,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
         )
     seed_edges_all_csv = seed_dir / "seed_edges_all.csv"
     seed_pairs = _load_seed_pairs(seed_edges_all_csv)
-    # Output dir
     out_root_raw = str(out_cfg.get("output_root") or "").strip()
     out_root = (
         Path(out_root_raw).expanduser().resolve()
@@ -201,7 +200,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(generators, list) or not generators:
         raise ValueError("candidates.generators must be a non-empty list")
 
-    # Pull embedding config snapshot from anchor_graph_run_config.json if semantic generator is enabled.
     p_anchor_run_cfg = anchor_run_dir / "anchor_graph_run_config.json"
     if not p_anchor_run_cfg.is_file():
         raise FileNotFoundError(f"Missing anchor_graph_run_config.json: {p_anchor_run_cfg}")
@@ -273,9 +271,9 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     pbar_total = 5 + int(len(generators))
     pbar = tqdm(total=pbar_total, desc=f"Anchor candidate generation [{graph_id}]") if tqdm is not None else None
     if pbar is not None:
-        pbar.update(1)  # loaded anchor + seed context
-        pbar.update(1)  # output dir + config resolution
-        pbar.update(1)  # embeddings loaded
+        pbar.update(1)                                
+        pbar.update(1)                                  
+        pbar.update(1)                     
     for g in generators:
         if not isinstance(g, dict):
             if pbar is not None:
@@ -668,7 +666,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             )
         body_progress.message("Body Jaccard generators finished")
 
-    # Enforce required invariant on the union of enabled generator outputs.
     missing_seed_pairs = seed_pairs - union_pairs
     if missing_seed_pairs:
         raise AssertionError(
@@ -676,7 +673,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
             f"Enable seed_backbone_v1 or adjust generators."
         )
 
-    # Build candidate union table.
     members_path = seed_dir / "seed_union_component_members.csv"
     comp_map: dict[str, int] = {}
     if members_path.is_file():
@@ -772,7 +768,6 @@ def run_anchor_candidate_generation(config: dict[str, Any]) -> dict[str, Any]:
     if pbar is not None:
         pbar.update(1)
 
-    # Summary
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "graph_id": graph_id,

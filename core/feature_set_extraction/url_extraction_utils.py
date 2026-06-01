@@ -9,11 +9,6 @@ import tldextract
 
 from preprocessing.utils.url_extractor import refang_url_like_schemes
 
-# WHOIS import disabled — domain lookups are outcommented per request
-# try:
-#     import whois
-# except Exception:
-#     whois = None
 whois = None
 
 try:
@@ -22,7 +17,6 @@ try:
         return Levenshtein.distance(a, b)
 except ImportError:
     def edit_distance(a, b):
-        # fallback simple implementation
         if len(a) < len(b):
             return edit_distance(b, a)
         if len(b) == 0:
@@ -162,13 +156,11 @@ def _normalize_url_for_hostname_extraction(url: str) -> str:
     s = (url or "").strip()
     if not s:
         return s
-    # Common defang patterns in MISP/email artifacts.
     s = s.replace("[.]", ".").replace("(.)", ".")
     s = refang_url_like_schemes(s)
     low = s.lower()
     if low.startswith(("http://", "https://")):
         return s
-    # Non-http(s) schemes (e.g. ftp): do not prepend http:// — that would mash schemes.
     if "://" in s:
         return s
     if s.startswith("//"):
@@ -294,7 +286,7 @@ def extract_url_features(
     phishing_target_domains=None,
     blacklist=None,
     domain_metadata=None,
-    anchor_pairs=None,   # list of (visible_text, actual_url)
+    anchor_pairs=None,                                       
     rdap_cache=None,
 ):
     """
@@ -322,11 +314,8 @@ def extract_url_features(
     if not isinstance(popular_base_index, dict):
         popular_base_index = _build_popular_base_index(popular_domains)
 
-    # Domain metadata lookups disabled (WHOIS/RDAP/TLS). Keep `domain_metadata` if supplied,
-    # otherwise proceed without attempting lookups.
     per_url = [extract_domain_info(u) for u in urls]
 
-    # ---------- aggregate ----------
     domains = [d["domain"] for d in per_url if d["domain"]]
     unique_domains = set(domains)
     hostname_list = [h for h in (d.get("hostname") for d in per_url) if h]
@@ -336,12 +325,10 @@ def extract_url_features(
     num_blacklisted_domains = sum(1 for d in unique_domains if d in phishing_target_domains)
 
 
-    # ---------- per-URL boolean aggregations ----------
     any_has_extra_http = any(d.get("has_extra_http") for d in per_url)
     any_has_at_symbol = any(d.get("has_at_symbol") for d in per_url)
     any_has_non_ascii = any(d.get("has_non_ascii") for d in per_url)
 
-    # ---------- domain stats (creation dates via caller-provided RDAP cache) ----------
     creation_dates = []
     if unique_domains:
         cache = rdap_cache if isinstance(rdap_cache, dict) else {}
@@ -351,7 +338,6 @@ def extract_url_features(
             if registration_date:
                 creation_dates.append(registration_date)
 
-    # ---------- domain categories / registrar locations ----------
     domain_category_map = {}
     registrar_location_map = {}
     for d in unique_domains:
@@ -363,15 +349,12 @@ def extract_url_features(
         if reg_loc:
             registrar_location_map[d] = reg_loc
 
-    # ---------- accumulated subdomain / hyphen counts ----------
     subdomain_counts = sum(d.get("subdomain_count", 0) for d in per_url)
     hyphen_counts = sum(d.get("hyphen_count", 0) for d in per_url)
 
-    # ---------- EV certs and web-host heuristics ----------
     ev_domains = {d for d in unique_domains if domain_metadata.get(d, {}).get("ev")}
     any_ev_cert = len(ev_domains) > 0
 
-    # Direct substring match: any web-host domain token appears in any URL string.
     raw_urls = [str(u).strip().lower() for u in urls if isinstance(u, str) and u]
     any_is_web_hosting_domain = any(
         webhost_domain in raw_url
@@ -379,10 +362,8 @@ def extract_url_features(
         for webhost_domain in webhost_domains
     )
 
-    # heuristic for multi-part TLDs (e.g., co.uk)
     any_multi_part_tld = any((d.get("tld") or "").count(".") >= 1 for d in per_url)
 
-    # aggregated binary flags for typo/similarity/popular-subdomain
     any_typo_popular = any(
         is_typo_of_popular_fast(domain, popular_base_index)
         for domain in unique_domains
@@ -396,7 +377,6 @@ def extract_url_features(
     oldest_domain = min(creation_dates) if creation_dates else None
     newest_domain = max(creation_dates) if creation_dates else None
 
-    # ---------- hyperlink analysis ----------
     mismatch_count = 0
     click_here_links = 0
 
@@ -407,7 +387,6 @@ def extract_url_features(
             if text.startswith("http") and text != actual:
                 mismatch_count += 1
 
-    # Export base domain labels (without TLD) in the `domains` field.
     domain_list = sorted(
         {
             (tldextract.extract(d).domain or d)
@@ -423,9 +402,6 @@ def extract_url_features(
         "registrar_locations": registrar_location_map,
         "subdomain_counts": subdomain_counts,
         "hyphen_counts": hyphen_counts,
-        
-        #outcommented EV cert because its unavailable, is part of WHOIS but this is not provided and getting EV cert requires connecting to host
-        #"any_ev_cert": any_ev_cert,
         "any_has_extra_http": any_has_extra_http,
         "any_multi_part_tld": any_multi_part_tld,
         "any_is_web_hosting_domain": any_is_web_hosting_domain,
