@@ -306,9 +306,10 @@ def load_email_level_inputs(
     Load per-email infrastructure sets from a heteroGraph ``.pt`` + ``.meta.json``.
 
     **URL / domain / stem (shard graph):** derived only via ``email → url → {domain, stem}``.
-    URLs whose registrable domain is in ``popular_domains.txt`` (tldextract, same as
-    ``url_extraction_utils.extract_domain_info``) are **omitted** with their URL/domain/stem
-    children for shard-graph purposes. Direct ``email → domain`` / ``email → stem`` edges are
+    URLs whose bare hostname (``www.`` stripped) exactly matches an entry in
+    ``popular_domains.txt`` are **omitted** with their URL/domain/stem children for shard-graph
+    purposes (subdomains like ``groups.google.com`` are kept when only ``google.com`` is listed).
+    Direct ``email → domain`` / ``email → stem`` edges are
     ignored for those three channels so infra aligns with URL-node provenance.
 
     Returns ``(email_df, benign_url_diagnostics)``.

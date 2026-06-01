@@ -184,6 +184,7 @@ def _build_email_node_table(
     popular_domains_path: Path | None,
     filter_web_hosting_domains: bool,
     web_hosting_domains_path: Path | None,
+    popular_domain_match_mode: str = "exact_bare_host",
     include_text_fields: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     meta = gh.load_meta(meta_json)
@@ -211,6 +212,7 @@ def _build_email_node_table(
         popular_domains_source=popular_domains_path
         if filter_popular_domains
         else (web_hosting_domains_path if filter_web_hosting_domains else ""),
+        popular_domain_match_mode=str(popular_domain_match_mode or "exact_bare_host"),
     )
 
     email_sets = gh.build_email_artifact_sets(data)
@@ -277,6 +279,7 @@ def _build_email_node_table(
         **(benign_diag or {}),
         "filter_popular_domains": bool(filter_popular_domains),
         "filter_web_hosting_domains": bool(filter_web_hosting_domains),
+        "popular_domain_match_mode": str(popular_domain_match_mode or "exact_bare_host"),
         "n_web_hosting_domains_loaded": int(len(web_domains)),
         "n_popular_domains_loaded_effective": int(len(pop_domains)),
     }
@@ -1032,6 +1035,9 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             popular_domains_path=popular_domains_path,
             filter_web_hosting_domains=bool(filters.get("filter_web_hosting_domains", False)),
             web_hosting_domains_path=web_hosting_domains_path,
+            popular_domain_match_mode=str(
+                filters.get("popular_domain_match_mode", "exact_bare_host")
+            ),
             include_text_fields=bool(node_fields_cfg.get("include_text_fields", True)),
         )
         if pbar is not None:

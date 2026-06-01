@@ -1043,6 +1043,7 @@ def assemble_misp_graph_ir_from_parsed_emails(
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
     url_skip_superspreaders_path: Optional[str] = None,
     url_skip_substrings: Optional[Sequence[str]] = None,
     popular_domains: Optional[frozenset] = None,
@@ -1067,7 +1068,6 @@ def assemble_misp_graph_ir_from_parsed_emails(
     )
     pop_domains = popular_domains if popular_domains is not None else frozenset()
     registry = default_provider_registry(url_skip_patterns, pop_domains)
-    emails = parse_misp_events(misp_events)
     #iterate through emails and print urls if not empty
     '''
     for email in emails:
@@ -1166,6 +1166,7 @@ def assemble_misp_graph_ir(
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
     collapse_enabled: bool = True,
+    popular_domains: Optional[frozenset] = None,
 ) -> GraphIR:
     """Assemble a backend-agnostic Graph IR from raw MISP events.
 
@@ -1183,6 +1184,7 @@ def assemble_misp_graph_ir(
         embeddings_output_dir=embeddings_output_dir,
         zero_email_timestamps=zero_email_timestamps,
         collapse_enabled=collapse_enabled,
+        popular_domains=popular_domains,
     )
 
 

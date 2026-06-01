@@ -771,6 +771,63 @@ def _balance_pos_unlabeled(
     return out, diag
 
 
+def build_train_epoch_pos_unl_balance(
+    train_df: pd.DataFrame,
+    *,
+    balance_cfg: dict[str, Any],
+    epoch_seed: int,
+    include_reliable_negative_in_epoch: bool = True,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Per-epoch train subsample to target pos:unlabeled count ratio (no semantic clusters).
+
+    Uses the same ``_balance_pos_unlabeled`` logic as cluster-aware sampling but without
+    redundancy caps or cluster_pair_key requirements.
+    """
+    enabled_bal = bool(balance_cfg.get("enabled", False))
+    shuffle = bool(balance_cfg.get("shuffle_each_epoch", True))
+    rng = np.random.default_rng(int(epoch_seed))
+    diag: dict[str, Any] = {
+        "enabled_train_balance": enabled_bal,
+        "semantic_cluster_sampling_required": False,
+        "epoch_seed": int(epoch_seed),
+        "n_train_rows_input": int(len(train_df)),
+    }
+    if not enabled_bal:
+        out = train_df.copy()
+        if shuffle:
+            out = out.sample(frac=1.0, random_state=int(epoch_seed)).reset_index(drop=True)
+        diag["n_train_rows_epoch_effective"] = int(len(out))
+        return out, diag
+
+    pos_mask = train_df["is_positive"].fillna(False).astype(bool)
+    unl_mask = train_df["is_unlabeled"].fillna(False).astype(bool)
+    rn_mask = train_df.get("is_reliable_negative", pd.Series(False, index=train_df.index)).fillna(False).astype(bool)
+    pos_df = train_df.loc[pos_mask].copy()
+    unl_df = train_df.loc[unl_mask].copy()
+    rn_df = train_df.loc[rn_mask].copy() if include_reliable_negative_in_epoch else train_df.iloc[0:0].copy()
+
+    mode = str(balance_cfg.get("mode", "target_pos_to_unl_ratio")).strip().lower()
+    if mode != "target_pos_to_unl_ratio":
+        raise ValueError(f"Unsupported train_balance.mode: {mode!r}")
+    target_ratio = float(balance_cfg.get("target_pos_to_unl_ratio", 1.0))
+    core, balance_diag = _balance_pos_unlabeled(pos_df, unl_df, target_pos_to_unl_ratio=target_ratio, rng=rng)
+    out = pd.concat([core, rn_df], axis=0, ignore_index=True)
+    diag["train_balance"] = balance_diag
+    diag["sampling_without_replacement"] = True
+
+    if shuffle:
+        out = out.sample(frac=1.0, random_state=int(epoch_seed) + 7).reset_index(drop=True)
+
+    n_pos_e = int(_safe_bool_count(out, "is_positive"))
+    n_unl_e = int(_safe_bool_count(out, "is_unlabeled"))
+    diag["n_train_rows_epoch_effective"] = int(len(out))
+    diag["n_pos_effective_epoch"] = n_pos_e
+    diag["n_unl_effective_epoch"] = n_unl_e
+    diag["effective_pos_to_unl_ratio"] = float(n_pos_e / max(1, n_unl_e))
+    return out, diag
+
+
 def build_train_epoch_cluster_aware(
     train_df: pd.DataFrame,
     *,

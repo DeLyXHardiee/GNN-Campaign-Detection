@@ -47,6 +47,7 @@ from .pair_scorer import EmailPairMLPScorer, build_email_pair_mlp_scorer, count_
 from .pair_semantic_cluster_sampling import (
     annotate_pair_rows_with_semantic_clusters,
     build_train_epoch_cluster_aware,
+    build_train_epoch_pos_unl_balance,
     load_email_to_semantic_cluster,
     resolve_mapping_csv,
     split_pairs_by_disjoint_semantic_clusters,
@@ -112,6 +113,9 @@ PAIR_FEATURE_BOOL_COLS = [
     "has_shared_attachment",
     "has_shared_sender_domain",
     "has_shared_domain",
+    "has_shared_html_structure_fingerprint",
+    "has_shared_return_path_email",
+    "has_shared_return_path_domain",
 ]
 
 PAIR_FEATURE_NUMERIC_COLS = [
@@ -128,6 +132,9 @@ PAIR_FEATURE_NUMERIC_COLS = [
     "shared_attachment_count",
     "shared_sender_domain_count",
     "shared_domain_count",
+    "shared_html_structure_fingerprint_count",
+    "shared_return_path_email_count",
+    "shared_return_path_domain_count",
     "n_shared_core_channels",
     "body_token_jaccard",
     "body_char4gram_jaccard",
@@ -140,6 +147,9 @@ PAIR_FEATURE_NUMERIC_COLS = [
 # Raw seed_component_* ids excluded: arbitrary identifiers, not continuous features.
 
 PAIR_FEATURE_COLUMNS = PAIR_FEATURE_BOOL_COLS + PAIR_FEATURE_NUMERIC_COLS
+
+# Optional override for train/infer when training_cfg sets pair_feature_columns_exclude.
+_ACTIVE_PAIR_FEATURE_COLUMNS: list[str] | None = None
 
 _RESCUE_ALIGNED_SCORER_FEATURE_COLS = (
     "body_only_token_jaccard",
@@ -199,6 +209,32 @@ def _safe_bool01(v: Any) -> float:
     return 0.0
 
 
+def resolve_pair_feature_columns(training_cfg: dict[str, Any] | None = None) -> list[str]:
+    """Active explicit pair-feature columns (default PAIR_FEATURE_COLUMNS)."""
+    if training_cfg is None:
+        return list(_ACTIVE_PAIR_FEATURE_COLUMNS or PAIR_FEATURE_COLUMNS)
+    ordered = training_cfg.get("pair_feature_columns_ordered")
+    if ordered:
+        return [str(c) for c in ordered]
+    cols = list(PAIR_FEATURE_COLUMNS)
+    exclude = training_cfg.get("pair_feature_columns_exclude") or []
+    if exclude:
+        ex = {str(c) for c in exclude}
+        cols = [c for c in cols if c not in ex]
+    return cols
+
+
+def set_active_pair_feature_columns(columns: list[str] | None) -> None:
+    global _ACTIVE_PAIR_FEATURE_COLUMNS
+    _ACTIVE_PAIR_FEATURE_COLUMNS = list(columns) if columns is not None else None
+
+
+def current_pair_feature_columns() -> list[str]:
+    if _ACTIVE_PAIR_FEATURE_COLUMNS is not None:
+        return list(_ACTIVE_PAIR_FEATURE_COLUMNS)
+    return list(PAIR_FEATURE_COLUMNS)
+
+
 def build_pair_feature_matrix(
     df: pd.DataFrame,
     feature_columns: list[str] | tuple[str, ...] | None = None,
@@ -212,7 +248,7 @@ def build_pair_feature_matrix(
     """
     bool_set = set(PAIR_FEATURE_BOOL_COLS)
     if feature_columns is None:
-        cols: list[str] = list(PAIR_FEATURE_COLUMNS)
+        cols: list[str] = current_pair_feature_columns()
     else:
         cols = [str(c) for c in feature_columns]
     rows: list[list[float]] = []
@@ -2006,8 +2042,10 @@ def run_pair_training(
     redundancy_cfg = dict(training_cfg.get("cluster_redundancy_control") or {})
     redundancy_enabled = bool(redundancy_cfg.get("enabled", False)) and sc_enabled
     balance_cfg = dict(training_cfg.get("train_balance") or {})
-    balance_enabled = bool(balance_cfg.get("enabled", False)) and sc_enabled
-    cluster_epoch_sampling = redundancy_enabled or balance_enabled
+    balance_enabled = bool(balance_cfg.get("enabled", False))
+    balance_via_clusters = balance_enabled and sc_enabled
+    plain_balance_epoch_sampling = balance_enabled and not sc_enabled
+    cluster_epoch_sampling = redundancy_enabled or balance_via_clusters
 
     email_to_cluster: dict[str, int] = {}
     if sc_enabled:
@@ -2035,6 +2073,7 @@ def run_pair_training(
         or (rne_enabled and rne_shuffle_each_epoch)
         or (cluster_epoch_sampling and bool(redundancy_cfg.get("shuffle_each_epoch", True)))
         or (cluster_epoch_sampling and bool(balance_cfg.get("shuffle_each_epoch", True)))
+        or (plain_balance_epoch_sampling and bool(balance_cfg.get("shuffle_each_epoch", True)))
     )
 
     epochs = int(training_cfg["epochs"])
@@ -2125,7 +2164,9 @@ def run_pair_training(
         n_val_batches = count_pair_batches(val_df, pair_batch_size, max_unique)
         n_test_batches = count_pair_batches(test_df, pair_batch_size, max_unique)
 
-    feat_dim_columns = len(PAIR_FEATURE_COLUMNS)
+    active_pair_feature_columns = resolve_pair_feature_columns(training_cfg)
+    set_active_pair_feature_columns(active_pair_feature_columns)
+    feat_dim_columns = len(active_pair_feature_columns)
     pair_feat_dim_for_scorer = int(feat_dim_columns) if use_explicit_pair_feats else 0
 
     data_cpu = data.to("cpu")
@@ -2268,6 +2309,8 @@ def run_pair_training(
             "cluster_split_hygiene_enabled": split_hygiene_enabled,
             "cluster_redundancy_control_enabled": redundancy_enabled,
             "train_balance_enabled": balance_enabled,
+            "train_balance_via_semantic_clusters": balance_via_clusters,
+            "plain_train_balance_per_epoch": plain_balance_epoch_sampling,
             "train_cluster_inventory": summarize_train_cluster_inventory(train_df) if sc_enabled else {},
             "cluster_redundancy_control": redundancy_cfg if redundancy_enabled else None,
             "train_balance": balance_cfg if balance_enabled else None,
@@ -2388,7 +2431,9 @@ def run_pair_training(
                 "any_batch_catastrophic_endpoint_failure"
             ),
         },
-        "pair_feature_columns_ordered": list(PAIR_FEATURE_COLUMNS),
+        "pair_feature_columns_ordered": list(active_pair_feature_columns),
+        "pair_feature_columns_full_default": list(PAIR_FEATURE_COLUMNS),
+        "pair_feature_columns_exclude": list(training_cfg.get("pair_feature_columns_exclude") or []),
         "scorer_input_feature_sanity": _scorer_input_feature_sanity_block(df, load_stats),
         "pair_feature_dim_from_columns": feat_dim_columns,
         "pair_scorer_use_explicit_features": use_explicit_pair_feats,
@@ -2704,6 +2749,7 @@ def run_pair_training(
         )
 
     last_cluster_epoch_diag: dict[str, Any] = {}
+    last_plain_balance_diag: dict[str, Any] = {}
     for epoch in range(1, epochs + 1):
         train_df_for_epoch = train_df
         cluster_epoch_diag: dict[str, Any] = {}
@@ -2716,6 +2762,14 @@ def run_pair_training(
                 include_reliable_negative_in_epoch=rn_supervision_active,
             )
             last_cluster_epoch_diag = cluster_epoch_diag
+        elif plain_balance_epoch_sampling:
+            train_df_for_epoch, cluster_epoch_diag = build_train_epoch_pos_unl_balance(
+                train_df,
+                balance_cfg=balance_cfg,
+                epoch_seed=split_seed + epoch,
+                include_reliable_negative_in_epoch=rn_supervision_active,
+            )
+            last_plain_balance_diag = cluster_epoch_diag
         train_df_epoch, emphasis_epoch_diag = _build_train_df_epoch_emphasis(
             train_df_for_epoch,
             easy_pos_mask=easy_pos_mask_train,
@@ -3054,10 +3108,22 @@ def run_pair_training(
         }
         cluster_diag_path = write_cluster_sampling_artifact(run_dir, cluster_sampling_artifact)
         setup_summary["semantic_cluster_sampling"]["diagnostic_json"] = cluster_diag_path
+    elif plain_balance_epoch_sampling and last_plain_balance_diag:
+        plain_path = write_cluster_sampling_artifact(
+            run_dir,
+            {
+                "plain_train_balance": setup_summary.get("semantic_cluster_sampling", {}).get("train_balance"),
+                "last_train_epoch_balance": last_plain_balance_diag,
+            },
+            filename="pair_train_balance_diagnostic.json",
+        )
+        setup_summary.setdefault("train_balance_sampling", {})["diagnostic_json"] = plain_path
     (run_dir / "pair_training_setup_summary.json").write_text(
         json.dumps(setup_summary, indent=2, ensure_ascii=False, default=str),
         encoding="utf-8",
     )
+
+    set_active_pair_feature_columns(None)
 
     return {
         "model": model,

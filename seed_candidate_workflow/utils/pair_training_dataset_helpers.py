@@ -148,6 +148,9 @@ def _load_anchor_node_sets_by_email(
         "attachment_set",
         "sender_email_domain_set",
         "domain_set",
+        "html_structure_fingerprint_set",
+        "return_path_email_set",
+        "return_path_domain_set",
     ]
     keep = [c for c in required_cols if c in nodes_df.columns]
     if "external_id" not in nodes_df.columns or not keep:
@@ -196,6 +199,9 @@ def _add_shared_attribute_pair_features(
         ("attachment_set", "attachment"),
         ("sender_email_domain_set", "sender_domain"),
         ("domain_set", "domain"),
+        ("html_structure_fingerprint_set", "html_structure_fingerprint"),
+        ("return_path_email_set", "return_path_email"),
+        ("return_path_domain_set", "return_path_domain"),
     ]
     out = df.copy()
     for _col, base in spec:
@@ -708,12 +714,26 @@ def build_pair_training_dataset(
             "shared_attachment_count": pd.to_numeric(df["shared_attachment_count"], errors="coerce"),
             "shared_sender_domain_count": pd.to_numeric(df["shared_sender_domain_count"], errors="coerce"),
             "shared_domain_count": pd.to_numeric(df["shared_domain_count"], errors="coerce"),
+            "shared_html_structure_fingerprint_count": pd.to_numeric(
+                df["shared_html_structure_fingerprint_count"], errors="coerce"
+            ),
+            "shared_return_path_email_count": pd.to_numeric(
+                df["shared_return_path_email_count"], errors="coerce"
+            ),
+            "shared_return_path_domain_count": pd.to_numeric(
+                df["shared_return_path_domain_count"], errors="coerce"
+            ),
             "has_shared_sender": df["has_shared_sender"].fillna(False).astype(bool),
             "has_shared_stem": df["has_shared_stem"].fillna(False).astype(bool),
             "has_shared_url": df["has_shared_url"].fillna(False).astype(bool),
             "has_shared_attachment": df["has_shared_attachment"].fillna(False).astype(bool),
             "has_shared_sender_domain": df["has_shared_sender_domain"].fillna(False).astype(bool),
             "has_shared_domain": df["has_shared_domain"].fillna(False).astype(bool),
+            "has_shared_html_structure_fingerprint": df["has_shared_html_structure_fingerprint"]
+            .fillna(False)
+            .astype(bool),
+            "has_shared_return_path_email": df["has_shared_return_path_email"].fillna(False).astype(bool),
+            "has_shared_return_path_domain": df["has_shared_return_path_domain"].fillna(False).astype(bool),
             "n_shared_core_channels": pd.to_numeric(
                 df["n_shared_core_channels"], errors="coerce"
             ).fillna(0).astype(int),
@@ -786,6 +806,9 @@ def build_pair_training_dataset(
         "shared_attachment_count",
         "shared_sender_domain_count",
         "shared_domain_count",
+        "shared_html_structure_fingerprint_count",
+        "shared_return_path_email_count",
+        "shared_return_path_domain_count",
         "n_shared_core_channels",
         "has_shared_sender",
         "has_shared_stem",
@@ -793,6 +816,9 @@ def build_pair_training_dataset(
         "has_shared_attachment",
         "has_shared_sender_domain",
         "has_shared_domain",
+        "has_shared_html_structure_fingerprint",
+        "has_shared_return_path_email",
+        "has_shared_return_path_domain",
         "body_token_jaccard",
         "body_char4gram_jaccard",
         "sender_localpart_norm_jaccard",
@@ -807,6 +833,9 @@ def build_pair_training_dataset(
         "shared_attachment_count",
         "shared_sender_domain_count",
         "shared_domain_count",
+        "shared_html_structure_fingerprint_count",
+        "shared_return_path_email_count",
+        "shared_return_path_domain_count",
         "n_shared_core_channels",
     ]
     shared_bool_cols = [
@@ -816,6 +845,9 @@ def build_pair_training_dataset(
         "has_shared_attachment",
         "has_shared_sender_domain",
         "has_shared_domain",
+        "has_shared_html_structure_fingerprint",
+        "has_shared_return_path_email",
+        "has_shared_return_path_domain",
     ]
 
     both_ids = (

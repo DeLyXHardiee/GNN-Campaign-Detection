@@ -316,6 +316,184 @@ def generate_corroborated_seed_edges_v1(
     return out
 
 
+def _corroborated_v2_default_cfg() -> dict[str, Any]:
+    return {
+        "core_channels": [
+            "sender",
+            "url",
+            "attachment",
+            "html_structure_fingerprint",
+            "return_path_email",
+        ],
+        "weak_channels": [
+            "sender_email_domain",
+            "domain",
+            "stem",
+            "return_path_domain",
+        ],
+        "excluded_channels": ["origin_ip", "received_host", "helo_host"],
+        "min_rare_stem_idf": 1.0,
+        "semantic_support": {
+            "enabled": True,
+            "min_semantic_score": 0.97,
+            "require_non_semantic_support": True,
+            "min_non_semantic_support_channels": 1,
+        },
+        "require_min_weak_channels": 3,
+    }
+
+
+def _edge_channel_hit(edges_df: pd.DataFrame, row: pd.Series, channel: str) -> bool:
+    col = _overlap_col(channel)
+    return col in edges_df.columns and bool(row.get(col, False))
+
+
+def _edge_rare_stem_hit(edges_df: pd.DataFrame, row: pd.Series, *, min_idf: float) -> bool:
+    if not _edge_channel_hit(edges_df, row, "stem"):
+        return False
+    idf_col = "shared_stem_idf_sum"
+    if idf_col not in edges_df.columns:
+        return False
+    v = pd.to_numeric(row.get(idf_col), errors="coerce")
+    return bool(pd.notna(v) and float(v) >= float(min_idf))
+
+
+def generate_corroborated_seed_edges_v2(
+    *,
+    nodes_df: pd.DataFrame,
+    edges_df: pd.DataFrame,
+    generator_cfg: dict[str, Any],
+) -> pd.DataFrame:
+    """
+    Conservative corroborated seeds (thesis ablation).
+
+    A pair is seed-positive if any of:
+      1) >=1 core channel AND >=1 additional support channel (weak or distinct core),
+      2) semantic >= min_semantic_score AND >=1 non-semantic channel,
+      3) >=3 weak non-semantic channels.
+
+    Core: sender, url, attachment, html_structure_fingerprint, return_path_email, rare stem.
+    Weak: sender_email_domain, domain, stem, return_path_domain.
+    Transit channels (origin_ip, received_host, helo_host) are never counted.
+    """
+    cfg = {**_corroborated_v2_default_cfg(), **(generator_cfg or {})}
+    core_channels = [str(x).strip() for x in (cfg.get("core_channels") or []) if str(x).strip()]
+    weak_channels = [str(x).strip() for x in (cfg.get("weak_channels") or []) if str(x).strip()]
+    excluded = {str(x).strip() for x in (cfg.get("excluded_channels") or []) if str(x).strip()}
+    core_channels = [c for c in core_channels if c not in excluded]
+    weak_channels = [c for c in weak_channels if c not in excluded]
+    min_rare_stem_idf = float(cfg.get("min_rare_stem_idf", 1.0))
+    req_min_weak = int(cfg.get("require_min_weak_channels", 3))
+    support_only_channels = {
+        str(x).strip()
+        for x in (cfg.get("support_only_channels") or [])
+        if str(x).strip()
+    }
+
+    sem_cfg = cfg.get("semantic_support") or {}
+    sem_enabled = bool(sem_cfg.get("enabled", True))
+    min_sem = float(sem_cfg.get("min_semantic_score", 0.97))
+    req_non_sem = bool(sem_cfg.get("require_non_semantic_support", True))
+    min_non_sem = int(sem_cfg.get("min_non_semantic_support_channels", 1))
+
+    if edges_df.empty:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for _, e in edges_df.iterrows():
+        a = str(e["email_a"])
+        b = str(e["email_b"])
+        if a == b:
+            continue
+
+        core_hits: list[str] = []
+        for ch in core_channels:
+            if ch == "stem":
+                continue
+            if _edge_channel_hit(edges_df, e, ch):
+                core_hits.append(ch)
+        if _edge_rare_stem_hit(edges_df, e, min_idf=min_rare_stem_idf):
+            core_hits.append("stem_rare")
+
+        weak_hits: list[str] = []
+        for ch in weak_channels:
+            if _edge_channel_hit(edges_df, e, ch):
+                weak_hits.append(ch)
+
+        core_set = set(core_hits)
+        weak_set = set(weak_hits)
+        n_core = len(core_set)
+        n_weak = len(weak_set)
+        n_non_sem = len(core_set | weak_set)
+
+        sem_score = float(pd.to_numeric(e.get("semantic_score"), errors="coerce"))
+        sem_hit = bool(np.isfinite(sem_score) and sem_score >= min_sem) if sem_enabled else False
+
+        rule_core_plus_support = n_core >= 1 and (n_weak >= 1 or n_core >= 2)
+        rule_sem_plus = sem_hit and (n_non_sem >= min_non_sem if req_non_sem else True)
+        weak_for_triple = [ch for ch in weak_hits if ch not in support_only_channels]
+        rule_weak_triple = len(weak_for_triple) >= req_min_weak
+
+        if not (rule_core_plus_support or rule_sem_plus or rule_weak_triple):
+            continue
+
+        if rule_core_plus_support:
+            rule_triggered = "core_plus_support"
+        elif rule_sem_plus:
+            rule_triggered = "semantic_plus_non_semantic"
+        else:
+            rule_triggered = "weak_triple"
+
+        rarity_parts: list[float] = []
+        for ch in sorted(core_set | weak_set):
+            base = _channel_col(ch).replace("_set", "")
+            idf_col = f"shared_{base}_idf_sum"
+            if idf_col in edges_df.columns:
+                v = pd.to_numeric(e.get(idf_col), errors="coerce")
+                if pd.notna(v):
+                    rarity_parts.append(float(v))
+        if sem_hit:
+            rarity_parts.append(float(max(0.0, sem_score)))
+        evidence_rarity = float(np.mean(rarity_parts)) if rarity_parts else float("nan")
+
+        evidence_fields = {
+            "core_channels": sorted(core_set),
+            "weak_channels": sorted(weak_set),
+            "support_only_channels": sorted(support_only_channels),
+            "weak_channels_for_triple_rule": sorted(weak_for_triple),
+            "n_core_channels": int(n_core),
+            "n_weak_channels": int(n_weak),
+            "n_non_semantic_channels": int(n_non_sem),
+            "semantic_score": float(sem_score) if np.isfinite(sem_score) else None,
+            "semantic_support": bool(sem_hit),
+            "rule_triggered": rule_triggered,
+            "implementation": "corroborated_v2",
+        }
+        rows.append(
+            {
+                "email_i": min(a, b),
+                "email_j": max(a, b),
+                "evidence_type": "corroborated_multi_signal",
+                "evidence_value": json.dumps(evidence_fields, ensure_ascii=False, sort_keys=True),
+                "evidence_rarity": evidence_rarity,
+                "artifact_df": np.nan,
+                "seed_tier": "corroborated",
+                "seed_generator": "corroborated_v2",
+                "rule_id": str(rule_triggered),
+                "n_support_channels": int(n_non_sem),
+                "semantic_support": bool(sem_hit),
+                "evidence_fields_json": json.dumps(evidence_fields, ensure_ascii=False),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(
+        subset=["email_i", "email_j", "seed_generator", "rule_id"]
+    ).reset_index(drop=True)
+
+
 def _semantic_strong_v1_default_cfg() -> dict[str, Any]:
     return {
         "min_semantic_score": 0.93,
@@ -1124,6 +1302,11 @@ def _generator_registry() -> dict[str, GeneratorFn]:
             generator_cfg=cfg,
         ),
         "corroborated_v1": lambda nodes_df, edges_df, cfg: generate_corroborated_seed_edges_v1(
+            nodes_df=nodes_df,
+            edges_df=edges_df,
+            generator_cfg=cfg,
+        ),
+        "corroborated_v2": lambda nodes_df, edges_df, cfg: generate_corroborated_seed_edges_v2(
             nodes_df=nodes_df,
             edges_df=edges_df,
             generator_cfg=cfg,
