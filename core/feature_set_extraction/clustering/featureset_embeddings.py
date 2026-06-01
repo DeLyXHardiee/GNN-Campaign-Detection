@@ -23,6 +23,7 @@ from feature_set_extraction.cluster_comparison.clusteringCommonFunctions import 
     preprocess_for_clustering,
     record_cluster_id,
     remove_outliers_from_matrix,
+    scale_and_normalize_matrix,
 )
 
 _PACKAGE_DIR = Path(__file__).resolve().parent.parent  # core/feature_set_extraction/
@@ -53,12 +54,16 @@ def _load_records(fs_name: str):
 def _build_embedding_map(records, n_components: int) -> dict[str, np.ndarray]:
     """Preprocess records into an external_id -> embedding dict."""
     idxs = [record_cluster_id(r) for r in records]
-    X, _ = preprocess_for_clustering(
-        records,
-        FEATURESET_CLUSTERING_CONFIG.max_tfidf_features,
-        n_components=n_components,
-    )
     if FEATURESET_CLUSTERING_CONFIG.remove_outliers:
+        # Extract raw features without scaling so outlier detection runs on
+        # uncontaminated data, then scale the cleaned matrix.
+        X, _ = preprocess_for_clustering(
+            records,
+            FEATURESET_CLUSTERING_CONFIG.max_tfidf_features,
+            n_components=n_components,
+            scaler_type="none",
+            l2_normalize=False,
+        )
         X, keep_mask, removed = remove_outliers_from_matrix(
             X, contamination=FEATURESET_CLUSTERING_CONFIG.outlier_contamination
         )
@@ -66,6 +71,13 @@ def _build_embedding_map(records, n_components: int) -> dict[str, np.ndarray]:
         print(
             f"  Removed {removed} outliers "
             f"(contamination={FEATURESET_CLUSTERING_CONFIG.outlier_contamination})"
+        )
+        X = scale_and_normalize_matrix(X)
+    else:
+        X, _ = preprocess_for_clustering(
+            records,
+            FEATURESET_CLUSTERING_CONFIG.max_tfidf_features,
+            n_components=n_components,
         )
     return {eid: np.asarray(vec, dtype=np.float64) for eid, vec in zip(idxs, X)}
 
