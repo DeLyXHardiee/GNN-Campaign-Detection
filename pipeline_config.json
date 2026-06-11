@@ -29,6 +29,7 @@
     "misp_json_path": "data/misp/incidents-lake-misp.dedup_task_identity.json",
     "hetero_graph_stem": "main_gnn_pu_1_ts_dedup_task_identity_thesis",
     "_comment": "Ablation _18: raw email.x pair scorer only (no GNN, no explicit pair feats). Full _12 hetero.pt. Reuses _13 pair_training_dataset.csv.",
+    "filter_popular_domains": true,
     "zero_email_timestamps": false,
     "max_misp_events": null,
     "output_dir": "core/graph/output",

@@ -396,6 +396,12 @@ def graph_build_settings_from_pipeline(
     else:
         collapse_enabled = bool(collapse_raw)
 
+    fpd_raw = graph_cfg.get("filter_popular_domains", True)
+    if isinstance(fpd_raw, str):
+        filter_popular_domains = str(fpd_raw).strip().lower() in ("1", "true", "yes", "on")
+    else:
+        filter_popular_domains = bool(fpd_raw)
+
     return GraphBuildSettings(
         misp_json_path=misp_json_path,
         output_dir=output_dir,
