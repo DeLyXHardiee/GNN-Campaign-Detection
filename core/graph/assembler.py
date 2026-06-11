@@ -18,8 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from tqdm import tqdm
 
-from tqdm import tqdm
-
 from .graph_schema import GraphSchema, DEFAULT_SCHEMA
 from .url_skip_superspreaders import resolve_url_skip_superspreaders_patterns
 try:
@@ -1069,13 +1067,6 @@ def assemble_misp_graph_ir(
     pop_domains = popular_domains if popular_domains is not None else frozenset()
     registry = default_provider_registry(url_skip_patterns, pop_domains)
     emails = parse_misp_events(misp_events)
-    #iterate through emails and print urls if not empty
-    '''
-    for email in emails:
-        urls = _as_email_list(email.get("urls"))
-        if len(urls) > 0 and email.get("external_id") == "trec_28184":
-            print(f"Email index {email.get('email_index', 'N/A')} has URLs: {urls}")
-    '''
     indexed = index_entities(emails, schema, registry)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
@@ -1105,7 +1096,6 @@ def assemble_misp_graph_ir(
         embeddings_output_dir=embeddings_output_dir,
     )
 
-    # Use raw attributes for feature matrix construction
     # Normalization happens later in the pipeline (e.g. via normalizer.py)
     n_emails = len(email_attrs_raw["ts"])
     bool_attr_rows: List[List[float]] = [

@@ -88,7 +88,6 @@ def _compute_keep_masks(
                     degree.scatter_add_(
                         0, dst[edge_ok], torch.ones(int(edge_ok.sum().item()), dtype=torch.long)
                     )
-            # Singleton and isolated non-email nodes are dropped.
             drop = alive & (degree <= 1)
             if bool(drop.any()):
                 keep_masks[ntype] = alive & ~drop

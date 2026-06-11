@@ -111,7 +111,6 @@ def _prepare_node_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
         email_rows.append(row)
     out[N["email"].memgraph] = email_rows
 
-    # Helper to pack simple string-keyed nodes with optional attributes aligned by index
     def pack_string_nodes(node_key: str, extra_fields: Dict[str, List[Any]] = None) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         node = ir.nodes.get(node_key)
