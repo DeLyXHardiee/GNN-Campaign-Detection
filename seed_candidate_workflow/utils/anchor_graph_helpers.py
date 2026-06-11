@@ -184,6 +184,7 @@ def _build_email_node_table(
     popular_domains_path: Path | None,
     filter_web_hosting_domains: bool,
     web_hosting_domains_path: Path | None,
+    popular_domain_match_mode: str = "exact_bare_host",
     include_text_fields: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     meta = gh.load_meta(meta_json)
@@ -211,6 +212,7 @@ def _build_email_node_table(
         popular_domains_source=popular_domains_path
         if filter_popular_domains
         else (web_hosting_domains_path if filter_web_hosting_domains else ""),
+        popular_domain_match_mode=str(popular_domain_match_mode or "exact_bare_host"),
     )
 
     email_sets = gh.build_email_artifact_sets(data)
@@ -218,30 +220,16 @@ def _build_email_node_table(
     email_sets = {k: v for k, v in email_sets.items() if k not in skip_direct}
     index_to_str = {node_type: _index_to_str(meta, node_type) for node_type in email_sets}
 
-    # Sender->domain union (semantic shard step2 convention).
     sender_map = index_to_str.get("sender", _index_to_str(meta, "sender"))
     email_domain_map = index_to_str.get(
         "email_domain", _index_to_str(meta, "email_domain")
     )
-    sender_to_domain: dict[int, set[str]] = defaultdict(set)
-    if ("sender", "from_domain", "email_domain") in data.edge_types:
-        ei = data["sender", "from_domain", "email_domain"].edge_index
-        if ei is not None and ei.numel() > 0:
-            s_idx = ei[0].detach().cpu().numpy().astype(np.int64)
-            d_idx = ei[1].detach().cpu().numpy().astype(np.int64)
-            for s, d in zip(s_idx, d_idx, strict=False):
-                if 0 <= int(d) < len(email_domain_map):
-                    sender_to_domain[int(s)].add(email_domain_map[int(d)])
-
-    sender_domain_sets: list[set[str]] = [set() for _ in range(n_email)]
-    if ("email", "has_sender", "sender") in data.edge_types:
-        ei = data["email", "has_sender", "sender"].edge_index
-        if ei is not None and ei.numel() > 0:
-            e_idx = ei[0].detach().cpu().numpy().astype(np.int64)
-            s_idx = ei[1].detach().cpu().numpy().astype(np.int64)
-            for e, s in zip(e_idx, s_idx, strict=False):
-                if 0 <= int(e) < n_email:
-                    sender_domain_sets[int(e)].update(sender_to_domain.get(int(s), set()))
+    sender_domain_sets = gh.build_sender_email_domain_sets(
+        data,
+        sender_map=sender_map,
+        email_domain_map=email_domain_map,
+        n_email=n_email,
+    )
 
     attrs = meta.get("email_attrs") or {}
     subject = attrs.get("subject") or [None] * n_email
@@ -291,6 +279,7 @@ def _build_email_node_table(
         **(benign_diag or {}),
         "filter_popular_domains": bool(filter_popular_domains),
         "filter_web_hosting_domains": bool(filter_web_hosting_domains),
+        "popular_domain_match_mode": str(popular_domain_match_mode or "exact_bare_host"),
         "n_web_hosting_domains_loaded": int(len(web_domains)),
         "n_popular_domains_loaded_effective": int(len(pop_domains)),
     }
@@ -598,7 +587,6 @@ def _resolve_unified_channel_configuration(
         if not isinstance(raw_cfg, dict):
             raw_cfg = {}
         enabled = bool(raw_cfg.get("enabled", True))
-        # New explicit names are aliases; preserve old behavior/values.
         candidate_enabled = bool(
             raw_cfg.get(
                 "edge_create_enabled",
@@ -1025,10 +1013,13 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         graph_pt = _resolve_input_path(inputs.get("graph_pt"), default_paths.graph_pt)
         if graph_pt is None:
             raise ValueError("graph_pt must be set in config inputs or resolvable by default.")
-        meta_json = Path(
-            inputs.get("meta_json")
-            or graph_pt.with_suffix(".meta.json")
-        ).expanduser().resolve()
+        meta_json = _resolve_input_path(
+            inputs.get("meta_json"),
+            graph_pt.with_suffix(".meta.json"),
+        )
+        if meta_json is None:
+            meta_json = graph_pt.with_suffix(".meta.json")
+        meta_json = meta_json.resolve()
         embeddings_json = _resolve_input_path(inputs.get("embeddings_json"), None)
         popular_domains_path = _resolve_input_path(inputs.get("popular_domains_path"), None)
         web_hosting_domains_path = _resolve_input_path(inputs.get("web_hosting_domains_path"), None)
@@ -1041,6 +1032,9 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
             popular_domains_path=popular_domains_path,
             filter_web_hosting_domains=bool(filters.get("filter_web_hosting_domains", False)),
             web_hosting_domains_path=web_hosting_domains_path,
+            popular_domain_match_mode=str(
+                filters.get("popular_domain_match_mode", "exact_bare_host")
+            ),
             include_text_fields=bool(node_fields_cfg.get("include_text_fields", True)),
         )
         if pbar is not None:
@@ -1091,7 +1085,6 @@ def build_anchor_graph(config: dict[str, Any]) -> dict[str, Any]:
         edges_df["email_j"] = edges_df["email_b"].astype(str)
         edges_df["graph_kind"] = "anchor"
         edges_df["graph_id"] = graph_id
-        # Anchor graph does not use seed/candidate generator provenance; semantic candidate is exposed.
         edges_df["from_seed"] = False
         if "from_semantic_candidate" in edges_df.columns:
             edges_df["from_semantic"] = edges_df["from_semantic_candidate"].fillna(False).astype(bool)

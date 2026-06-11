@@ -42,10 +42,8 @@ from .common import (
     is_sha256_hex,
 )
 
-# Authentication-Results header components (spf, dkim, dmarc) stored as string attributes on email nodes
 AUTH_ATTR_KEYS = ("auth_spf", "auth_dkim", "auth_dmarc")
 
-# Boolean email attributes (string "true"/"false" in data, stored as 0/1 in features and attrs)
 EMAIL_BOOL_ATTR_KEYS = (
     "cyrillic_domain",
     "contains_symbols",
@@ -69,7 +67,6 @@ def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int
     forms = float(tree.get("forms", 0) or 0)
     password_fields = float(tree.get("password_fields", 0) or 0)
 
-    # Block A: Structural complexity
     features.extend(
         [
             math.log1p(total_elements),
@@ -85,7 +82,6 @@ def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int
         ]
     )
 
-    # Block B: Hashed tag distribution (stable hash, not Python's randomized hash())
     tag_bins = [0.0] * tag_bin_count
     tag_counts = html_data.get("tag_counts", {}) or {}
     if isinstance(tag_counts, dict):
@@ -102,7 +98,6 @@ def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int
     tag_bins = [v / total for v in tag_bins]
     features.extend(tag_bins)
 
-    # Block C: Structural SimHash bytes
     fingerprint_hex = str(html_data.get("structure_fingerprint", "") or "").strip().lower()
     try:
         fingerprint_int = int(fingerprint_hex, 16) if fingerprint_hex else 0
@@ -112,7 +107,6 @@ def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int
         byte = (fingerprint_int >> (8 * i)) & 0xFF
         features.append(float(byte) / 255.0)
 
-    # Block D: CSS features
     style = css_data.get("style_features", {}) or {}
     features.extend(
         [
@@ -130,17 +124,17 @@ def create_html_css_features(html_data: dict, css_data: dict, tag_bin_count: int
 @dataclass
 class NodeIR:
     index: Dict[str, int]
-    x: List[List[float]]  # simple numeric features to keep tensors valid
-    index_to_string: Optional[List[str]] = None  # for non-email nodes
-    index_to_meta: Optional[List[Dict[str, Any]]] = None  # for emails
-    attrs: Dict[str, List[Any]] = field(default_factory=dict)  # aligned to node order
+    x: List[List[float]]                                                 
+    index_to_string: Optional[List[str]] = None                       
+    index_to_meta: Optional[List[Dict[str, Any]]] = None              
+    attrs: Dict[str, List[Any]] = field(default_factory=dict)                         
 
 
 @dataclass
 class GraphIR:
-    nodes: Dict[str, NodeIR]  # keyed by canonical node type
-    edges: Dict[str, Tuple[List[int], List[int]]]  # keyed by canonical edge name
-    email_attrs: Dict[str, List[Any]]  # additional attributes for email nodes
+    nodes: Dict[str, NodeIR]                                
+    edges: Dict[str, Tuple[List[int], List[int]]]                                
+    email_attrs: Dict[str, List[Any]]                                         
 
 
 def _ordered_keys(d: Dict[str, int]) -> List[str]:
@@ -257,8 +251,6 @@ def _node_indexers(
         return bool(popular_domains) and shard_url_infra_classify(u, popular_domains)[0] == "benign"
 
     def _is_popular_url_exact_host(u: str) -> bool:
-        # Filter only if the bare hostname (www. stripped) exactly matches a popular domain.
-        # Subdomains like docs.google.com are kept; google.com / www.google.com are not.
         if not popular_domains:
             return False
         host, _, ok = parse_url_host_and_registrable_domain(u)
@@ -668,7 +660,6 @@ def materialize_edges(
         tqdm(emails, total=len(emails), desc="Materializing edges & email attrs")
     ):
         urls = _as_email_list(em.get("urls"))
-        # external_id: MISP id for joining to ground truth; not used in feature matrix
         ext_id = em.get("external_id")
         email_meta.append(
             {
@@ -879,12 +870,6 @@ def _assemble_email_attrs(
             if body_vecs:
                 comb.extend(body_vecs[i] if i < len(body_vecs) else [0.0] * body_dim)
             x_text.append(comb)
-    
-    # Note: 'features' (x) are the primary input for GNNs.
-    # 'attrs' are supplementary raw values or metadata used for:
-    # 1. Debugging/inspection (e.g. raw timestamps)
-    # 2. Custom feature engineering in downstream tasks
-    # 3. Filtering or stratification during analysis
     out: Dict[str, Any] = {
         "ts": email_attrs_raw["ts"],
         "n_urls": email_attrs_raw["n_urls"],
@@ -908,46 +893,36 @@ def _compute_degrees(ir: GraphIR, schema: GraphSchema, node_type: str) -> List[i
         return []
     num_nodes = len(node.x)
     degrees = [0] * num_nodes
-    
     for edge_name, (srcs, dsts) in ir.edges.items():
         edge_def = schema.edges.get(edge_name)
         if not edge_def: 
             continue
-            
         if edge_def.src == node_type:
             for idx in srcs:
                 if idx < num_nodes: degrees[idx] += 1
-        
         if edge_def.dst == node_type:
             for idx in dsts:
                 if idx < num_nodes: degrees[idx] += 1
-                
     return degrees
 
 
 def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_type: str, edge_name: str) -> bool:
     if parent_type not in ir.nodes or child_type not in ir.nodes or edge_name not in ir.edges:
         return False
-        
     parent_node = ir.nodes[parent_type]
     child_node = ir.nodes[child_type]
     src_indices, dst_indices = ir.edges[edge_name]
-    
     degrees = _compute_degrees(ir, schema, child_type)
-    
     collapsible_children = set()
     parent_to_collapsed_children = {} 
-    
     for p, c in zip(src_indices, dst_indices):
         if c < len(degrees) and degrees[c] == 1:
             collapsible_children.add(c)
             if p not in parent_to_collapsed_children:
                 parent_to_collapsed_children[p] = []
             parent_to_collapsed_children[p].append(c)
-            
     if not collapsible_children:
         return False
-        
     child_dim = len(child_node.x[0]) if child_node.x else 0
     if child_dim > 0:
         for i in range(len(parent_node.x)):
@@ -960,43 +935,33 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
                 parent_node.x[i].extend(agg)
             else:
                 parent_node.x[i].extend([0.0] * child_dim)
-                
     old_to_new = {}
     new_x = []
     new_index_to_string = []
     new_index_map = {}
     new_attrs = {k: [] for k in child_node.attrs}
-    
     kept_count = 0
     original_strings = child_node.index_to_string or []
-    
     for i in range(len(child_node.x)):
         if i in collapsible_children:
             continue
-            
         old_to_new[i] = kept_count
         new_x.append(child_node.x[i])
-        
         if i < len(original_strings):
             s = original_strings[i]
             new_index_to_string.append(s)
             new_index_map[s] = kept_count
-            
         for k, v_list in child_node.attrs.items():
             if i < len(v_list):
                 new_attrs[k].append(v_list[i])
-                
         kept_count += 1
-        
     child_node.x = new_x
     child_node.index = new_index_map
     child_node.index_to_string = new_index_to_string
     child_node.attrs = new_attrs
-    
     for ename, (esrc, edst) in ir.edges.items():
         edef = schema.edges.get(ename)
         if not edef: continue
-        
         if edef.src == child_type:
             new_srcs, new_dsts = [], []
             for s, d in zip(esrc, edst):
@@ -1004,7 +969,6 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
                     new_srcs.append(old_to_new[s])
                     new_dsts.append(d)
             ir.edges[ename] = (new_srcs, new_dsts)
-            
         elif edef.dst == child_type:
             new_srcs, new_dsts = [], []
             for s, d in zip(esrc, edst):
@@ -1012,7 +976,6 @@ def _perform_collapse(ir: GraphIR, schema: GraphSchema, parent_type: str, child_
                     new_srcs.append(s)
                     new_dsts.append(old_to_new[d])
             ir.edges[ename] = (new_srcs, new_dsts)
-            
     return True
 
 
@@ -1022,31 +985,28 @@ def _collapse_graph_ir(ir: GraphIR, schema: GraphSchema) -> GraphIR:
     and has no other edges.
     """
     collapse_specs = list(schema.collapse_rules)
-    
     while True:
         something_changed = False
         for parent_type, child_type, edge_name in collapse_specs:
             if _perform_collapse(ir, schema, parent_type, child_type, edge_name):
                 something_changed = True
-                
         if not something_changed:
             break
-            
     return ir
 
 
-def assemble_misp_graph_ir(
-    misp_events: List[dict],
+def assemble_misp_graph_ir_from_parsed_emails(
+    emails: List[Dict[str, Any]],
     *,
     schema: Optional[GraphSchema] = None,
     embeddings_output_dir: Optional[str] = None,
     zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
     url_skip_superspreaders_path: Optional[str] = None,
     url_skip_substrings: Optional[Sequence[str]] = None,
     popular_domains: Optional[frozenset] = None,
 ) -> GraphIR:
-    """Assemble a backend-agnostic Graph IR from raw MISP events.
-
+    """Assemble Graph IR from emails already in ``parse_misp_events`` output shape.
     High-level steps:
     1) Parse/normalize MISP events.
     2) Index unique component entities and URL parts.
@@ -1066,7 +1026,6 @@ def assemble_misp_graph_ir(
     )
     pop_domains = popular_domains if popular_domains is not None else frozenset()
     registry = default_provider_registry(url_skip_patterns, pop_domains)
-    emails = parse_misp_events(misp_events)
     indexed = index_entities(emails, schema, registry)
     indices = {k: v for k, v in indexed.items() if k != "url_components"}
     url_components = indexed["url_components"]
@@ -1077,7 +1036,6 @@ def assemble_misp_graph_ir(
         registry,
         zero_email_timestamps=zero_email_timestamps,
     )
-
     (
         node_x,
         node_meta,
@@ -1096,7 +1054,6 @@ def assemble_misp_graph_ir(
         embeddings_output_dir=embeddings_output_dir,
     )
 
-    # Normalization happens later in the pipeline (e.g. via normalizer.py)
     n_emails = len(email_attrs_raw["ts"])
     bool_attr_rows: List[List[float]] = [
         [float(email_attrs_raw.get(k, [0] * n_emails)[i]) for k in EMAIL_BOOL_ATTR_KEYS]
@@ -1148,7 +1105,36 @@ def assemble_misp_graph_ir(
     )
 
     ir = GraphIR(nodes=nodes, edges=edges, email_attrs=email_attrs)
-    return _collapse_graph_ir(ir, schema)
+    return _collapse_graph_ir(ir, schema) if collapse_enabled else ir
 
 
-__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir"]
+def assemble_misp_graph_ir(
+    misp_events: List[dict],
+    *,
+    schema: Optional[GraphSchema] = None,
+    embeddings_output_dir: Optional[str] = None,
+    zero_email_timestamps: bool = False,
+    collapse_enabled: bool = True,
+    popular_domains: Optional[frozenset] = None,
+) -> GraphIR:
+    """Assemble a backend-agnostic Graph IR from raw MISP events.
+
+    High-level steps:
+    1) Parse/normalize MISP events.
+    2) Index unique component entities and URL parts.
+    3) Build email->component edges and raw email attributes.
+    4) Compute per-node features/attributes and text vectors.
+    5) Assemble nodes, edges, and email_attrs blocks.
+    """
+    emails = parse_misp_events(misp_events)
+    return assemble_misp_graph_ir_from_parsed_emails(
+        emails,
+        schema=schema,
+        embeddings_output_dir=embeddings_output_dir,
+        zero_email_timestamps=zero_email_timestamps,
+        collapse_enabled=collapse_enabled,
+        popular_domains=popular_domains,
+    )
+
+
+__all__ = ["GraphIR", "NodeIR", "assemble_misp_graph_ir", "assemble_misp_graph_ir_from_parsed_emails"]

@@ -141,7 +141,6 @@ def run_pu_threshold_retention_analysis(
 
     out_dir = (output_dir or scored_pairs_csv.parent / "pu_threshold_retention").resolve()
     os.makedirs(out_dir, exist_ok=True)
-    # Short name keeps full PNG paths under Windows MAX_PATH when nested under long bundle dirs.
     plots_dir = (out_dir / "plots").resolve()
     if make_plots:
         os.makedirs(plots_dir, exist_ok=True)

@@ -2,7 +2,7 @@
   "preprocessing": {
     "incidents_csv_path": "data/incidents/incidents_202602111435.csv",
     "bodies_dir": "data/POTENTIALLY MALICIOUS_phishing_emails_last_three_months_11_2_2026",
-    "misp_json_path": "data/misp/incidents-lake-misp-url-fixed.json",
+    "misp_json_path": "data/misp/incidents-lake-misp.json",
     "limit": 0,
     "category_allowlist": [
       "phishing",
@@ -21,18 +21,25 @@
     ]
   },
   "datasets": {
-    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-url-fixed.json",
-    "ground_truth_json": "data/groundtruth/ground_truth_merged.json",
-    "featureset_base_name": "incidents-lake-misp"
+    "misp_json_path": "data/misp/incidents-lake-misp.dedup_task_identity.json",
+    "ground_truth_json": "data/groundtruth/ground_truth.dedup_task_identity.json",
+    "featureset_base_name": "incidents-lake-misp-dedup-task-identity"
   },
   "graph": {
-    "misp_json_path": "core/preprocessing/output/incidents-lake-misp-url-fixed.json",
-    "hetero_graph_stem": "incidents-lake-misp-url-fixed",
-    "zero_email_timestamps": true,
+    "misp_json_path": "data/misp/incidents-lake-misp.dedup_task_identity.json",
+    "hetero_graph_stem": "main_gnn_pu_1_ts_dedup_task_identity_thesis",
+    "_comment": "Ablation _18: raw email.x pair scorer only (no GNN, no explicit pair feats). Full _12 hetero.pt. Reuses _13 pair_training_dataset.csv.",
+    "zero_email_timestamps": false,
     "max_misp_events": null,
     "output_dir": "core/graph/output",
-    "graph_pt_path_override": "core/graph/output/incidents-lake-misp-url-fixed_hetero.pt",
-    "exclude_node_types": [],
+    "graph_pt_path_override": "core/graph/output/main_gnn_pu_1_ts_dedup_task_identity_thesis_hetero.pt",
+    "exclude_node_types": [
+      "origin_ip",
+      "received_host",
+      "helo_host",
+      "return_path_email",
+      "return_path_domain"
+    ],
     "degree_node_filter": {
       "enabled": false,
       "strength": 0.2,
@@ -53,6 +60,17 @@
       "clear": true,
       "create_indexes": true
     }
+  },
+  "gnn_encoder_ablation": {
+    "enabled": false
+  },
+  "semantic_supernode": {
+    "enabled": false,
+    "clusters_csv": "output/analysis/semantic_supernode_cos097/semantic_supernode_clusters.csv",
+    "source_embeddings_json": "core/utils/embeddings/output/embeddings.json",
+    "hetero_graph_stem": null,
+    "embeddings_overlay_parent_dir": null,
+    "l2_normalize_mean_bert": false
   },
   "featureset-creation": {
     "feature_sets": [
@@ -87,7 +105,12 @@
       "contamination": 0.05
     },
     "dbscan": {
-      "eps_values": [0.001, 0.005, 0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2],
+      "eps_values": [
+        0.001,
+        0.005,
+        0.01,
+        0.05
+      ],
       "min_samples": 2
     },
     "meanshift": {
@@ -96,16 +119,16 @@
     },
     "hdbscan": {
       "enabled": true,
-      "min_cluster_size_values": [ 
-        2, 3, 4, 5
+      "min_cluster_size_values": [
+        2
       ],
       "min_samples": null,
       "metric": "cosine"
     }
   },
-  "device": "cuda",
+  "device": "cpu",
   "to_undirected": true,
-  "run_id": "test_new_schema",
+  "run_id": "main_gnn_pu_1_no_ts_dedup_task_identity_19_edge_gnn_1layer_topk16",
   "output_runs_root": "output/runs",
   "gnn": {
     "runs_parent": "output/runs",
@@ -127,25 +150,39 @@
     "layers": 2,
     "dropout": 0.0,
     "batch_size": 256,
-    "fanout": [25, 15],
+    "fanout": [
+      25,
+      15
+    ],
     "val_ratio": 0.1,
     "test_ratio": 0.1,
-    "epochs": 1,
+    "epochs": 30,
     "lr": 0.0002,
-    "wd": 0.00002,
+    "wd": 2e-05,
     "early_stopping_patience": 7,
     "lr_reduce_patience": 4,
     "lr_reduce_factor": 0.5,
-    "lr_reduce_min": 1e-6,
+    "lr_reduce_min": 1e-06,
     "model_save_name": "best_model.pt",
     "neg_ratio": 1.0,
     "score_head": "dot",
     "supervised_edge_types": []
   },
   "pair_training": {
-    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/bundle_seedcand_pairtrain/pair_training/bundle_seedcand_pairtrain/pair_training_dataset.csv",
+    "backends": {
+      "gnn": false,
+      "mlp": false,
+      "edge_gnn": true
+    },
+    "pair_encoder_backend": "edge_gnn",
+    "pair_scorer_use_embedding_features": false,
+    "pair_scorer_use_explicit_features": true,
+    "pair_dataset_csv": "seed_candidate_workflow/output/graph_bundles/main_gnn_pu_1_no_ts_dedup_task_identity_13/pair_training/main_gnn_pu_1_no_ts_dedup_task_identity_13/pair_training_dataset.csv",
     "pair_batch_size": 64,
-    "pair_fanout": [25, 15],
+    "pair_fanout": [
+      25,
+      15
+    ],
     "pair_split_seed": 42,
     "pair_val_ratio": 0.1,
     "pair_test_ratio": 0.1,
@@ -155,14 +192,12 @@
     "pair_skip_graph_batch_if_any_endpoint_missing": false,
     "pair_log_mapping_misses": true,
     "pair_tqdm_batches": true,
-    "pair_loss_type": "nnpu_with_reliable_negatives",
-    "reliable_negative_loss_weight": 0.1,
+    "pair_loss_type": "nnpu",
     "pu_class_prior": 0.1,
     "pu_non_negative": true,
     "pair_eval_threshold": 0.5,
     "pair_placeholder_loss_mode": "bce_pos_vs_unlabeled_as_neg",
     "pair_scorer_type": "email_pair_mlp",
-    "pair_scorer_use_explicit_features": true,
     "pair_scorer_hidden_dim": 256,
     "pair_scorer_dropout": 0.2,
     "hard_positive_emphasis": {
@@ -213,6 +248,41 @@
       "enabled": false,
       "oversample_factor": 1.5,
       "shuffle_each_epoch": true
+    },
+    "semantic_cluster_sampling": {
+      "enabled": true,
+      "mapping_csv": "output/analysis/semantic_supernode_cos097/semantic_supernode_clusters.csv",
+      "email_column": "email_id",
+      "cluster_column": "cluster_id"
+    },
+    "cluster_split_hygiene": {
+      "enabled": false,
+      "group_source": "semantic_cluster",
+      "cross_split_pair_policy": "drop",
+      "cluster_split_assignment_strategy": "greedy_label_aware_balanced"
+    },
+    "cluster_redundancy_control": {
+      "enabled": false,
+      "max_rows_per_cluster_pair_per_epoch": 3,
+      "max_rows_per_single_cluster_per_epoch": null,
+      "sampling_mode": "cap_then_balance",
+      "shuffle_each_epoch": true
+    },
+    "train_balance": {
+      "enabled": true,
+      "mode": "target_pos_to_unl_ratio",
+      "target_pos_to_unl_ratio": 2.0,
+      "shuffle_each_epoch": true
+    },
+    "edge_gnn": {
+      "hidden_dim": 256,
+      "num_gnn_layers": 1,
+      "dropout": 0.2,
+      "max_neighbors_per_endpoint": 16,
+      "rank_column": "semantic_cosine_max",
+      "local_head": "email_pair_mlp_compatible",
+      "train_batch_size": 64,
+      "combine_mode": "concat_local_graph"
     }
   },
   "evaluation": {
@@ -271,12 +341,38 @@
     "config": {
       "dbscan": {
         "enabled": true,
-        "epsilon_values": [0.1, 0.2, 0.3, 0.4, 2.1, 2.2, 2.3, 2.4],
+        "epsilon_values": [
+          0.01,
+          0.05,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0
+        ],
         "min_samples": 5
       },
       "meanshift": {
         "enabled": false,
-        "quantile_values": [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "quantile_values": [
+          0.01,
+          0.05,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1.0
+        ],
         "n_samples": 500
       },
       "hdbscan": {

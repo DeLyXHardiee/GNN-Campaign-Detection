@@ -18,9 +18,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-# Optional heavy deps imported lazily where needed
 
-# Conceptual groups for campaign-focused interpretation (not mutually exhaustive).
 CORE_INFRA_ARTIFACT_TYPES: frozenset[str] = frozenset(
     {"sender", "url", "domain", "stem", "email_domain"}
 )
@@ -62,7 +60,6 @@ def resolve_graph_analysis_paths(project_root: Path | None = None) -> GraphAnaly
 
     cfg = load_pipeline_config(project_root=root)
     graph_pt = Path(default_hetero_graph_pt_path(project_root=root))
-    # Campaign analyses use deduplicated GT by default (first label per external_id).
     dedup = root / "data" / "groundtruth" / "ground_truth_dedup.json"
     if dedup.is_file():
         gt = dedup
@@ -197,14 +194,72 @@ def _edge_neighbors_email_to(
     return out
 
 
+def build_sender_email_domain_sets(
+    data,
+    *,
+    sender_map: list[str],
+    email_domain_map: list[str],
+    n_email: int,
+) -> list[set[str]]:
+    """
+    Per-email sender-side mailbox domains (``sender_email_domain_set`` channel).
+
+    Primary (``main`` heterograph topology): derive from ``email -> has_sender -> sender`` and
+    ``extract_email_domain`` on sender address strings.
+
+    Legacy fallback: ``sender -> from_domain -> email_domain`` when those edges exist.
+    """
+    try:
+        from graph.common import extract_email_domain, is_freemail_domain
+    except ModuleNotFoundError:
+        from core.graph.common import extract_email_domain, is_freemail_domain
+
+    out: list[set[str]] = [set() for _ in range(n_email)]
+    if ("email", "has_sender", "sender") not in getattr(data, "edge_types", []):
+        return out
+
+    ei_es = data["email", "has_sender", "sender"].edge_index
+    if ei_es is not None and ei_es.numel() > 0:
+        for e, s in zip(
+            ei_es[0].detach().cpu().numpy().astype(np.int64),
+            ei_es[1].detach().cpu().numpy().astype(np.int64),
+        ):
+            if not (0 <= int(e) < n_email and 0 <= int(s) < len(sender_map)):
+                continue
+            dom = extract_email_domain(sender_map[int(s)])
+            if dom and not is_freemail_domain(dom):
+                out[int(e)].add(dom)
+
+    if ("sender", "from_domain", "email_domain") in getattr(data, "edge_types", []):
+        s_to_dom: dict[int, set[str]] = defaultdict(set)
+        ei_sd = data["sender", "from_domain", "email_domain"].edge_index
+        if ei_sd is not None and ei_sd.numel() > 0:
+            for s, d in zip(
+                ei_sd[0].detach().cpu().numpy().astype(np.int64),
+                ei_sd[1].detach().cpu().numpy().astype(np.int64),
+            ):
+                if 0 <= int(d) < len(email_domain_map):
+                    s_to_dom[int(s)].add(email_domain_map[int(d)])
+        if ei_es is not None and ei_es.numel() > 0:
+            for e, s in zip(
+                ei_es[0].detach().cpu().numpy().astype(np.int64),
+                ei_es[1].detach().cpu().numpy().astype(np.int64),
+            ):
+                if 0 <= int(e) < n_email:
+                    out[int(e)].update(s_to_dom.get(int(s), set()))
+
+    return out
+
+
 def build_email_artifact_sets(
     data,
 ) -> dict[str, list[set[int]]]:
     """
     For each artifact node type T connected directly from `email`, build a list of sets:
     email_idx -> set of T node indices.
-    Special case `email_domain`: union of domains reachable via sender or receiver
-    (edges sender/receiver --from_domain--> email_domain).
+
+    ``email_domain`` is filled by direct ``email -> has_email_domain -> email_domain`` edges when
+    present. Legacy graphs without that edge still union sender/receiver ``from_domain`` paths below.
     """
     n_email = infer_num_nodes(data, "email")
     out: dict[str, list[set[int]]] = defaultdict(lambda: [set() for _ in range(n_email)])
@@ -293,24 +348,71 @@ def _ensure_repo_root_importable() -> Path:
     s = str(root)
     if s not in sys.path:
         sys.path.insert(0, s)
+    ensure_core_gnn_on_path(root)
     return root
+
+
+def _bare_hostname(host: str) -> str:
+    h = (host or "").strip().lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def classify_url_for_popular_filter(
+    url: str,
+    popular_domains: frozenset[str],
+    *,
+    match_mode: str = "exact_bare_host",
+) -> tuple[str, str]:
+    """
+    Classify a URL for popular-domain filtering (seed/candidate + shard graphs).
+
+    Mirrors ``core.graph.assembler._is_popular_url_exact_host``:
+
+    - ``malformed``: no recoverable hostname
+    - ``benign``:
+      - ``exact_bare_host``: bare hostname (``www.`` stripped) exactly in ``popular_domains``
+      - ``registrable_domain``: registrable domain (eTLD+1) in ``popular_domains``
+    - ``kept``: everything else
+
+    Returns ``(kind, label)`` where ``label`` is the bare hostname for benign hits,
+    else registrable domain or hostname when kept.
+    """
+    _ensure_repo_root_importable()
+    from core.feature_set_extraction.url_extraction_utils import (
+        parse_url_host_and_registrable_domain,
+    )
+
+    host, reg, ok = parse_url_host_and_registrable_domain("" if url is None else str(url).strip())
+    if not ok:
+        return "malformed", ""
+    mode = str(match_mode or "exact_bare_host").strip().lower()
+    bare = _bare_hostname(host)
+    if mode == "registrable_domain":
+        if popular_domains and reg and reg in popular_domains:
+            return "benign", reg
+    else:
+        if popular_domains and bare in popular_domains:
+            return "benign", bare
+    return "kept", reg or bare or host
 
 
 def url_matches_popular_domain(url_string: str, popular_domains: frozenset[str]) -> tuple[bool, str]:
     """
-    True if the URL's registrable domain (eTLD+1 via tldextract) is listed in ``popular_domains``.
+    True if the URL's bare hostname (``www.`` stripped) is exactly in ``popular_domains``.
 
-    Uses the same robust parsing as ``shard_url_infra_classify`` (no crash on noisy URLs).
+    Subdomain URLs (e.g. ``groups.google.com``) are not matched when only ``google.com``
+    is listed. Uses ``parse_url_host_and_registrable_domain`` (no crash on noisy URLs).
     """
     if not url_string or not popular_domains:
         return False, ""
-    _ensure_repo_root_importable()
-    from core.feature_set_extraction.url_extraction_utils import shard_url_infra_classify
-
-    kind, reg = shard_url_infra_classify(str(url_string).strip(), popular_domains)
+    kind, label = classify_url_for_popular_filter(
+        str(url_string).strip(),
+        popular_domains,
+        match_mode="exact_bare_host",
+    )
     if kind == "benign":
-        return True, reg
-    return False, reg or ""
+        return True, label
+    return False, label
 
 
 def node_index_to_strings(meta: dict[str, Any], node_type: str) -> list[str]:
@@ -373,7 +475,9 @@ def stem_strings_for_url(
     from core.preprocessing.utils.url_extractor import parse_url_components
 
     fb = (parse_url_components(str(url_str).strip()).get("stem") or "").strip()
-    return [fb] if fb else []
+    if not fb or fb == "/":
+        return []
+    return [fb]
 
 
 def domain_strings_for_url(
@@ -406,16 +510,21 @@ def build_email_url_derived_infra_sets(
     *,
     popular_domains: frozenset[str],
     popular_domains_source: str | Path | None = None,
+    popular_domain_match_mode: str = "exact_bare_host",
 ) -> tuple[list[set[str]], list[set[str]], list[set[str]], dict[str, Any]]:
     """
     Per-email ``url_set``, ``domain_set``, and ``stem_set`` using only **url nodes**:
     ``email -> url -> {domain, stem}``.
 
-    URLs whose registrable domain matches ``popular_domains`` are **skipped** entirely (no URL,
-    domain, or stem from that URL contributes). Uses robust host parsing in
-    ``url_extraction_utils.parse_url_host_and_registrable_domain`` (denoise + safe urlparse +
-    fallback; never raises). URLs that still have **no recoverable hostname** are **skipped**
-    (malformed) and counted in diagnostics — not included as benign or kept.
+    URL filtering mode is controlled by ``popular_domain_match_mode``:
+    - ``exact_bare_host`` (default): benign when bare hostname (``www.`` stripped) exactly
+      matches an entry in ``popular_domains``.
+    - ``registrable_domain``: benign when registrable domain (eTLD+1) is in
+      ``popular_domains`` (legacy/coarse behavior).
+
+    Benign URLs are skipped entirely (no URL, domain, or stem contributes). Uses
+    ``parse_url_host_and_registrable_domain`` (denoise + safe urlparse + fallback; never
+    raises). URLs with **no recoverable hostname** are skipped as malformed.
 
     Returns:
         url_sets, domain_sets, stem_sets (each length = n_email), and a diagnostics dict.
@@ -440,18 +549,36 @@ def build_email_url_derived_infra_sets(
     benign_url_nodes: set[int] = set()
     malformed_url_nodes: set[int] = set()
     benign_hits: Counter[str] = Counter()
-    _ensure_repo_root_importable()
-    from core.feature_set_extraction.url_extraction_utils import shard_url_infra_classify
+    benign_url_nodes_exact: set[int] = set()
+    benign_url_nodes_reg: set[int] = set()
 
     for u in all_url_nodes:
         u_str = url_map[int(u)] if 0 <= int(u) < len(url_map) else ""
-        kind, reg = shard_url_infra_classify(u_str, popular_domains)
+        kind, hit = classify_url_for_popular_filter(
+            u_str,
+            popular_domains,
+            match_mode=popular_domain_match_mode,
+        )
         if kind == "benign":
             benign_url_nodes.add(int(u))
-            if reg:
-                benign_hits[reg] += 1
+            if hit:
+                benign_hits[hit] += 1
         elif kind == "malformed":
             malformed_url_nodes.add(int(u))
+        k_exact, _ = classify_url_for_popular_filter(
+            u_str,
+            popular_domains,
+            match_mode="exact_bare_host",
+        )
+        if k_exact == "benign":
+            benign_url_nodes_exact.add(int(u))
+        k_reg, _ = classify_url_for_popular_filter(
+            u_str,
+            popular_domains,
+            match_mode="registrable_domain",
+        )
+        if k_reg == "benign":
+            benign_url_nodes_reg.add(int(u))
 
     url_sets = [set() for _ in range(n_email)]
     domain_sets = [set() for _ in range(n_email)]
@@ -506,6 +633,7 @@ def build_email_url_derived_infra_sets(
         if popular_domains_source
         else "",
         "n_popular_domains_loaded": len(popular_domains),
+        "popular_domain_match_mode": str(popular_domain_match_mode),
         "n_emails": int(n_email),
         "n_distinct_url_nodes_reachable_from_emails": len(all_url_nodes),
         "n_distinct_url_nodes_flagged_benign_popular": len(benign_url_nodes),
@@ -517,7 +645,12 @@ def build_email_url_derived_infra_sets(
         "n_email_url_pairs_used": int(pairs_total - pairs_benign - pairs_malformed),
         "n_unique_domain_strings_only_from_benign_urls": len(doms_from_benign_urls - doms_from_kept_urls),
         "n_unique_stem_strings_only_from_benign_urls": len(stems_from_benign_urls - stems_from_kept_urls),
-        "top_registrable_domains_among_benign_urls": benign_hits.most_common(15),
+        "top_bare_hostnames_among_benign_urls": benign_hits.most_common(15),
+        "n_distinct_url_nodes_flagged_benign_exact_bare_host": len(benign_url_nodes_exact),
+        "n_distinct_url_nodes_flagged_benign_registrable_domain": len(benign_url_nodes_reg),
+        "n_distinct_url_nodes_additional_benign_registrable_vs_exact": len(
+            benign_url_nodes_reg - benign_url_nodes_exact
+        ),
     }
 
     return url_sets, domain_sets, stem_sets, diag
@@ -680,7 +813,6 @@ def artifact_bridge_stats(
             "pairs_per_artifact_node": float("nan"),
             "pairs_per_multiemail_artifact": float("nan"),
         }
-    # invert: artifact_idx -> set of emails
     inv: dict[int, set[int]] = defaultdict(set)
     buckets = email_sets[artifact_type]
     for eid, arts in enumerate(buckets):
@@ -690,7 +822,6 @@ def artifact_bridge_stats(
         sizes = []
     else:
         sizes = [len(s) for s in inv.values()]
-    # distinct unordered email pairs sharing at least one artifact
     pair_set: set[tuple[int, int]] = set()
     sum_choose2 = 0
     for _a, emails in inv.items():
@@ -902,7 +1033,6 @@ def stem_url_analysis(
         out["mean_urls_per_stem"] = float("nan")
         out["median_urls_per_stem"] = float("nan")
 
-    # stem -> domains via emails
     stem_to_domains: dict[int, set[int]] = defaultdict(set)
     if ("email", "has_stem", "stem") in data.edge_types and (
         "email", "has_domain", "domain"

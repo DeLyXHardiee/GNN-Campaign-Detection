@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import hashlib
 import math
 
-# --- Optional robust HTML backends (prefer lxml, then BeautifulSoup) ---
 try:
     from lxml import html as lxml_html
 
@@ -36,22 +35,15 @@ except ImportError:
     _BS4_AVAILABLE = False
     BeautifulSoup = None  # type: ignore[misc, assignment]
 
-# --- Lightweight regexes ---
 _HEX_COLOR_RE = re.compile(r"(?i)#(?:[0-9a-f]{3}|[0-9a-f]{6})\b")
 _CLASS_SELECTOR_RE = re.compile(r"\.([_a-zA-Z][-_a-zA-Z0-9]*)")
 
-# SGML-style marked sections (e.g. <![[if ...]]>) cause stdlib HTMLParser to raise
-# "unknown status keyword 'e' in marked section". Strip them before parsing.
 _MARKED_SECTION_RE = re.compile(r"<!\[\[.*?\]\]>", re.DOTALL | re.IGNORECASE)
 
-# Optional: strip other known-bad declaration-like fragments that can confuse parsers
-# (Outlook conditional comments already look like comments; we only strip <![[ ]]> here
-# to avoid removing useful structure.)
 _FINGERPRINT_EXCLUDED_TAGS = {"script", "style"}
 
 _LOG = logging.getLogger(__name__)
 
-# Snippet length for error logs (avoid dumping huge bodies)
 _HTML_SNIPPET_LEN = 500
 
 
@@ -161,7 +153,6 @@ def _counts_and_edges_from_lxml(
     }
 
     def walk(element: Any, parent_tag: Optional[str], depth: int) -> None:
-        # lxml: element.tag can be a Cython function for Comment/PI nodes, not a string
         raw_tag = getattr(element, "tag", None)
         if not isinstance(raw_tag, str):
             for child in element:
@@ -409,7 +400,6 @@ def parse_html_fast(
             return _parse_with_lxml(sanitized)
         if _BS4_AVAILABLE:
             return _parse_with_bs4(sanitized)
-        # No robust backend installed: return empty and log once so user can install lxml/beautifulsoup4
         _LOG.warning(
             "HTML parsing skipped: neither lxml nor beautifulsoup4 available. "
             "Install lxml (pip install lxml) or beautifulsoup4 (pip install beautifulsoup4) for robust parsing."

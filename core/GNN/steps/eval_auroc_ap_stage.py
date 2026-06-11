@@ -47,7 +47,6 @@ def run_auroc_ap_stage(
         output_dir=out,
     )
 
-    # Keep a minimal record of what we ran.
     (out / "eval_config.json").write_text(
         json.dumps(
             {

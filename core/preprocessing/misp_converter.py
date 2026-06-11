@@ -14,7 +14,6 @@ _LOG = logging.getLogger(__name__)
 
 def _clean_text(value: Any) -> str:
     text = "" if value is None else str(value)
-    # Replace invalid Unicode surrogate code points to avoid JSON encoding failures.
     return text.encode("utf-8", errors="replace").decode("utf-8").strip()
 
 
@@ -142,7 +141,6 @@ def write_misp_events_securely(misp_events: List[Dict[str, Any]], output_path: s
         try:
             os.chmod(destination, 0o600)
         except Exception:
-            # Best effort; permission models vary across operating systems.
             pass
     finally:
         if temp_path and os.path.exists(temp_path):

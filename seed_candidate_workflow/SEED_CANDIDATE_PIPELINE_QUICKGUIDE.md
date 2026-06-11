@@ -12,6 +12,8 @@ Use only this command pattern:
 
 `python seed_candidate_workflow/pipelines/run_experiment.py --config seed_candidate_workflow/configs/experiments/<config>.json`
 
+**Current best B2 (1:2 pos:unl, no Jaccard/body pair features):** see [`docs/BEST_B2_1TO2_WORKFLOW.md`](docs/BEST_B2_1TO2_WORKFLOW.md) and `exp.best_b2_1to2_*.json` under `configs/experiments/`.
+
 ## Mental model (2 phases)
 
 - graph setup writes/reuses artifacts in `seed_candidate_workflow/output/graph_bundles/<graph_id>/`

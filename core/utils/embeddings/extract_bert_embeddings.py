@@ -61,7 +61,7 @@ def extract_embeddings_from_graph(graph_path: str | Path) -> tuple[list[list[flo
     resolved = Path(graph_path).expanduser().resolve()
     if resolved.suffix.lower() not in _GRAPH_EXTS:
         raise ValueError(f"Unsupported graph extension: {resolved}")
-    graph = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    graph = torch.load(                                                                       
         str(resolved), map_location="cpu", weights_only=True
     )
     if _EMAIL_NODE_TYPE not in getattr(graph, "node_types", []):

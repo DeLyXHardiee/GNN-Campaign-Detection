@@ -32,7 +32,6 @@ from seed_candidate_workflow.utils.semantic_shard_edge_refinement_method1 import
 )
 
 
-# Fair low grid for refined weights (optional high tail for sanity)
 THRESH_V1_REFINED_LOW: list[float] = [
     0.02,
     0.05,
@@ -83,21 +82,18 @@ def v1_final_variant_definitions() -> list[dict[str, Any]]:
             }
         )
 
-    # Group 1 — softened multiplicative
     add(variant_id_softened(0.2, 1.0), "V1_soft_f0.2_g1.0", {"blend_rule": "softened", "blend_floor": 0.2, "trust_gamma": 1.0})
     add(variant_id_softened(0.4, 1.0), "V1_soft_f0.4_g1.0", {"blend_rule": "softened", "blend_floor": 0.4, "trust_gamma": 1.0})
     add(variant_id_softened(0.6, 1.0), "V1_soft_f0.6_g1.0", {"blend_rule": "softened", "blend_floor": 0.6, "trust_gamma": 1.0})
     add(variant_id_softened(0.4, 0.75), "V1_soft_f0.4_g0.75", {"blend_rule": "softened", "blend_floor": 0.4, "trust_gamma": 0.75})
     add(variant_id_softened(0.4, 0.5), "V1_soft_f0.4_g0.5", {"blend_rule": "softened", "blend_floor": 0.4, "trust_gamma": 0.5})
 
-    # Group 2 — convex combination
     add(variant_id_convex(0.25, 1.0), "V1_convex_a0.25_g1.0", {"blend_rule": "convex", "convex_alpha": 0.25, "trust_gamma": 1.0})
     add(variant_id_convex(0.5, 1.0), "V1_convex_a0.5_g1.0", {"blend_rule": "convex", "convex_alpha": 0.5, "trust_gamma": 1.0})
     add(variant_id_convex(0.75, 1.0), "V1_convex_a0.75_g1.0", {"blend_rule": "convex", "convex_alpha": 0.75, "trust_gamma": 1.0})
     add(variant_id_convex(0.5, 0.75), "V1_convex_a0.5_g0.75", {"blend_rule": "convex", "convex_alpha": 0.5, "trust_gamma": 0.75})
     add(variant_id_convex(0.5, 0.5), "V1_convex_a0.5_g0.5", {"blend_rule": "convex", "convex_alpha": 0.5, "trust_gamma": 0.5})
 
-    # Group 3 — multiplicative reference
     add(variant_id_multiplicative(1.0), "V1_mult_g1.0", {"blend_rule": "multiplicative", "trust_gamma": 1.0})
     add(variant_id_multiplicative(0.75), "V1_mult_g0.75", {"blend_rule": "multiplicative", "trust_gamma": 0.75})
     add(variant_id_multiplicative(0.5), "V1_mult_g0.5", {"blend_rule": "multiplicative", "trust_gamma": 0.5})

@@ -104,7 +104,6 @@ def cluster_semantic_shards_hdbscan(
         labels = cl.fit_predict(x)
         method = "hdbscan"
     except Exception:
-        # Conservative fallback: hierarchical cosine clustering then mark tiny clusters as noise.
         from sklearn.cluster import AgglomerativeClustering
 
         cl = AgglomerativeClustering(
@@ -216,7 +215,6 @@ def shard_quality_tables(
         "n_non_singleton_shards": int((shard_df["size"] >= 2).sum()),
         "mean_within_cos_non_singleton": float(shard_df.loc[shard_df["size"] >= 2, "within_cos_mean"].mean()),
         "median_within_cos_non_singleton": float(shard_df.loc[shard_df["size"] >= 2, "within_cos_median"].median()),
-        # NOTE: this denominator is ALL shards (including shards with no GT-covered members).
         "frac_shards_pure_ge_0.90": float((shard_df["dominant_campaign_fraction"] >= 0.90).mean()),
         "frac_shards_pure_ge_0.95": float((shard_df["dominant_campaign_fraction"] >= 0.95).mean()),
         "frac_shards_mixed_gt_gt2_campaigns": float((shard_df["n_gt_campaigns_touched"] >= 2).mean()),

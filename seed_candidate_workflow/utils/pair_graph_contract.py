@@ -18,7 +18,6 @@ GRAPH_KIND_ALL: tuple[str, ...] = (
     GRAPH_KIND_SEMANTIC_SHARD,
 )
 
-# Legacy unscored PairGraph CSV column (pre-migration). Read paths normalize to ``graph_id``.
 LEGACY_GRAPH_ID_COLUMN = "graph_run_id"
 
 REQUIRED_UNSCORED_COLUMNS: tuple[str, ...] = (
@@ -115,7 +114,11 @@ def validate_graph_kind(graph_kind: str) -> str:
 def validate_score_mode_target_compatibility(*, score_mode: str, graph_kind: str) -> None:
     mode = str(score_mode).strip().lower()
     kind = validate_graph_kind(graph_kind)
-    if mode in {"seed_candidate_handcrafted_v1", "seed_candidate_pu_v1"} and kind != GRAPH_KIND_SEED_CANDIDATE:
+    if mode in {
+        "seed_candidate_handcrafted_v1",
+        "seed_candidate_pu_v1",
+        "seed_candidate_edge_gnn_v1",
+    } and kind != GRAPH_KIND_SEED_CANDIDATE:
         raise ValueError(
             f"score_mode {mode!r} supports only graph_kind={GRAPH_KIND_SEED_CANDIDATE!r}, got {kind!r}"
         )

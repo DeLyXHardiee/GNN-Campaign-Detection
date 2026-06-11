@@ -14,11 +14,13 @@ import pandas as pd
 from seed_candidate_workflow.utils import community_eval_contract as cec
 from seed_candidate_workflow.utils import community_sweep_driver as csd
 from seed_candidate_workflow.utils import graph_structure_helpers as gh
+from seed_candidate_workflow.utils import semantic_supernode_gt_metrics as ssgt
 from seed_candidate_workflow.utils.config_run_fields import resolve_graph_id
 from seed_candidate_workflow.utils import raw_gnn_notebook as rn
 from seed_candidate_workflow.utils.graph_scorer_registry import apply_scorer
 from seed_candidate_workflow.utils.anchor_candidate_rare_artifact_helpers import _resolve_latest_seed_dir
 from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts
+from seed_candidate_workflow.utils.pair_score_separation_output_layout import path_for_write
 
 try:
     from tqdm.auto import tqdm
@@ -88,6 +90,38 @@ def _load_anchor_run(
     return run_dir, nodes_df, edges_df, summary
 
 
+def _count_undirected_edges(edges_df: pd.DataFrame) -> int:
+    if edges_df.empty:
+        return 0
+    pairs: set[tuple[str, str]] = set()
+    for _, r in edges_df.iterrows():
+        a, b = str(r["email_a"]), str(r["email_b"])
+        if a == b:
+            continue
+        pairs.add((a, b) if a < b else (b, a))
+    return len(pairs)
+
+
+def _connected_components_before_partition(
+    *,
+    node_ids: list[str],
+    edges_df: pd.DataFrame,
+    weight_col: str,
+    min_edge_weight: float,
+    use_edge_weights_in_partitioning: bool,
+    apply_threshold_filter: bool,
+) -> int:
+    g = _build_weighted_email_graph(
+        node_ids=node_ids,
+        edges_df=edges_df,
+        weight_col=weight_col,
+        min_edge_weight=min_edge_weight,
+        use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+        apply_threshold_filter=apply_threshold_filter,
+    )
+    return int(nx.number_connected_components(g))
+
+
 def _build_weighted_email_graph(
     *,
     node_ids: list[str],
@@ -113,7 +147,6 @@ def _build_weighted_email_graph(
             continue
         w = float(r[weight_col]) if use_edge_weights_in_partitioning else 1.0
         if g.has_edge(a, b):
-            # deterministic and conservative: keep max weight if duplicates appear.
             g[a][b]["weight"] = max(float(g[a][b]["weight"]), w)
         else:
             g.add_edge(a, b, weight=w)
@@ -295,6 +328,7 @@ def _run_sweep_communities_once(
     seed: int,
     use_edge_weights_in_partitioning: bool = True,
     apply_threshold_filter: bool = True,
+    n_edges_before_threshold: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Run community detection once per (method, threshold, resolution).
@@ -306,8 +340,17 @@ def _run_sweep_communities_once(
             for r in resolutions:
                 combos.append((str(m), float(w), float(r)))
     iterator = tqdm(combos, desc="sweep settings") if (tqdm is not None) else combos
+    n_before = int(n_edges_before_threshold) if n_edges_before_threshold is not None else _count_undirected_edges(edges_df)
     out: list[dict[str, Any]] = []
     for method, w, r in iterator:
+        n_components = _connected_components_before_partition(
+            node_ids=node_ids,
+            edges_df=edges_df,
+            weight_col=weight_col,
+            min_edge_weight=float(w),
+            use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
+            apply_threshold_filter=apply_threshold_filter,
+        )
         email_to_comm, info = run_weighted_email_community_detection(
             node_ids=node_ids,
             edges_df=edges_df,
@@ -327,7 +370,9 @@ def _run_sweep_communities_once(
                 "use_edge_weights_in_partitioning": bool(use_edge_weights_in_partitioning),
                 "resolution": float(r),
                 "min_edge_weight": float(w),
+                "n_edges_before_threshold": float(n_before),
                 "n_edges_after_threshold": float(info["n_edges_after_threshold"]),
+                "n_connected_components_before_partition": float(n_components),
                 "n_communities": float(info["n_communities"]),
                 "_pred_map": pred_map,
             }
@@ -340,11 +385,17 @@ def _metrics_for_gt(
     gt_label_map: dict[str, Any],
     *,
     sort_by: str,
+    gid_to_members: dict[str, list[str]] | None,
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for part in sweep_partitions:
         pred_map = part["_pred_map"]
-        m = evaluate_external_metrics(pred_map=pred_map, gt_label_map=gt_label_map)
+        pred_for_gt = (
+            ssgt.expand_pred_map_for_gt_eval(pred_map, gid_to_members)
+            if gid_to_members
+            else pred_map
+        )
+        m = evaluate_external_metrics(pred_map=pred_for_gt, gt_label_map=gt_label_map)
         rows.append(
             {
                 "method": part["method"],
@@ -354,7 +405,11 @@ def _metrics_for_gt(
                 ),
                 "resolution": part["resolution"],
                 "min_edge_weight": part["min_edge_weight"],
+                "n_edges_before_threshold": part.get("n_edges_before_threshold"),
                 "n_edges_after_threshold": part["n_edges_after_threshold"],
+                "n_connected_components_before_partition": part.get(
+                    "n_connected_components_before_partition"
+                ),
                 "n_communities": part["n_communities"],
                 "n_eval": m["n_eval"],
                 "coverage_gt": m["coverage_gt"],
@@ -408,7 +463,6 @@ def _validate_output_contract(df: pd.DataFrame, *, sort_by: str) -> None:
             float(pd.to_numeric(df.iloc[i][c], errors="coerce"))
             for c in cols
         )
-        # Descending: each row must be >= the next (best row first).
         if prev_key is not None and prev_key < key:
             raise AssertionError(
                 f"Per-GT sweep CSV must be lexicographically descending by {cols}; "
@@ -476,7 +530,6 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             graph_id=graph_id,
             anchor_output_root=anchor_output_root,
         )
-        # Anchor-run loaded edges are unscored by default after refactor.
         if "email_i" not in edges_df.columns or "email_j" not in edges_df.columns:
             if "email_a" in edges_df.columns and "email_b" in edges_df.columns:
                 edges_df["email_i"] = edges_df["email_a"].astype(str)
@@ -484,8 +537,28 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             else:
                 raise ValueError("Anchor edge table must contain email_i/email_j.")
 
+    edge_gnn_scoring_meta: dict[str, Any] | None = None
+    baseline_uniform_meta: dict[str, Any] | None = None
     if use_scoring:
-        if use_pre_scored_edges:
+        if score_mode_raw == "baseline_uniform_v1":
+            edges_df = edges_df.copy()
+            edges_df["edge_weight"] = 1.0
+            if "from_seed" in edges_df.columns:
+                n_seed = int(pd.to_numeric(edges_df["from_seed"], errors="coerce").fillna(0).astype(bool).sum())
+            else:
+                n_seed = None
+            baseline_uniform_meta = {
+                "score_mode": "baseline_uniform_v1",
+                "edge_weight_rule": "all_edges_weight_1.0",
+                "n_edges_input": int(len(edges_df)),
+                "n_seed_edges_flagged": n_seed,
+                "threshold_note": (
+                    "min_edge_weight filters edges with edge_weight >= threshold; "
+                    "with uniform weight 1.0, thresholds in [0.0, 1.0] retain all edges."
+                ),
+            }
+            scored_df = edges_df.copy()
+        elif use_pre_scored_edges:
             if "edge_weight" not in edges_df.columns:
                 raise ValueError(
                     "sweep.score_mode='pre_scored' requires custom edges with edge_weight."
@@ -532,7 +605,7 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                 diagnostics_cfg=diagnostics_cfg,
             )
             scored_df = sr.scored_all
-        elif score_mode_raw == "seed_candidate_pu_v1":
+        elif score_mode_raw in {"seed_candidate_pu_v1", "seed_candidate_edge_gnn_v1"}:
             sr = apply_scorer(
                 score_mode=score_mode_raw,
                 graph_kind="seed_candidate",
@@ -541,6 +614,9 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
                 diagnostics_cfg=diagnostics_cfg,
             )
             scored_df = sr.scored_all
+            edge_gnn_scoring = (sr.metadata or {}).get("edge_gnn_scoring")
+            if edge_gnn_scoring is not None:
+                diagnostics_cfg = {**diagnostics_cfg, "edge_gnn_scoring": edge_gnn_scoring}
         else:
             raise ValueError(f"Unsupported score_mode for community sweep: {score_mode_raw}")
         edges_df = scored_df.copy()
@@ -549,7 +625,6 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         edges_df["email_a"] = edges_df["email_i"]
         edges_df["email_b"] = edges_df["email_j"]
     else:
-        # Unweighted Option A: topology-only community detection.
         edges_df = edges_df.copy()
         edges_df["email_i"] = edges_df["email_i"].astype(str)
         edges_df["email_j"] = edges_df["email_j"].astype(str)
@@ -558,6 +633,26 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         if "edge_weight" in edges_df.columns:
             edges_df = edges_df.drop(columns=["edge_weight"])
     node_ids = [str(x) for x in nodes_df["external_id"].astype(str).tolist()]
+
+    gid_to_members, mapping_path, mapping_source = ssgt.resolve_gid_to_members_for_gt_eval(
+        project_root,
+        member_expansion_mapping_json=str(run_cfg.get("member_expansion_mapping_json") or "").strip() or None,
+        semantic_supernode_mapping_json=str(run_cfg.get("semantic_supernode_mapping_json") or "").strip() or None,
+        dedup_collapse_out_dir=str(run_cfg.get("dedup_collapse_out_dir") or "").strip() or None,
+    )
+    if mapping_path is not None and gid_to_members is None:
+        if mapping_source == "dedup_collapse_out_dir":
+            warnings.warn(
+                f"dedup_collapse_out_dir not found or empty (GT metrics will use graph nodes only): {mapping_path}",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                f"{mapping_source} not found or empty (GT metrics will use graph nodes only): {mapping_path}",
+                UserWarning,
+                stacklevel=2,
+            )
 
     methods = [str(x).strip().lower() for x in (sweep_cfg.get("methods") or ["louvain", "leiden"]) if str(x).strip()]
     weight_thresholds = [float(x) for x in (sweep_cfg.get("weight_thresholds") or [0.0])]
@@ -621,7 +716,14 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         else:
             out_dir = out_root / graph_id / f"{stage_name}_{stamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
+    if edge_gnn_scoring_meta is not None:
+        p_edge = out_dir / "edge_gnn_scoring.json"
+        p_edge.write_text(
+            json.dumps(edge_gnn_scoring_meta, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
+    n_edges_before_threshold = _count_undirected_edges(edges_df)
     sweep_partitions = _run_sweep_communities_once(
         node_ids=node_ids,
         edges_df=edges_df,
@@ -632,12 +734,18 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         seed=seed,
         use_edge_weights_in_partitioning=use_edge_weights_in_partitioning,
         apply_threshold_filter=apply_threshold_filter,
+        n_edges_before_threshold=n_edges_before_threshold,
     )
     n_graph_nodes = len(node_ids)
 
     def _per_gt(gt_path: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
         gt_label_map, _eid_row, _campaign_to_members = rn.load_ground_truth_structures(gt_path)
-        sweep_df = _metrics_for_gt(sweep_partitions, gt_label_map, sort_by=sort_by)
+        sweep_df = _metrics_for_gt(
+            sweep_partitions,
+            gt_label_map,
+            sort_by=sort_by,
+            gid_to_members=gid_to_members,
+        )
         best = _best_row(sweep_df, metric=sort_by)
         return sweep_df, {"gt_label_map": gt_label_map, "best_row": best}
 
@@ -649,10 +757,14 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         if not sweep_df.empty:
             _validate_output_contract(sweep_df, sort_by=sort_by)
         p_csv = out_dir / f"anchor_community_sweep__{gt_slug}.csv"
-        sweep_df.to_csv(p_csv, index=False)
+        sweep_df.to_csv(path_for_write(p_csv), index=False)
         gt_ids = {str(k) for k in gt_label_map.keys()}
-        graph_ids = {str(x) for x in node_ids}
-        n_intersection = len(gt_ids & graph_ids)
+        if gid_to_members:
+            graph_member_ids = ssgt.member_emails_represented_by_graph_nodes(node_ids, gid_to_members)
+        else:
+            graph_member_ids = {str(x) for x in node_ids}
+        n_intersection = len(gt_ids & graph_member_ids)
+        denom_cover = len(graph_member_ids) if gid_to_members else n_graph_nodes
         best_payload = {
             "graph_id": graph_id,
             "anchor_run_dir": str(run_dir),
@@ -662,12 +774,23 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             "n_graph_nodes": n_graph_nodes,
             "n_gt_labeled_emails": len(gt_label_map),
             "n_gt_ids_in_graph": n_intersection,
-            "labeled_in_graph_fraction": float(n_intersection / max(1, n_graph_nodes)),
+            "labeled_in_graph_fraction": float(n_intersection / max(1, denom_cover)),
+            "gt_metrics_use_member_expansion": bool(gid_to_members),
+            "gt_metrics_use_semantic_supernode_member_expansion": bool(gid_to_members),
+            "member_expansion_source": mapping_source if gid_to_members else None,
+            "member_expansion_mapping_path": str(mapping_path) if mapping_path and gid_to_members else None,
+            "semantic_supernode_mapping_json": (
+                str(mapping_path)
+                if mapping_path and gid_to_members and mapping_source == "semantic_supernode_mapping_json"
+                else None
+            ),
+            "n_distinct_member_emails_represented_by_graph": len(graph_member_ids),
             "sort_by": sort_by,
             "best_row": best,
         }
         p_best = out_dir / f"anchor_community_best__{gt_slug}.json"
-        p_best.write_text(json.dumps(best_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        with open(path_for_write(p_best), "w", encoding="utf-8") as f:
+            f.write(json.dumps(best_payload, indent=2, ensure_ascii=False))
         return {
             "gt_path": str(gt_path),
             "gt_slug": gt_slug,
@@ -698,14 +821,36 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
         "methods": methods,
         "weight_thresholds": weight_thresholds,
         "weight_threshold_behavior": (
-            "active_threshold_filtering" if apply_threshold_filter else "disabled_in_unweighted_mode_option_a"
+            "active_threshold_filtering"
+            if apply_threshold_filter
+            else "disabled_in_unweighted_mode_option_a"
         ),
+        "n_edges_before_threshold": int(n_edges_before_threshold),
+        "baseline_uniform_meta": baseline_uniform_meta,
         "resolutions": resolutions,
         "weight_col": weight_col,
         "seed": seed,
         "sort_by": sort_by,
         "n_sweep_settings": len(sweep_partitions),
         "ground_truth_paths": [str(p) for p in gt_paths],
+
+        "gt_metric_email_expansion": {
+            "enabled": bool(gid_to_members),
+            "member_expansion_source": mapping_source if gid_to_members else None,
+            "member_expansion_mapping_path": str(mapping_path) if mapping_path else None,
+            "semantic_supernode_mapping_json": (
+                str(mapping_path)
+                if mapping_path and mapping_source == "semantic_supernode_mapping_json"
+                else None
+            ),
+            "n_anchor_graph_nodes": int(n_graph_nodes),
+            "n_distinct_member_emails_represented": (
+                len(ssgt.member_emails_represented_by_graph_nodes(node_ids, gid_to_members))
+                if gid_to_members
+                else int(n_graph_nodes)
+            ),
+        },
+
         "per_ground_truth_outputs": per_gt_outputs,
         "best_rows_by_gt": best_rows,
     }
@@ -715,11 +860,15 @@ def run_anchor_multi_gt_community_sweep(config: dict[str, Any]) -> dict[str, Any
             "score_mode": score_mode_raw,
             "diagnostics_cfg": diagnostics_cfg,
         }
+        if edge_gnn_scoring_meta is not None:
+            diag_payload["edge_gnn_scoring"] = edge_gnn_scoring_meta
         p_diag = out_dir / "scorer_diagnostics.json"
-        p_diag.write_text(json.dumps(diag_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        with open(path_for_write(p_diag), "w", encoding="utf-8") as f:
+            f.write(json.dumps(diag_payload, indent=2, ensure_ascii=False))
         summary["scorer_diagnostics_json"] = str(p_diag)
     p_summary = out_dir / "anchor_community_multi_gt_summary.json"
-    p_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    with open(path_for_write(p_summary), "w", encoding="utf-8") as f:
+        f.write(json.dumps(summary, indent=2, ensure_ascii=False))
     return {
         "output_dir": str(out_dir),
         "summary_json": str(p_summary),

@@ -22,7 +22,7 @@ from seed_candidate_workflow.utils.pair_training_dataset_helpers import build_pa
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def _resolve_path(project_root: Path, raw: str | Path) -> Path:
@@ -32,6 +32,36 @@ def _resolve_path(project_root: Path, raw: str | Path) -> Path:
     else:
         p = p.resolve()
     return p
+
+def _default_graph_meta_json_from_pipeline(project_root: Path) -> Path | None:
+    """
+    When experiment config omits setup.paths.pair_training.graph_meta_json,
+    use the hetero .meta.json alongside pipeline_config graph_pt_path_override /
+    default_hetero_graph_pt_path so pair training email indices stay aligned with the GNN graph.
+    """
+    try:
+        import sys
+
+        core_root = project_root / "core"
+        if str(core_root) not in sys.path:
+            sys.path.insert(0, str(core_root))
+        from config.pipeline_config import default_hetero_graph_pt_path
+
+        pt = Path(default_hetero_graph_pt_path(project_root=project_root))
+        meta = pt.with_suffix(".meta.json")
+        return meta.resolve()
+    except Exception:
+        return None
+
+
+def _reliable_negative_pool_from_pipeline(project_root: Path) -> dict[str, Any] | None:
+    """Load ``pair_training.reliable_negative_pool`` from repo-root ``pipeline_config.json``."""
+    p = (project_root / "pipeline_config.json").resolve()
+    if not p.is_file():
+        return None
+    cfg = _read_json(p)
+    pool = (cfg.get("pair_training") or {}).get("reliable_negative_pool")
+    return dict(pool) if isinstance(pool, dict) else None
 
 
 def _resolve_latest_stage_dir(stage_root: Path, stage_prefix: str) -> Path:
@@ -198,7 +228,6 @@ def _build_semantic_shard_pairgraph(
         _payload, id_to_semantic, _summary = ssh.load_transformer_cache(embeddings_json)
         if pbar is not None:
             pbar.update(1)
-        # Notebook parity: shard clustering should run on embeddings intersected with graph email IDs.
         graph_external_ids = set(gh.email_external_id_list(gh.load_meta(meta_json)))
         id_to_semantic = {eid: vec for eid, vec in id_to_semantic.items() if eid in graph_external_ids}
         if not id_to_semantic:
@@ -522,7 +551,6 @@ def run_graph_setup(
     need_seed = seed_enabled or need_candidate
     need_anchor = anchor_enabled or need_seed
 
-    # Anchor
     if not anchor_enabled:
         if not anchor_exists and need_anchor:
             raise FileNotFoundError("setup.enable.anchor=false but anchor artifact is missing")
@@ -543,7 +571,6 @@ def run_graph_setup(
         else:
             component_actions["anchor"] = "reused_existing"
 
-    # Seed
     if seed_enabled:
         bundle["seed_root"].mkdir(parents=True, exist_ok=True)
         seed_cfg = _read_json(seed_cfg_path)
@@ -575,7 +602,6 @@ def run_graph_setup(
         else:
             component_actions["seed"] = "skipped"
 
-    # Candidate
     if candidate_enabled:
         bundle["candidate_root"].mkdir(parents=True, exist_ok=True)
         candidate_cfg = _read_json(candidate_cfg_path)
@@ -625,7 +651,6 @@ def run_graph_setup(
         if not p_seed_all.is_file():
             raise FileNotFoundError(f"Missing seed_edges_all.csv: {p_seed_all}")
 
-    # Seed-candidate pairgraph
     seed_candidate_dir = bundle["seed_candidate_root"] / graph_id
     p_seed_candidate = seed_candidate_dir / "seed_candidate_pairgraph_unscored.csv"
     if seed_candidate_enabled:
@@ -644,16 +669,19 @@ def run_graph_setup(
             raise FileNotFoundError("setup.enable.seed_candidate=false but seed_candidate pairgraph is missing")
         component_actions["seed_candidate"] = "reused_existing" if p_seed_candidate.is_file() else "skipped"
 
-    # Pair training
     p_pair_training = bundle["pair_training_root"] / graph_id / "pair_training_dataset.csv"
     if pair_enabled:
         if p_pair_training.is_file() and on_present == "reuse":
             component_actions["pair_training"] = "reused_existing"
         else:
             p_graph_meta = pair_training_cfg.get("graph_meta_json")
-            graph_meta_path = _resolve_path(project_root, p_graph_meta) if p_graph_meta else None
+            if str(p_graph_meta or "").strip():
+                graph_meta_path = _resolve_path(project_root, p_graph_meta)
+            else:
+                graph_meta_path = _default_graph_meta_json_from_pipeline(project_root)
             pt_out_dir = bundle["pair_training_root"] / graph_id
             pt_out_dir.mkdir(parents=True, exist_ok=True)
+            rn_pool = _reliable_negative_pool_from_pipeline(project_root)
             outputs["pair_training"] = build_pair_training_dataset(
                 seed_edges_all_csv=p_seed_all,
                 candidate_union_csv=p_candidate_union,
@@ -661,6 +689,7 @@ def run_graph_setup(
                 graph_meta_json=graph_meta_path,
                 graph_id=graph_id,
                 project_root=project_root,
+                reliable_negative_pool=rn_pool,
             )
             component_actions["pair_training"] = "built"
     else:
@@ -668,7 +697,6 @@ def run_graph_setup(
             raise FileNotFoundError("setup.enable.pair_training=false but pair_training_dataset.csv is missing")
         component_actions["pair_training"] = "reused_existing" if p_pair_training.is_file() else "skipped"
 
-    # Semantic shard graph
     semantic_shard_enabled = bool(enable_cfg.get("semantic_shard", False))
     semantic_shard_dir = bundle["semantic_shard_root"] / graph_id
     p_sem_pair = semantic_shard_dir / "semantic_shard_pairgraph_unscored.csv"

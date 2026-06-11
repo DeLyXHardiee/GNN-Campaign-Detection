@@ -100,7 +100,6 @@ def _normalize_token_list(value):
         if not raw:
             return []
 
-        # Some pipelines store list-like content as JSON strings.
         if raw.startswith("[") and raw.endswith("]"):
             try:
                 parsed = json.loads(raw)
@@ -201,7 +200,6 @@ def remove_outliers_from_matrix(X, contamination=0.05, random_state=42):
     removed = int((~keep_mask).sum())
 
     if keep_mask.sum() == 0:
-        # Safety fallback: never drop all rows.
         keep_mask = np.ones(X.shape[0], dtype=bool)
         return X, keep_mask, 0
 
@@ -221,48 +219,36 @@ def preprocess_for_clustering(
     l2_normalize=True,
     sbert_model_name="intfloat/multilingual-e5-large",
     embeddings_output_dir=None,
-    #numeric_weight=1.0,
-    #text_weight=2.0,
-    #token_weight=2.0,
-    #dict_weight=2.0,
 ):
 
     if not records:
         raise ValueError("Empty records list")
-    
     if exclude_fields is None:
         exclude_fields = ["external_id"]
 
     if token_list_fields is None:
-        # Common URL list-like fields represented as token strings or arrays.
         token_list_fields = ['hostnames', 'domains']
 
     if dict_feature_fields is None:
-        # Structured sparse dictionaries produced by feature extraction.
         dict_feature_fields = ['subject_term_frequency']
-    
     sample_record = records[0]
     numeric_fields = []
     detected_text_fields = []
     detected_dict_fields = []
-    
     for key, value in sample_record.items():
         if key in exclude_fields:
             continue
-            
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             numeric_fields.append(key)
         elif isinstance(value, str) and len(value) > 0:
             detected_text_fields.append(key)
         elif isinstance(value, dict):
             detected_dict_fields.append(key)
-    
     if text_fields is None:
         text_fields = detected_text_fields
     else:
         text_fields = [f for f in text_fields if f in detected_text_fields]
 
-    # Route list-like/tokenized URL fields into dedicated processing.
     token_list_fields = [
         f for f in token_list_fields
         if f in sample_record and f not in exclude_fields
@@ -274,15 +260,10 @@ def preprocess_for_clustering(
     ]
     text_fields = [f for f in text_fields if f not in token_list_fields]
     text_fields = [f for f in text_fields if f not in dict_feature_fields]
-    
     print(f"Detected {len(numeric_fields)} numeric fields: {numeric_fields[:5]}...")
     print(f"Using {len(text_fields)} text fields: {text_fields}")
     print(f"Using {len(token_list_fields)} token-list fields: {token_list_fields}")
     print(f"Using {len(dict_feature_fields)} dict feature fields: {dict_feature_fields}")
-    #print(
-    #    "Block weights "
-    #    f"(numeric={numeric_weight}, text={text_weight}, token={token_weight}, dict={dict_weight})"
-    #)
 
     precomputed_sbert = {}
     if sbert_model_name == MODEL_NAME and any(f in text_fields for f in ("subject", "body")):
@@ -306,27 +287,22 @@ def preprocess_for_clustering(
         for fname in numeric_fields:
             features.append(float(record.get(fname, 0.0)))
         X_numeric.append(features)
-    
     X_numeric = np.asarray(X_numeric, dtype=np.float64)
 
-    # Sparse blocks until SVD: avoids dense (n × sum_features) TF-IDF materialization.
-    feature_parts_sparse = [_dense_block_to_csr(X_numeric)]# * float(numeric_weight)]
+    feature_parts_sparse = [_dense_block_to_csr(X_numeric)]                          
     feature_names = numeric_fields.copy()
-    
     for text_field in text_fields:
         texts = [str(record.get(text_field, '')) for record in records]
-        
         if all(len(t.strip()) == 0 for t in texts):
             print(f"  Skipping '{text_field}': all empty")
             continue
-        
         try:
             if text_field in {"subject", "body"}:
                 if text_field in precomputed_sbert:
                     X_text = precomputed_sbert[text_field]
                 else:
                     X_text = _encode_texts_with_sbert(texts, model_name=sbert_model_name)
-                feature_parts_sparse.append(_dense_block_to_csr(X_text))# * float(text_weight))
+                feature_parts_sparse.append(_dense_block_to_csr(X_text))                       
                 feature_names.extend([f"{text_field}_sbert_{i}" for i in range(X_text.shape[1])])
                 print(f"  {text_field}: extracted {X_text.shape[1]} SBERT features -> shape {X_text.shape}")
                 continue
@@ -341,7 +317,7 @@ def preprocess_for_clustering(
             X_text = tfidf.fit_transform(texts)
 
             if X_text.shape[1] > 0:
-                feature_parts_sparse.append(X_text.tocsr())# * float(text_weight))
+                feature_parts_sparse.append(X_text.tocsr())                       
                 feature_names.extend([f"{text_field}_tfidf_{i}" for i in range(X_text.shape[1])])
                 print(f"  {text_field}: extracted {X_text.shape[1]} TF-IDF features -> shape {X_text.shape}")
             else:
@@ -349,7 +325,6 @@ def preprocess_for_clustering(
         except Exception as e:
             print(f"  Error processing '{text_field}': {e}")
 
-    # Dedicated processing for token-list style fields (e.g., multiple hostnames per email).
     for token_field in token_list_fields:
         token_docs = [" ".join(_normalize_token_list(record.get(token_field, ""))) for record in records]
 
@@ -367,7 +342,7 @@ def preprocess_for_clustering(
             )
             X_tokens_sparse = vectorizer.fit_transform(token_docs)
             if X_tokens_sparse.shape[1] > 0:
-                feature_parts_sparse.append(X_tokens_sparse.tocsr())# * float(token_weight))
+                feature_parts_sparse.append(X_tokens_sparse.tocsr())                        
                 feature_names.extend(
                     [f"{token_field}_tfidf_{i}" for i in range(X_tokens_sparse.shape[1])]
                 )
@@ -377,7 +352,6 @@ def preprocess_for_clustering(
         except Exception as e:
             print(f"  Error processing token-list field '{token_field}': {e}")
 
-    # Dedicated processing for sparse dict features (e.g., subject_term_frequency).
     for dict_field in dict_feature_fields:
         dict_docs = [_normalize_numeric_dict(record.get(dict_field, {})) for record in records]
 
@@ -389,7 +363,7 @@ def preprocess_for_clustering(
             vectorizer = DictVectorizer(sparse=True)
             X_dict_sparse = vectorizer.fit_transform(dict_docs)
             if X_dict_sparse.shape[1] > 0:
-                feature_parts_sparse.append(X_dict_sparse.tocsr())# * float(dict_weight))
+                feature_parts_sparse.append(X_dict_sparse.tocsr())                       
                 feature_names.extend(
                     [f"{dict_field}_dict_{i}" for i in range(X_dict_sparse.shape[1])]
                 )
@@ -398,8 +372,6 @@ def preprocess_for_clustering(
                 print(f"  Skipping '{dict_field}': no features extracted")
         except Exception as e:
             print(f"  Error processing dict field '{dict_field}': {e}")
-    
-    # combine (CSR); TruncatedSVD uses sparse matmuls — much faster than dense SVD on wide TF-IDF.
     X = sparse_hstack(feature_parts_sparse, format="csr")
     '''
     print("feature_parts_sparse block shapes:")
@@ -409,7 +381,6 @@ def preprocess_for_clustering(
     print(f"feature_parts_sparse summary: {len(feature_parts_sparse)} blocks, total width {total_width}")
     print(f"Combined feature matrix before SVD: shape {X.shape}")
     '''
-    # Only does dimensionality reduction if it is larger than n components, doesnt project upwards
     if n_components is not None and n_components < X.shape[1]:
         print(f"Applying SVD dimensionality reduction: {X.shape[1]} -> {n_components} components")
         svd = TruncatedSVD(
@@ -418,9 +389,7 @@ def preprocess_for_clustering(
             algorithm="randomized",
         )
         X = svd.fit_transform(X)
-        
         feature_names = [f"svd_component_{i}" for i in range(n_components)]
-        
         explained_variance = svd.explained_variance_ratio_.sum()
         print(f"  Explained variance ratio: {explained_variance:.4f} ({explained_variance*100:.2f}%)")
         print(f"  Reduced to {X.shape[1]} features")
@@ -429,7 +398,6 @@ def preprocess_for_clustering(
 
     print(f"Applying scaler: {scaler_type}, l2_normalize={l2_normalize}")
     X = scale_and_normalize_matrix(X, scaler_type=scaler_type, l2_normalize=l2_normalize)
-    
     return X, feature_names
 
 
@@ -448,14 +416,11 @@ def record_cluster_id(record):
 
 
 def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="dbscan"):
-    # write cluster outputs to package-local `core/feature_set_extraction/output/fsclusters`
     package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     output_dir = os.path.join(package_dir, 'output', 'fsclusters')
     os.makedirs(output_dir, exist_ok=True)
-    
     input_base = os.path.splitext(os.path.basename(feature_set_path))[0]
     output_path = os.path.join(output_dir, f"{input_base}_{algorithm_name}_clusters.json")
-    
     record_lookup = {}
     for r in records:
         rid = record_cluster_id(r)
@@ -494,10 +459,8 @@ def save_clusters_to_json(clusters, records, feature_set_path, algorithm_name="d
                     cluster_data["clusters"][cluster_name]["emails"].append(
                         email_record
                     )
-    
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(sanitize_for_json(cluster_data), f, indent=2, ensure_ascii=False)
-    
     print(f"Saved cluster results to: {output_path}")
     return output_path
 

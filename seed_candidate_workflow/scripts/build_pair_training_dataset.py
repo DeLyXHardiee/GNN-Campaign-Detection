@@ -60,6 +60,12 @@ def main() -> None:
         default=None,
         help="Optional pipeline_config.json; uses pair_training.reliable_negative_pool when present.",
     )
+    p.add_argument(
+        "--misp-json-path",
+        type=Path,
+        default=None,
+        help="Optional override for MISP JSON used for subject/body text-similarity features.",
+    )
     p.add_argument("--no-parquet", action="store_true", help="Skip writing Parquet.")
     p.add_argument("--no-rejects", action="store_true", help="Skip writing rejects CSV.")
     args = p.parse_args()
@@ -79,6 +85,7 @@ def main() -> None:
         write_parquet=not args.no_parquet,
         write_rejects_csv=not args.no_rejects,
         project_root=args.project_root.expanduser().resolve() if args.project_root else None,
+        misp_json_path=args.misp_json_path.expanduser().resolve() if args.misp_json_path else None,
         reliable_negative_pool=rn_pool,
     )
     print(json.dumps({k: v for k, v in out.items() if k != "summary"}, indent=2))

@@ -130,19 +130,15 @@ FS6_OMIT_KEYS = frozenset([
 FS7_FEATURE_TYPES = ["subject", "body", "origin", "urls"]
 FS7_OMIT_KEYS = frozenset(["body"])
 
-# FSOLS: Top OLS features extracted directly from event HTML/CSS/URL attrs.
 FSOLS_FEATURE_TYPES = ["body", "urls"]
 FSOLS_OMIT_KEYS = frozenset([
-    # Text features (not included per OLS analysis)
     "body_word_count",
     "num_lines",
     "avg_word_length",
     "greeting",
     "body",
     "bow",
-    # LSA topics (not in top 20)
     *LSA_TOPIC_KEYS,
-    # HTML features not in top 20
     "has_html_tags",
     "has_images",
     "has_script",
@@ -151,9 +147,7 @@ FSOLS_OMIT_KEYS = frozenset([
     "num_images",
     "num_urls_in_body",
     "has_urls_in_body",
-    # CSS features not in top 20
     "css_primary_color",
-    # Other URL/domain features not in top 20
     "num_distinct_domains",
     "num_blacklisted",
     "num_ip_urls",
@@ -230,8 +224,6 @@ def extract_subject_features(subject, idf_dict):
     num_chars = len(subject)
     num_whitespace = sum(c.isspace() for c in subject)
 
-    # Match sklearn's default tokenization behavior used during IDF precompute
-    # so punctuation-suffixed tokens (e.g., "pills?") become "pills".
     terms = re.findall(r"(?u)\b\w\w+\b", subject.lower())
     n_terms = len(terms)
     term_counts = Counter(terms)
@@ -263,7 +255,6 @@ def load_idf_dict(idf_path):
         except Exception:
             idf_dict[str(term)] = 0.0
     return idf_dict
- 
 def get_idf(subjects, output_path):
     vectorizer = build_vectorizer(subjects)
     terms = vectorizer.get_feature_names_out()
@@ -384,12 +375,9 @@ def extract_body_based_features(body, html=None, css=None):
     if not isinstance(body, str):
         body = ""
     extracted_urls = extract_urls_from_text(body) if body else []
-    
     num_lines = len(body.splitlines())
-    
     words = re.findall(r"\w+", body.lower())
     num_words = len(words)
-    
     avg_word_length = round(sum(len(word) for word in words) / num_words,1) if num_words > 0 else 0
 
     greeting_features = extract_greeting_features(body)
@@ -410,10 +398,8 @@ def extract_body_based_features(body, html=None, css=None):
 def compute_body_bow(body):
     if not isinstance(body, str):
         body = ""
-    
     words = re.findall(r"\w+", body.lower())
     word_freq = dict(Counter(words))
-    
     return word_freq
 
 
@@ -472,59 +458,46 @@ def extract_body_features(body: str) -> dict:
         image_text_ratio
     """
 
-    # -------- Detect HTML --------
     has_html = int(bool(re.search(r"<[^>]+>", body)))
 
     if has_html:
         soup = BeautifulSoup(body, "html.parser")
 
-        # -------- HTML tags --------
         all_tags = soup.find_all(True)
         num_html_tags = len(all_tags)
 
-        # -------- Images --------
         images = soup.find_all("img")
         num_images = len(images)
 
-        # -------- URLs --------
         urls = set()
 
-        # links
         for tag in soup.find_all(href=True):
             urls.add(tag["href"])
 
-        # media / src attributes
         for tag in soup.find_all(src=True):
             urls.add(tag["src"])
 
-        # also catch raw URLs in text
         raw_urls = re.findall(r'https?://\S+', body)
         urls.update(raw_urls)
 
         num_urls_in_body = len(urls)
 
-        # -------- Scripts --------
         has_script = int(bool(soup.find_all("script")))
 
-        # -------- CSS --------
         style_tags = soup.find_all("style")
         inline_styles = soup.find_all(style=True)
         has_css = int(bool(style_tags or inline_styles))
 
-        # Count CSS rules (simple heuristic: count "{")
         num_css_rules = 0
         for style in style_tags:
             if style.string:
                 num_css_rules += style.string.count("{")
 
-        # -------- Forms --------
         has_forms = int(bool(soup.find_all("form")))
 
-        # -------- Text content --------
         visible_text = soup.get_text(separator=" ", strip=True)
 
     else:
-        # Plain text handling
         num_html_tags = 0
         num_images = 0
         num_urls_in_body = len(re.findall(r'https?://\S+', body))
@@ -534,8 +507,6 @@ def extract_body_features(body: str) -> dict:
         has_forms = 0
         visible_text = body
 
-    # -------- Image-text ratio --------
-    # Defined as images per word (common simple heuristic)
     words = re.findall(r"\b\w+\b", visible_text)
     word_count = len(words)
 
@@ -600,12 +571,10 @@ def extract_attachment_features(attachments, attachment_metadata=None):
     unique_top_level_types = sorted(set(top_level_types))
 
     return {
-        #"attachments": cleaned,
         "has_attachments": int(len(cleaned) > 0 or len(metadata_items) > 0),
         "num_attachments": int(max(len(cleaned), len(metadata_items))),
         "attachment_sizes_bytes": sizes,
         "attachment_types": unique_content_types,
-        #"attachment_top_level_types": " ".join(unique_top_level_types),
     }
 
 '''
@@ -660,7 +629,6 @@ def extract_origin_based_features(sender, auth_spf=None, rdap_cache=None):
 
     spf_pass = isinstance(auth_spf, str) and auth_spf.strip().lower() == "pass"
 
-    # RDAP lookup on the domain portion of each sender email
     sender_domains = []
     for email in sender_emails:
         at_idx = email.rfind("@")
@@ -769,7 +737,6 @@ PageRank and popularity are excluded. Suggested online tools appear to cost mone
 '''
 
 def extract_url_based_features(urls, url_intel_sets=None, rdap_cache=None, popular_base_index=None):
-    # Delegate to shared extractor and return its full feature dict
     try:
         intel_sets = url_intel_sets if isinstance(url_intel_sets, dict) else load_url_intelligence_sets()
         return extract_url_features_utils(
@@ -1067,7 +1034,6 @@ def get_FS5(misp_path, events):
     return omit_feature_keys(features_list, FS5_OMIT_KEYS)
 
 
-#Maybe should not include some of the body features, unsure based on description
 def get_FS6(misp_path, events):
     features_list = extract_features(misp_path, FS6_FEATURE_TYPES, events=events)
     return omit_feature_keys(features_list, FS6_OMIT_KEYS)
@@ -1093,7 +1059,6 @@ def _extract_and_save_featureset(args):
 
     try:
         fs_features = fs_function(misp_path, events)
-        # ensure output directory exists (worker processes may run before directory created)
         output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
@@ -1114,12 +1079,9 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     if misp_path is None:
         misp_path = os.path.join(project_root, 'data', 'misp', 'TREC-07-misp.json')
 
-    # Ensure expensive/cached artifacts are materialized before workers start.
     events_for_precompute = parse_misp_events(_load_raw_misp_events(misp_path))
 
     try:
-        # Single upfront RDAP cache ensure from parsed events.
-        # This attempts all domains from event URLs and received hop hosts before workers start.
         ensure_rdap_cache(events_for_precompute)
     except Exception:
         print("Warning: RDAP cache ensure failed")
@@ -1127,13 +1089,11 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
     try:
         ensure_subject_idf(misp_path, events_for_precompute)
     except Exception:
-        # If ensure fails, workers will compute missing artifacts on demand.
         pass
 
     try:
         ensure_lsa_features_for_misp(misp_path, events_for_precompute)
     except Exception:
-        # If ensure fails, workers will compute missing artifacts on demand.
         pass
 
     fs_extractors = {
@@ -1222,7 +1182,7 @@ def run_featureset_extraction(misp_path=None, parallel=True, max_workers=None):
 
             result = _extract_and_save_featureset(args)
 
-            if result[4]:  # success
+            if result[4]:           
                 print(f"Saved {result[0]} features to: {result[1]}")
                 print(f"Total emails processed: {result[2]}")
                 if result[3]:

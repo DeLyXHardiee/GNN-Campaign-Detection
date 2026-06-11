@@ -512,9 +512,6 @@ def load_method1_config_json(method1_dir: Path) -> dict[str, Any] | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-# ---------------------------------------------------------------------------
-# Method 1 calibration experiments
-# ---------------------------------------------------------------------------
 
 
 def _calibration_error_row(spec: dict[str, Any], err: str) -> dict[str, Any]:
@@ -883,7 +880,6 @@ def build_calibration_decision_markdown(
     def _sub(variant_substr: str) -> pd.DataFrame:
         return df[df["refinement_variant_name"].astype(str).str.contains(variant_substr, regex=False)]
 
-    # 1) Lower thresholds only: compare A (baseline grid) vs B (refined_low grid) same variant tag
     a = df[df["threshold_grid_name"].astype(str) == "baseline_tight"]
     b = df[df["threshold_grid_name"].astype(str) == "refined_low"]
     if not a.empty and not b.empty:
@@ -918,7 +914,6 @@ def build_calibration_decision_markdown(
         lines.append("## 1. Does lowering thresholds alone recover completeness?\n")
         lines.append("- **Insufficient rows** (need both `baseline_tight` and `refined_low` threshold_grid_name).\n")
 
-    # 2) Perturbation: compare variants containing `_no_perturb` vs `_current` or production, same threshold grid where possible
     lines.append("\n## 2. Does removing perturbation stability help?\n")
     poff = df[df["refinement_variant_name"].astype(str).str.contains("no_perturb")]
     pon = df[~df["refinement_variant_name"].astype(str).str.contains("no_perturb")]

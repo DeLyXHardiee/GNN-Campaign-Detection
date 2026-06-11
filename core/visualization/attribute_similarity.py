@@ -145,7 +145,6 @@ def build_attribute_similarity_sidecar(
             f"Install with: pip install sentence-transformers ({exc})"
         ) from exc
 
-    # Unique external ids that appear in any campaign
     eid_set: set[str] = set()
 
     def collect(camps: list[dict[str, Any]] | None) -> None:
@@ -168,7 +167,6 @@ def build_attribute_similarity_sidecar(
 
     model = SentenceTransformer(MODEL_NAME)
 
-    # Precompute embeddings per attribute for all needed emails (global order)
     emb_by_attr: dict[str, np.ndarray] = {}
     for attr in ATTR_KEYS:
         texts = [_text_for_attr(emails.get(eid, {}), attr) for eid in eids_sorted]

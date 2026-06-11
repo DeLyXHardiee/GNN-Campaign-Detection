@@ -8,8 +8,6 @@ import torch
 
 from src.model_io import load_model_checkpoint
 
-# General clustering/metric utilities live in core/clustering/clusteringMetrics.py.
-# GNN stage code imports these for ground-truth alignment + metric computation.
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -87,7 +85,6 @@ def extract_email_embeddings(model, data, device, external_ids):
             f"Email external_id length ({len(external_ids)}) does not match number of email embeddings ({len(email_vecs)})."
         )
 
-    # external_id must be unique; otherwise dict keys collide.
     if len(set(map(str, external_ids))) != len(external_ids):
         raise ValueError("Duplicate `external_id` values found on email nodes; cannot build a unique id->embedding map.")
 
@@ -239,37 +236,29 @@ def save_metrics_csv(rows, path):
 
     all_keys = set().union(*(r.keys() for r in rows))
     preferred_order = [
-        # Identifiers / algorithm
         "model",
         "embedding_mode",
         "clustering_type",
-        # DBSCAN
         "epsilon",
         "min_samples",
-        # MeanShift
         "quantile",
         "n_samples",
         "bandwidth",
         "clustering_error",
-        # HDBSCAN
         "min_cluster_size",
         "metric",
-        # Internal metrics
         "silhouette",
         "db_index",
         "ch_index",
-        # External metrics
         "homogeneity",
         "completeness",
         "v_measure",
-        # Coverage / size
         "n_embeddings",
         "n_clusters",
         "n_noise",
         "n_non_noise",
         "coverage_ground_truth",
         "coverage_all",
-        # External alignment counts
         "n_samples_external",
     ]
 

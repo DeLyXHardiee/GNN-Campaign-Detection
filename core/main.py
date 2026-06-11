@@ -13,13 +13,14 @@ from config.pipeline_config import (
     graph_build_settings_from_pipeline,
     output_runs_parent_from_pipeline,
     resolve_project_path,
+    run_dir_for,
+    sanitize_run_id,
 )
 
 from metric_comparison import run_metric_comparison_for_run
 from preprocessing.data_parser import parse_incidents_with_email_bodies, parse_incidents_from_lake_stream
 from preprocessing.misp_converter import incidents_to_misp_file
 
-# Make `core/GNN/steps/*` and `core/GNN/src/*` importable from here.
 _GNN_ROOT = Path(__file__).resolve().parent / "GNN"
 if str(_GNN_ROOT) not in sys.path:
     sys.path.insert(0, str(_GNN_ROOT))
@@ -78,11 +79,14 @@ def run_gnn(
     graph_path: str | Path | None = None,
     run_dir: str | Path | None = None,
     runs_parent: str | Path | None = None,
-    checkpoint_path: str | Path | None = None,  # unused for training but accepted for symmetry
+    checkpoint_path: str | Path | None = None,                                                 
     device_pref: str | None = None,
 ):
     cfg = PIPELINE_CONFIG
     g = load_gnn_cfg(cfg)
+    if run_dir is None or str(run_dir).strip() == "":
+        runs_root = output_runs_parent_from_pipeline(cfg)
+        run_dir = str(run_dir_for(runs_root, sanitize_run_id(str(cfg.get("run_id") or ""))))
     run_dir_str, _checkpoint_path_str, graph_path_str, _gt_str = resolve_gnn_paths(
         cfg=cfg,
         run_dir=run_dir,
@@ -291,7 +295,6 @@ def run_preprocessing_trec(
         df = pd.read_csv(incidents_csv_path_resolved, encoding="utf-8-sig")
     df = df.fillna("")
 
-    # Align source columns with the incident schema used by synthetic data preprocessing.
     column_rename_map = {
         "date": "date_sent",
         "body": "email_body",
@@ -412,7 +415,6 @@ def run_preprocessing_lake():
     prep_cfg = cfg.get("preprocessing", {})
     prep_lake_cfg = cfg.get("preprocessing_lake", {})
 
-    # Allow running without manual export when credentials are in local .env files.
     _load_env_file(Path(__file__).resolve().parent / "lake" / ".env")
     _load_env_file(Path(__file__).resolve().parent.parent / ".env")
 
@@ -514,25 +516,40 @@ def run_graph_creation(
     if settings.hetero_graph_stem:
         hetero_out_name = f"{settings.hetero_graph_stem}_hetero.pt"
 
-    email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
-    graph, graph_path, meta_path = build_graph(
-        misp_json_path=path,
-        out_dir=settings.output_dir,
-        out_name=hetero_out_name,
-        exclude_nodes=settings.exclude_node_types,
-        degree_node_filter=settings.degree_node_filter,
-        embeddings_output_dir=settings.embeddings_output_dir,
-        max_misp_events=limit_eff,
-        email_feature_projection=email_proj,
-        zero_email_timestamps=settings.zero_email_timestamps,
-        filter_popular_domains=settings.filter_popular_domains,
-    )
+    sn = PIPELINE_CONFIG.get("semantic_supernode") or {}
+    if bool(sn.get("enabled")):
+        from graph.semantic_supernode_collapse import build_graph_from_semantic_supernode_pipeline_config
+
+        graph, graph_path, meta_path = build_graph_from_semantic_supernode_pipeline_config(
+            dict(PIPELINE_CONFIG),
+            graph_settings=settings,
+            misp_json_path=path,
+            max_misp_events=limit_eff,
+        )
+    else:
+        email_proj = settings.email_feature_projection or EmailFeatureProjectionSettings()
+        graph, graph_path, meta_path = build_graph(
+            misp_json_path=path,
+            out_dir=settings.output_dir,
+            out_name=hetero_out_name,
+            exclude_nodes=settings.exclude_node_types,
+            degree_node_filter=settings.degree_node_filter,
+            embeddings_output_dir=settings.embeddings_output_dir,
+            max_misp_events=limit_eff,
+            email_feature_projection=email_proj,
+            zero_email_timestamps=settings.zero_email_timestamps,
+            collapse_enabled=settings.collapse_enabled,
+        )
     print(f"Graph created: {graph}")
     print(f"Saved graph to: {graph_path}")
     print(f"Saved metadata to: {meta_path}")
 
     use_memgraph = settings.memgraph.enabled if to_memgraph is None else to_memgraph
-    if use_memgraph:
+    if use_memgraph and bool(sn.get("enabled")):
+        print(
+            "Note: semantic_supernode.enabled — skipping Memgraph load (Memgraph builder expects per-email MISP events)."
+        )
+    elif use_memgraph:
         mg = settings.memgraph
         summary = build_memgraph(
             misp_json_path=path,
@@ -724,20 +741,51 @@ def run_pipeline():
     visualize_clusters()
 
 if __name__ == "__main__":
-    
-    # For individual stages of the pipeline, uncomment as needed:
-    #misp_path = run_preprocessing_lake()
-    #create_feature_sets()
-    #run_featureset_clustering()
-    
-    # Use None so graph.misp_json_path + hetero_graph_stem from pipeline_config apply.
-    #misp_path = "core/preprocessing/output/incidents-lake-misp-url-fixed.json"
-    #run_graph_creation(misp_json_path=misp_path, to_memgraph=False)
-    #run_gnn(graph_path="graph/output/incidents-lake-misp-url-fixed_hetero.pt")
-    #run_gnn_evaluation()
-    #run_gnn_clustering(graph_path="graph/output/incidents-lake-misp-url-fixed_hetero.pt", pca_components=5)
-    #run_metric_comparison()
-    #visualize_clusters()
-    
-    # To run the entire pipeline, uncomment the line below:
-    # run_pipeline()
+    import argparse
+
+    _ap = argparse.ArgumentParser(
+        description="Core pipeline stages (reads repo-root pipeline_config.json). "
+        "With no positional argument, runs GNN training (gnn)."
+    )
+    _ap.add_argument(
+        "stage",
+        nargs="?",
+        default="gnn",
+        choices=[
+            "graph",
+            "gnn",
+            "gnn_eval",
+            "gnn_clustering",
+            "metric_comparison",
+            "feature_sets",
+            "featureset_clustering",
+            "preprocess_lake",
+            "visualize",
+            "full",
+        ],
+        help="Pipeline stage (default: gnn).",
+    )
+    _args = _ap.parse_args()
+    _stage = str(_args.stage or "gnn").strip().lower()
+    if _stage == "graph":
+        run_graph_creation(misp_json_path=None, to_memgraph=False)
+    elif _stage == "gnn":
+        run_gnn()
+    elif _stage == "gnn_eval":
+        run_gnn_evaluation()
+    elif _stage == "gnn_clustering":
+        run_gnn_clustering()
+    elif _stage == "metric_comparison":
+        run_metric_comparison()
+    elif _stage == "feature_sets":
+        create_feature_sets()
+    elif _stage == "featureset_clustering":
+        run_featureset_clustering()
+    elif _stage == "preprocess_lake":
+        run_preprocessing_lake()
+    elif _stage == "visualize":
+        visualize_clusters()
+    elif _stage == "full":
+        run_pipeline()
+    else:
+        raise SystemExit(f"Unhandled stage: {_stage!r}")

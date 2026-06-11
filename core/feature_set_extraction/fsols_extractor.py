@@ -138,7 +138,6 @@ def extract_fsols_features(
     omitted_keys: frozenset[str],
 ) -> list[dict]:
     """Build FSOLS from direct event attributes plus per-email text embedding dimensions."""
-    #embedding_map, embedding_dim = _load_embeddings()
 
     rows: list[dict] = []
     for event_idx, email_fields in enumerate(events):

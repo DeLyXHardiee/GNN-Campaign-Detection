@@ -30,7 +30,6 @@ def _replace_outliers_with_median(
 
         finite_vals = col[finite_mask]
         if finite_vals.numel() < min_rows_for_outlier_detection:
-            # Not enough support for robust quantiles; keep as-is.
             continue
 
         q1 = torch.quantile(finite_vals, 0.25)
@@ -38,7 +37,6 @@ def _replace_outliers_with_median(
         iqr = q3 - q1
         median = torch.median(finite_vals)
 
-        # Handle near-constant columns robustly.
         if torch.abs(iqr) < 1e-12:
             cleaned[~finite_mask, col_idx] = median
             continue

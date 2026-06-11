@@ -239,7 +239,6 @@ def _generate_component_links(
             return float("nan")
         return float(np.dot(ca, cb))
 
-    # Component-to-component.
     for sa in non_singletons:
         if len(rows) >= int(max_component_links_total):
             break
@@ -298,7 +297,6 @@ def _generate_component_links(
             if len(rows) >= int(max_component_links_total):
                 break
 
-    # Singleton-to-component.
     for s1 in singletons:
         if len(rows) >= int(max_component_links_total):
             break

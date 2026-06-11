@@ -103,7 +103,6 @@ def smallest_k_cumulative_ratio(ratios: np.ndarray, target: float) -> int:
 
 def _top_n_original_dim_variance(X: np.ndarray, n: int) -> list[dict[str, Any]]:
     """Marginal variance per input dimension (columns of X), descending."""
-    # ddof=0 to match PCA scaling conventions for population variance along axes
     var = np.var(X, axis=0, ddof=0)
     d = int(X.shape[1])
     order = np.argsort(-var)

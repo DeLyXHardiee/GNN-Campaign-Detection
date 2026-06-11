@@ -84,6 +84,7 @@ core/tests/test_email_address_list_parsing.py
 core/tests/test_email_text_vectors.py
 core/tests/test_graph_filter_schema_driven.py
 core/tests/test_graph_schema_parity.py
+core/tests/test_misp_lake_strict_collapse.py
 core/tests/test_rdap_cache.py
 core/tests/test_rollout_parity_gate.py
 core/tests/test_schema_evolution.py

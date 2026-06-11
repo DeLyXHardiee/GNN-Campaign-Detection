@@ -1,0 +1,329 @@
+{
+  "n_incidents": 4970,
+  "channels": [
+    {
+      "channel": "url",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 4236,
+      "n_unique_artifact_values": 11704,
+      "n_email_artifact_edges": 15702,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.3415926179084074,
+      "p95_artifact_degree": 2.0,
+      "max_artifact_degree": 1220,
+      "induced_email_email_pairs": 760510,
+      "gt_covered_induced_pairs": 8591,
+      "n_same_campaign_pairs": 4803,
+      "n_cross_campaign_pairs": 3788,
+      "same_campaign_pct_among_gt_covered": 55.90734489582121,
+      "cross_campaign_pct_among_gt_covered": 44.09265510417879,
+      "n_artifacts_touching_multiple_gt_campaigns": 1,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "url_stem",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 4236,
+      "n_unique_artifact_values": 10332,
+      "n_email_artifact_edges": 15234,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.4744483159117305,
+      "p95_artifact_degree": 2.0,
+      "max_artifact_degree": 1220,
+      "induced_email_email_pairs": 1371674,
+      "gt_covered_induced_pairs": 17089,
+      "n_same_campaign_pairs": 7692,
+      "n_cross_campaign_pairs": 9397,
+      "same_campaign_pct_among_gt_covered": 45.01141084908421,
+      "cross_campaign_pct_among_gt_covered": 54.98858915091579,
+      "n_artifacts_touching_multiple_gt_campaigns": 22,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "attachment",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 1054,
+      "n_unique_artifact_values": 1397,
+      "n_email_artifact_edges": 2120,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.5175375805297064,
+      "p95_artifact_degree": 4.0,
+      "max_artifact_degree": 30,
+      "induced_email_email_pairs": 2982,
+      "gt_covered_induced_pairs": 23,
+      "n_same_campaign_pairs": 23,
+      "n_cross_campaign_pairs": 0,
+      "same_campaign_pct_among_gt_covered": 100.0,
+      "cross_campaign_pct_among_gt_covered": 0.0,
+      "n_artifacts_touching_multiple_gt_campaigns": 0,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "sender",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 4960,
+      "n_unique_artifact_values": 3240,
+      "n_email_artifact_edges": 4974,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.5351851851851852,
+      "p95_artifact_degree": 3.0,
+      "max_artifact_degree": 102,
+      "induced_email_email_pairs": 16192,
+      "gt_covered_induced_pairs": 7605,
+      "n_same_campaign_pairs": 7601,
+      "n_cross_campaign_pairs": 4,
+      "same_campaign_pct_among_gt_covered": 99.9474030243261,
+      "cross_campaign_pct_among_gt_covered": 0.05259697567389875,
+      "n_artifacts_touching_multiple_gt_campaigns": 1,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "sender_domain",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 4960,
+      "n_unique_artifact_values": 2305,
+      "n_email_artifact_edges": 4974,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 2.1579175704989155,
+      "p95_artifact_degree": 5.0,
+      "max_artifact_degree": 387,
+      "induced_email_email_pairs": 107430,
+      "gt_covered_induced_pairs": 7744,
+      "n_same_campaign_pairs": 7721,
+      "n_cross_campaign_pairs": 23,
+      "same_campaign_pct_among_gt_covered": 99.70299586776859,
+      "cross_campaign_pct_among_gt_covered": 0.297004132231405,
+      "n_artifacts_touching_multiple_gt_campaigns": 3,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "domain",
+      "channel_group": "included",
+      "n_emails_with_non_empty_value": 4236,
+      "n_unique_artifact_values": 2435,
+      "n_email_artifact_edges": 8235,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 3.3819301848049284,
+      "p95_artifact_degree": 7.0,
+      "max_artifact_degree": 1232,
+      "induced_email_email_pairs": 1372931,
+      "gt_covered_induced_pairs": 36026,
+      "n_same_campaign_pairs": 9924,
+      "n_cross_campaign_pairs": 26102,
+      "same_campaign_pct_among_gt_covered": 27.5467717759396,
+      "cross_campaign_pct_among_gt_covered": 72.4532282240604,
+      "n_artifacts_touching_multiple_gt_campaigns": 9,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "receiver",
+      "channel_group": "optional",
+      "n_emails_with_non_empty_value": 4341,
+      "n_unique_artifact_values": 5466,
+      "n_email_artifact_edges": 7478,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.3680936699597512,
+      "p95_artifact_degree": 3.0,
+      "max_artifact_degree": 93,
+      "induced_email_email_pairs": 13654,
+      "gt_covered_induced_pairs": 1143,
+      "n_same_campaign_pairs": 775,
+      "n_cross_campaign_pairs": 368,
+      "same_campaign_pct_among_gt_covered": 67.80402449693788,
+      "cross_campaign_pct_among_gt_covered": 32.195975503062115,
+      "n_artifacts_touching_multiple_gt_campaigns": 45,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "origin_ip",
+      "channel_group": "routing",
+      "n_emails_with_non_empty_value": 1542,
+      "n_unique_artifact_values": 856,
+      "n_email_artifact_edges": 1834,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 2.142523364485981,
+      "p95_artifact_degree": 5.0,
+      "max_artifact_degree": 197,
+      "induced_email_email_pairs": 30880,
+      "gt_covered_induced_pairs": 4129,
+      "n_same_campaign_pairs": 1199,
+      "n_cross_campaign_pairs": 2930,
+      "same_campaign_pct_among_gt_covered": 29.038508113344637,
+      "cross_campaign_pct_among_gt_covered": 70.96149188665537,
+      "n_artifacts_touching_multiple_gt_campaigns": 4,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "received_host",
+      "channel_group": "routing",
+      "n_emails_with_non_empty_value": 3973,
+      "n_unique_artifact_values": 14790,
+      "n_email_artifact_edges": 26285,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.777214334009466,
+      "p95_artifact_degree": 4.0,
+      "max_artifact_degree": 438,
+      "induced_email_email_pairs": 211963,
+      "gt_covered_induced_pairs": 15819,
+      "n_same_campaign_pairs": 6377,
+      "n_cross_campaign_pairs": 9442,
+      "same_campaign_pct_among_gt_covered": 40.31228269802137,
+      "cross_campaign_pct_among_gt_covered": 59.68771730197863,
+      "n_artifacts_touching_multiple_gt_campaigns": 161,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "helo_host",
+      "channel_group": "routing",
+      "n_emails_with_non_empty_value": 3657,
+      "n_unique_artifact_values": 7865,
+      "n_email_artifact_edges": 13860,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.7622377622377623,
+      "p95_artifact_degree": 5.0,
+      "max_artifact_degree": 197,
+      "induced_email_email_pairs": 55510,
+      "gt_covered_induced_pairs": 4738,
+      "n_same_campaign_pairs": 1629,
+      "n_cross_campaign_pairs": 3109,
+      "same_campaign_pct_among_gt_covered": 34.38159560996201,
+      "cross_campaign_pct_among_gt_covered": 65.618404390038,
+      "n_artifacts_touching_multiple_gt_campaigns": 98,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "return_path_email",
+      "channel_group": "routing",
+      "n_emails_with_non_empty_value": 3491,
+      "n_unique_artifact_values": 2576,
+      "n_email_artifact_edges": 3491,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 1.3552018633540373,
+      "p95_artifact_degree": 3.0,
+      "max_artifact_degree": 92,
+      "induced_email_email_pairs": 8660,
+      "gt_covered_induced_pairs": 2547,
+      "n_same_campaign_pairs": 2547,
+      "n_cross_campaign_pairs": 0,
+      "same_campaign_pct_among_gt_covered": 100.0,
+      "cross_campaign_pct_among_gt_covered": 0.0,
+      "n_artifacts_touching_multiple_gt_campaigns": 0,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    },
+    {
+      "channel": "return_path_domain",
+      "channel_group": "routing",
+      "n_emails_with_non_empty_value": 3420,
+      "n_unique_artifact_values": 1652,
+      "n_email_artifact_edges": 3420,
+      "median_artifact_degree": 1.0,
+      "mean_artifact_degree": 2.070217917675545,
+      "p95_artifact_degree": 4.0,
+      "max_artifact_degree": 302,
+      "induced_email_email_pairs": 71351,
+      "gt_covered_induced_pairs": 5480,
+      "n_same_campaign_pairs": 5446,
+      "n_cross_campaign_pairs": 34,
+      "same_campaign_pct_among_gt_covered": 99.37956204379562,
+      "cross_campaign_pct_among_gt_covered": 0.6204379562043796,
+      "n_artifacts_touching_multiple_gt_campaigns": 3,
+      "data_view": "post_dedup_reparsed_urls",
+      "n_incidents_total": 4970,
+      "gt_labeling": {
+        "gt_paths": [
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.json",
+          "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\data\\groundtruth\\ground_truth.reparsed_urls.dedup_task_identity.json"
+        ],
+        "n_labels": 1488
+      }
+    }
+  ]
+}

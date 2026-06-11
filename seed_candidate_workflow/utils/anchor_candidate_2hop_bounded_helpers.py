@@ -99,8 +99,7 @@ def generate_candidates_2hop_bounded_v1(
     comp_size_map = dict(zip(members_df["external_id"].astype(str).tolist(), members_df["component_size"].tolist(), strict=False))
     in_non_singleton = {eid for eid, size in comp_size_map.items() if int(size) >= 2}
 
-    # Build artifact value -> emails index with df/idf metadata per path type.
-    value_emails: dict[tuple[str, str, str], set[str]] = defaultdict(set)  # (artifact_type,path_type,value) -> emails
+    value_emails: dict[tuple[str, str, str], set[str]] = defaultdict(set)                                             
     value_df: dict[tuple[str, str, str], int] = {}
     value_idf: dict[tuple[str, str, str], float] = {}
     drop_counts = Counter()
@@ -185,7 +184,6 @@ def generate_candidates_2hop_bounded_v1(
                         if np.isfinite(cos) and cos < semantic_min_cos:
                             drop_counts["semantic_contradiction"] += 1
                             continue
-                    # If embeddings missing, keep pair; this is only contradiction suppression.
 
                 comp_i = int(comp_id_map.get(email_i, -1))
                 comp_j = int(comp_id_map.get(email_j, -1))

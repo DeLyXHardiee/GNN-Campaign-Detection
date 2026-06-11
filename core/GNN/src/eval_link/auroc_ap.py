@@ -140,12 +140,12 @@ def _relation_name(fwd_key: str) -> str:
     e.g. "email_has_sender_sender" -> "sender"
          "email_has_email_domain_email_domain" -> "email_domain"
     """
-    stem = fwd_key[len("email_has_"):]  # strip "email_has_" prefix
+    stem = fwd_key[len("email_has_"):]                             
     n = len(stem)
     mid = (n - 1) // 2
     if mid > 0 and stem[:mid] == stem[mid + 1:]:
         return stem[:mid]
-    return stem  # fallback: return as-is
+    return stem                          
 
 
 def _average_fwd_rev(metrics: dict[str, dict]) -> dict[str, dict]:
@@ -157,20 +157,15 @@ def _average_fwd_rev(metrics: dict[str, dict]) -> dict[str, dict]:
     fwd = {k: v for k, v in metrics.items() if k.startswith("email_has_")}
     rev = {k: v for k, v in metrics.items() if "rev_has" in k}
 
-    # Build a lookup from relation name -> list of metric dicts to average
     from collections import defaultdict
     buckets: dict[str, list[dict]] = defaultdict(list)
     for k, v in fwd.items():
         buckets[_relation_name(k)].append(v)
     for k, v in rev.items():
-        # reverse key: "{src}_rev_has_{rel}_{dst}" — relation name is after "rev_has_"
-        # and before the trailing "_email"; easiest: reuse _relation_name on the fwd counterpart
-        # by matching on the same relation name embedded in the rev key.
-        # Simpler heuristic: strip trailing "_email" and "rev_has_" segment.
-        inner = k  # e.g. "sender_rev_has_sender_email"
+        inner = k                                      
         try:
-            after_rev = inner.split("rev_has_", 1)[1]   # "sender_email"
-            rel = after_rev.rsplit("_email", 1)[0]       # "sender"
+            after_rev = inner.split("rev_has_", 1)[1]                   
+            rel = after_rev.rsplit("_email", 1)[0]                 
         except (IndexError, ValueError):
             rel = inner
         buckets[rel].append(v)
@@ -196,7 +191,6 @@ def plot_auroc_ap_summary(metrics: dict[str, dict], output_dir: Path | str) -> s
 
     per_relation = _average_fwd_rev(metrics)
 
-    # Sort by AUROC descending
     labels = sorted(per_relation, key=lambda r: per_relation[r]["auroc"], reverse=True)
     aurocs = [per_relation[r]["auroc"] for r in labels]
     aps = [per_relation[r]["ap"] for r in labels]
@@ -256,7 +250,6 @@ def run_auroc_ap_analysis(
 
     plot_paths = plot_score_distributions(distributions, output_dir)
 
-    # Machine-readable metrics: use string keys for JSON (tuples are not JSON-serializable)
     metrics_serializable = {_et_to_label(et): v for et, v in all_scores.items()}
     metrics_path = output_dir / "auroc_ap_metrics.json"
     with open(metrics_path, "w") as f:

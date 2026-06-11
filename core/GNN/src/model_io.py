@@ -95,7 +95,7 @@ def save_model_checkpoint(
     }
     if projector is not None:
         payload["projector_state_dict"] = projector.state_dict()
-    torch.save(payload, save_path)  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    torch.save(payload, save_path)                                                                       
     return save_path
 
 
@@ -143,7 +143,7 @@ def load_model_checkpoint(device=None, metadata=None, filename="best_model.pt"):
     """
     device = select_device(device)
     load_path = _validated_checkpoint_path(filename)
-    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    checkpoint = torch.load(                                                                       
         load_path, map_location=device, weights_only=True
     )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=metadata)
@@ -158,7 +158,7 @@ def load_full_run(data, device=None, filename="best_model.pt"):
     data_cpu = data.to('cpu')
     device = select_device(device)
     load_path = _validated_checkpoint_path(filename)
-    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    checkpoint = torch.load(                                                                       
         load_path, map_location=device, weights_only=True
     )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)
@@ -211,7 +211,7 @@ def load_training_state(data, device=None, filename="best_model.pt"):
     data_cpu = data.to('cpu')
     device = select_device(device)
     load_path = _validated_checkpoint_path(filename)
-    checkpoint = torch.load(  # nosemgrep: trailofbits.python.pickles-in-pytorch.pickles-in-pytorch
+    checkpoint = torch.load(                                                                       
         load_path, map_location=device, weights_only=True
     )
     model, predictor = _build_model_from_checkpoint(checkpoint, device, metadata_override=None)

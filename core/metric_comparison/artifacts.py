@@ -15,7 +15,6 @@ def _normalize_cluster_id(raw: Any) -> int:
     try:
         return int(s)
     except ValueError:
-        # Stable hash for non-numeric ids (sklearn accepts int labels)
         return hash(s) % (2**31)
 
 

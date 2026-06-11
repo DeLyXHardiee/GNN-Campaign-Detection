@@ -130,14 +130,13 @@ def split_email_nodes_inductively(TORCH_SEED, data, edge_types, val_ratio=0.1, t
 
     for et in edge_types:
         src_type, _, dst_type = tuple(et)
-        ei = data[et].edge_index  # [2, E]
+        ei = data[et].edge_index          
 
         if src_type == 'email':
             email_row = ei[0]
         elif dst_type == 'email':
             email_row = ei[1]
         else:
-            # Edge type not incident to email nodes — fall back to random edge split
             E = ei.size(1)
             perm2 = torch.randperm(E, generator=g)
             n_v = int(math.floor(E * val_ratio))

@@ -36,9 +36,6 @@ from feature_set_extraction.clustering.featureset_embeddings import (
     warm_embedding_cache,
 )
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _results_dir(run_output_dir: Path) -> Path:
@@ -167,9 +164,6 @@ def _write_featureset_campaigns_json(
     return str(out_path)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 def run_featureset_clustering(
     run_output_dir: str | os.PathLike | None = None,
@@ -234,7 +228,6 @@ def run_featureset_clustering(
 
     warm_embedding_cache(feature_sets, n_components_values)
 
-    # ------------------------------------------------------------------ DBSCAN
     print(f"\n{'='*80}")
     print("DBSCAN Parameter Grid Search")
     print(f"Testing {len(eps_values)} eps values: {eps_values}")
@@ -304,7 +297,6 @@ def run_featureset_clustering(
     print(f"Results saved to: {dbscan_scores_path}")
     print(f"{'='*80}\n")
 
-    # --------------------------------------------------------------- Mean Shift
     print(f"\n{'='*80}")
     print("Mean Shift Parameter Grid Search")
     print(f"Testing {len(quantile_values)} quantile values: {quantile_values}")
@@ -375,7 +367,6 @@ def run_featureset_clustering(
     print(f"Results saved to: {meanshift_scores_path}")
     print(f"{'='*80}\n")
 
-    # --------------------------------------------------------------- HDBSCAN
     hdbscan_scores_path = results_dir / "hdbscan_scores.txt"
     if hdbscan_enabled:
         print(f"\n{'='*80}")

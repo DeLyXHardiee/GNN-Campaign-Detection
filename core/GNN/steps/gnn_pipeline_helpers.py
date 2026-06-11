@@ -6,7 +6,9 @@ from typing import Any
 from config.pipeline_config import (
     GnnPathLayout,
     default_hetero_graph_pt_path,
+    gnn_path_layout_for_pair_backend,
     gnn_path_layout_from_pipeline,
+    pair_training_enabled_backend_slugs,
     resolve_project_path,
 )
 from config.run_output_paths import resolve_session_run_output_dir
@@ -78,7 +80,6 @@ def resolve_gnn_paths(
     layout: GnnPathLayout = g["path_layout"]
     runs_parent_eff = _effective_runs_parent(runs_parent, layout, project_root=project_root)
 
-    # run_dir — unified allocation under runs_parent (see config.run_output_paths)
     if run_dir is None or str(run_dir).strip() == "":
         run_dir_path = resolve_session_run_output_dir(
             cfg,
@@ -89,21 +90,28 @@ def resolve_gnn_paths(
     else:
         run_dir_str = str(Path(run_dir).resolve())
 
-    # checkpoint_path
     if checkpoint_path is None or str(checkpoint_path).strip() == "":
-        checkpoint_path_str = str(
-            Path(run_dir_str) / layout.models_subdir / str(g["training_cfg"]["model_save_name"])
-        )
+        objective = str(g["training_cfg"].get("training_objective", "link_prediction")).lower().strip()
+        if objective == "pair_supervision":
+            be = pair_training_enabled_backend_slugs(cfg)
+            if not be:
+                be = ["gnn"]
+            sub_layout = gnn_path_layout_for_pair_backend(layout, be[0])
+            checkpoint_path_str = str(
+                Path(run_dir_str) / sub_layout.models_subdir / str(g["training_cfg"]["model_save_name"])
+            )
+        else:
+            checkpoint_path_str = str(
+                Path(run_dir_str) / layout.models_subdir / str(g["training_cfg"]["model_save_name"])
+            )
     else:
         checkpoint_path_str = str(Path(checkpoint_path).resolve())
 
-    # graph_path
     if graph_path is None or str(graph_path).strip() == "":
         graph_path_str = default_hetero_graph_pt_path()
     else:
         graph_path_str = str(Path(graph_path).resolve())
 
-    # ground_truth_path (clustering only)
     if not require_ground_truth:
         ground_truth_path_str = ""
     elif ground_truth_path is None or str(ground_truth_path).strip() == "":

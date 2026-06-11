@@ -501,7 +501,6 @@ def _filter_authentication_results(value: str) -> str:
 
 
 def _decode_email_body(raw_bytes: bytes) -> str:
-    # Keep this as passive byte-to-text decoding only; no parsing/execution.
     try:
         return raw_bytes.decode("utf-8")
     except UnicodeDecodeError:
@@ -537,7 +536,6 @@ def _extract_headers_from_mailparser(parsed_mail: Any) -> Dict[str, Any]:
                     new_text = _normalize_header_value(val)
                     collected[key] = " | ".join([x for x in [existing_text, new_text] if x])
 
-    # Fill a few common fields from dedicated properties if headers dict lacks them.
     if "To" not in collected:
         collected["To"] = getattr(parsed_mail, "to", [])
     if "From" not in collected:
@@ -570,7 +568,10 @@ def _parse_body_and_headers_with_mailparser(
     sample_id: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any], Dict[str, Any], List[str], List[Dict[str, Any]], Dict[str, Any], str]:
     """Extract body, HTML/CSS structure, attachments, headers, and raw HTML for URL extraction.
+<<<<<<< HEAD
+=======
 
+>>>>>>> main
     Never raises: on body/HTML parse failure returns empty body and empty structure, and logs.
 
     Returns:
@@ -627,7 +628,6 @@ def _parse_body_and_headers_with_mailparser(
             default_headers,
             html_raw,
         )
-
     try:
         _configure_mailparser_logging()
         parsed_mail = mailparser.parse_from_bytes(raw_bytes)
@@ -642,7 +642,6 @@ def _parse_body_and_headers_with_mailparser(
             html_raw,
         )
     except Exception:
-        # Keep body extracted from raw RFC email; fail closed on headers only.
         return (
             body_text,
             html_structure,
@@ -659,8 +658,6 @@ def _configure_mailparser_logging() -> None:
     if _MAILPARSER_LOG_CONFIGURED:
         return
 
-    # Silence verbose parser warnings ("calendar not handled", ambiguous matches)
-    # while still allowing hard failures to be raised as exceptions.
     for logger_name in ("mailparser", "mailparser.mail", "mailparser.utils"):
         logger = logging.getLogger(logger_name)
         logger.setLevel(logging.ERROR)
@@ -672,7 +669,6 @@ def _read_body_file_bytes(path: Path) -> bytes:
     try:
         return path.read_bytes()
     except OSError:
-        # Best-effort long-path fallback on Windows.
         if os.name == "nt":
             try:
                 resolved = str(path.resolve())
@@ -757,7 +753,6 @@ def parse_incidents_with_email_bodies(
 
             body_file = body_files_by_name.get(external_id) or body_files_by_stem.get(external_id) if external_id else None
             if body_file is None:
-                # Skip emails that have no matching file in bodies_dir.
                 continue
 
             body_text = ""
@@ -849,7 +844,6 @@ def _extract_analysis_mapping(row: Dict[str, Any], properties: Dict[str, Any]) -
     analysis_map = _try_parse_mapping(analysis_raw)
     if analysis_map:
         return analysis_map
-    # Fallback for legacy payloads where analysis is embedded in properties.
     embedded = _try_parse_mapping(properties.get("analysis"))
     return embedded if embedded else {}
 
@@ -872,7 +866,6 @@ def _extract_incident_category(
     return analysis_text if analysis_text in {"phishing", "scam"} else ""
 
 
-# Smaller pages + two-stage join (see _iterate_lake_incident_rows_stream) reduce peak memory for large ``parsed`` JSON.
 _DEFAULT_LAKE_PAGE_SIZE = 5000
 _LAKE_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -1007,7 +1000,6 @@ def _iterate_lake_incident_rows_query(
         page_sql = _lake_incident_join_page_sql(
             incidents_table, parsed_emails_table, created_at_filters, batch, offset
         )
-        # API ``limit`` must not truncate the page; SQL already applies LIMIT/OFFSET.
         rows = client.query(page_sql, limit=max(batch, 1))
         n = 0
         for row in rows:
@@ -1153,7 +1145,6 @@ def _lake_resolve_raw_html_css_strings(parsed_payload: Dict[str, Any]) -> Tuple[
     css_raw = _first_non_empty_str(parsed_payload, "css", "css_text", "inline_css")
     if not css_raw and isinstance(enrichment, dict):
         css_raw = _first_non_empty_str(enrichment, "css", "css_text", "inline_css")
-
     if not css_raw and html_raw:
         css_raw = extract_css_text_from_html(html_raw)
 
@@ -1251,7 +1242,6 @@ def _parse_incidents_from_lake_rows(
             )
             for field in HEADER_FIELDS
         }
-
         urls_from_body = extract_urls_from_plain_and_html(body_text, html_raw_lake)
         parsed_urls: List[str] = []
         body_analysis_urls = _nested_get(parsed_payload, "enrichment", "body_analysis", "urls")

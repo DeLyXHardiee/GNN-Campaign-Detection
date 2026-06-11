@@ -101,12 +101,11 @@ def extract_ground_truth_labels(
                         duplicate_external_ids.add(email_id_str)
                         continue
                     label_map[email_id_str] = campaign_id
-    else:  # fmt == "json"
+    else:                 
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         clusters = data.get("clusters", {})
         for raw_key, emails in clusters.items():
-            # Remove "label_store_*/" prefix; use the part after the last "/" as cluster id
             cluster_id_str = raw_key.split("/")[-1] if "/" in raw_key else raw_key
             try:
                 campaign_id = int(cluster_id_str)
@@ -225,7 +224,6 @@ def _aligned_true_predicted_labels(
     return true_labels, predicted_labels
 
 
-# Backwards-compatible alias for a historical misspelling.
 def alligned_true_predictived_labels(
     sorted_ids: list[str],
     labels: list[int] | np.ndarray,
@@ -274,12 +272,8 @@ def compute_all_metrics(
     n_embeddings = int(len(sorted_ids))
     n_non_noise = int(n_embeddings - n_noise)
 
-    # Two different "coverage" definitions:
-    # 1) Ground-truth coverage: among all ground-truth-labeled items, how many were predicted as non-noise.
-    # This remains non-noise coverage even though external metrics now include noise-labeled points.
     n_gt_non_noise = sum(1 for lab in predicted_labels_raw if lab != -1)
     coverage_ground_truth = n_gt_non_noise / max(1, len(ground_truth_labels))
-    # 2) All-items coverage: among all embeddings, how many were predicted as non-noise (regardless of ground-truth presence).
     coverage_all = n_non_noise / max(1, n_embeddings)
 
     return {
@@ -329,12 +323,11 @@ def run_meanshift_analysis(
 ) -> dict[str, Any]:
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)
     n_embeddings = int(len(sorted_ids))
-    bw = quantile#estimate_bandwidth(embeddings, quantile=float(quantile), n_samples=n_samples)
+    bw = quantile                                                                              
     clusterer = MeanShift(bandwidth=bw, bin_seeding=False)
     try:
         labels = clusterer.fit_predict(embeddings)
     except ValueError as exc:
-        # sklearn MeanShift (bin_seeding): no grid seed has any point within bandwidth.
         if "No point was within" not in str(exc):
             raise
         metrics: dict[str, Any] = {
@@ -434,8 +427,6 @@ def run_hdbscan_analysis(
     *,
     metric: str = "cosine",
 ) -> dict[str, Any]:
-    # Lazy import: `hdbscan` is a native extension and can crash some environments
-    # during import; we only need it for the HDBSCAN analysis path.
     import hdbscan  # type: ignore
 
     sorted_ids, embeddings = _emb_matrix_from_id_to_embedding(id_to_embedding_map)

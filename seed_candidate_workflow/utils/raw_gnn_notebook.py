@@ -22,7 +22,6 @@ from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 
-# Lazy torch import in extract_embedding_pair
 
 
 def find_project_root(start: Path | None = None) -> Path:
@@ -301,7 +300,6 @@ def neighbor_metrics(
     for ci, eid in enumerate(ids):
         true_c = id_to_campaign[eid]
         order = np.argsort(-sims[ci])
-        # rank of first same-campaign neighbor (excluding self)
         same_others = [j for j in order if id_to_campaign[ids[j]] == true_c]
         if same_others:
             ranks_first_same.append(int(np.where(order == same_others[0])[0][0]) + 1)

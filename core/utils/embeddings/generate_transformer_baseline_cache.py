@@ -5,7 +5,6 @@ import json
 import sys
 from pathlib import Path
 
-# Allow direct execution: python core/utils/embeddings/generate_transformer_baseline_cache.py
 _CORE_ROOT = Path(__file__).resolve().parents[2]
 if str(_CORE_ROOT) not in sys.path:
     sys.path.insert(0, str(_CORE_ROOT))

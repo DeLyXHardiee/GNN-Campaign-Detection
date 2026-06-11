@@ -81,7 +81,6 @@ def precompute_subject_idf(misp_path, events):
             json.dump(idf_dict, f, indent=2, ensure_ascii=False)
         os.replace(tmp, idf_path)
     except Exception:
-        # ignore errors; caller will fallback to worker-side computation
         pass
 
     return idf_path

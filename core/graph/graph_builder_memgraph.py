@@ -158,7 +158,6 @@ def _prepare_edge_rows_from_ir(ir: Any, schema: GraphSchema) -> Dict[str, List[D
     def add_string_edge_rows(edge_key: str, left_node_key: str, right_node_key: str, mem_type: str):
         if edge_key not in ir.edges:
             return
-        
         rows = out[mem_type]
         src, dst = ir.edges[edge_key]
         left_node = ir.nodes.get(left_node_key)

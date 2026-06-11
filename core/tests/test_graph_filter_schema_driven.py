@@ -34,8 +34,6 @@ def test_filter_accepts_string_node_names_and_prunes_edges():
 
 
 def test_degree_filter_strength_removes_more_high_degree_nodes():
-    # email(0..2) -> received_host(0..2)
-    # degrees(received_host): [1, 2, 4]
     ir = GraphIR(
         nodes={
             "email": NodeIR(index={}, x=[[0.0], [0.0], [0.0]], index_to_meta=[{}, {}, {}]),
@@ -48,8 +46,8 @@ def test_degree_filter_strength_removes_more_high_degree_nodes():
         },
         edges={
             "has_received_host": (
-                [0, 0, 1, 1, 2, 2, 2],  # email idx
-                [0, 1, 1, 2, 2, 2, 2],  # received_host idx
+                [0, 0, 1, 1, 2, 2, 2],             
+                [0, 1, 1, 2, 2, 2, 2],                     
             )
         },
         email_attrs={},
@@ -76,8 +74,6 @@ def test_degree_filter_strength_removes_more_high_degree_nodes():
 
 
 def test_degree_filter_slices_email_attrs_when_emails_removed():
-    # Three emails; email 0 links to three URLs -> degree 3; others link to one URL -> degree 1.
-    # Low strength removes only the highest-degree email; email_attrs must stay aligned with nodes.
     ir = GraphIR(
         nodes={
             "email": NodeIR(index={}, x=[[0.0], [0.0], [0.0]], index_to_meta=[{}, {}, {}]),

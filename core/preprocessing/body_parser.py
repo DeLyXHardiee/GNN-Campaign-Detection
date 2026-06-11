@@ -27,8 +27,6 @@ def _decode_payload(raw_payload: bytes | str | None, charset: str | None) -> str
 
 
 def _extract_after_header_block(raw_bytes: bytes) -> str:
-    # RFC822 headers and body are separated by first blank line.
-    # This fallback keeps body content while stripping top-level headers.
     for delimiter in (b"\r\n\r\n", b"\n\n"):
         idx = raw_bytes.find(delimiter)
         if idx != -1:
@@ -38,7 +36,6 @@ def _extract_after_header_block(raw_bytes: bytes) -> str:
 
 
 def _defang_url_like_text(text: str) -> str:
-    # Neutralize common clickable URI schemes while preserving readable content.
     out = re.sub(r"(?i)\bhttps://", "hxxps://", text)
     out = re.sub(r"(?i)\bhttp://", "hxxp://", out)
     out = re.sub(r"(?i)\bftp://", "fxp://", out)
@@ -168,13 +165,11 @@ def extract_body_html_css_without_headers(raw_bytes: bytes) -> Tuple[str, str, s
 
 
 def extract_body_and_html_without_headers(raw_bytes: bytes) -> Tuple[str, str]:
-    # Backward-compatible helper used by older call sites.
     body_text, html_text, _ = extract_body_html_css_without_headers(raw_bytes)
     return body_text, html_text
 
 
 def extract_body_without_headers(raw_bytes: bytes) -> str:
-    # Backward-compatible helper used by older call sites.
     body_text, _, _ = extract_body_html_css_without_headers(raw_bytes)
     return body_text
 

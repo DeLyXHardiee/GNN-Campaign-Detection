@@ -222,7 +222,7 @@ def _corroborated_v1_default_cfg() -> dict[str, Any]:
         "require_min_support_channels": 2,
         "semantic_support": {
             "enabled": True,
-            "min_semantic_score": 0.97,
+            "min_semantic_score": 0.95,
             "require_non_semantic_support": True,
             "min_non_semantic_support_channels": 1,
         },
@@ -242,7 +242,7 @@ def generate_corroborated_seed_edges_v1(
 
     sem_cfg = cfg.get("semantic_support") or {}
     sem_enabled = bool(sem_cfg.get("enabled", True))
-    min_sem = float(sem_cfg.get("min_semantic_score", 0.97))
+    min_sem = float(sem_cfg.get("min_semantic_score", 0.95))
     req_non_sem = bool(sem_cfg.get("require_non_semantic_support", True))
     min_non_sem = int(sem_cfg.get("min_non_semantic_support_channels", 1))
 
@@ -267,7 +267,6 @@ def generate_corroborated_seed_edges_v1(
         if not (rule_by_weak or rule_by_sem):
             continue
 
-        # Aggregate rarity from available infra idf sums for supporting channels.
         rarity_parts: list[float] = []
         for ch in support_channels:
             base = _channel_col(ch).replace("_set", "")
@@ -316,6 +315,309 @@ def generate_corroborated_seed_edges_v1(
     return out
 
 
+def _corroborated_v2_default_cfg() -> dict[str, Any]:
+    return {
+        "core_channels": [
+            "sender",
+            "url",
+            "attachment",
+            "html_structure_fingerprint",
+            "return_path_email",
+        ],
+        "weak_channels": [
+            "sender_email_domain",
+            "domain",
+            "stem",
+            "return_path_domain",
+        ],
+        "excluded_channels": ["origin_ip", "received_host", "helo_host"],
+        "min_rare_stem_idf": 1.0,
+        "semantic_support": {
+            "enabled": True,
+            "min_semantic_score": 0.97,
+            "require_non_semantic_support": True,
+            "min_non_semantic_support_channels": 1,
+        },
+        "require_min_weak_channels": 3,
+    }
+
+
+def _edge_channel_hit(edges_df: pd.DataFrame, row: pd.Series, channel: str) -> bool:
+    col = _overlap_col(channel)
+    return col in edges_df.columns and bool(row.get(col, False))
+
+
+def _edge_rare_stem_hit(edges_df: pd.DataFrame, row: pd.Series, *, min_idf: float) -> bool:
+    if not _edge_channel_hit(edges_df, row, "stem"):
+        return False
+    idf_col = "shared_stem_idf_sum"
+    if idf_col not in edges_df.columns:
+        return False
+    v = pd.to_numeric(row.get(idf_col), errors="coerce")
+    return bool(pd.notna(v) and float(v) >= float(min_idf))
+
+
+def generate_corroborated_seed_edges_v2(
+    *,
+    nodes_df: pd.DataFrame,
+    edges_df: pd.DataFrame,
+    generator_cfg: dict[str, Any],
+) -> pd.DataFrame:
+    """
+    Conservative corroborated seeds (thesis ablation).
+
+    A pair is seed-positive if any of:
+      1) >=1 core channel AND >=1 additional support channel (weak or distinct core),
+      2) semantic >= min_semantic_score AND >=1 non-semantic channel,
+      3) >=3 weak non-semantic channels.
+
+    Core: sender, url, attachment, html_structure_fingerprint, return_path_email, rare stem.
+    Weak: sender_email_domain, domain, stem, return_path_domain.
+    Transit channels (origin_ip, received_host, helo_host) are never counted.
+    """
+    cfg = {**_corroborated_v2_default_cfg(), **(generator_cfg or {})}
+    core_channels = [str(x).strip() for x in (cfg.get("core_channels") or []) if str(x).strip()]
+    weak_channels = [str(x).strip() for x in (cfg.get("weak_channels") or []) if str(x).strip()]
+    excluded = {str(x).strip() for x in (cfg.get("excluded_channels") or []) if str(x).strip()}
+    core_channels = [c for c in core_channels if c not in excluded]
+    weak_channels = [c for c in weak_channels if c not in excluded]
+    min_rare_stem_idf = float(cfg.get("min_rare_stem_idf", 1.0))
+    req_min_weak = int(cfg.get("require_min_weak_channels", 3))
+    support_only_channels = {
+        str(x).strip()
+        for x in (cfg.get("support_only_channels") or [])
+        if str(x).strip()
+    }
+
+    sem_cfg = cfg.get("semantic_support") or {}
+    sem_enabled = bool(sem_cfg.get("enabled", True))
+    min_sem = float(sem_cfg.get("min_semantic_score", 0.97))
+    req_non_sem = bool(sem_cfg.get("require_non_semantic_support", True))
+    min_non_sem = int(sem_cfg.get("min_non_semantic_support_channels", 1))
+
+    if edges_df.empty:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for _, e in edges_df.iterrows():
+        a = str(e["email_a"])
+        b = str(e["email_b"])
+        if a == b:
+            continue
+
+        core_hits: list[str] = []
+        for ch in core_channels:
+            if ch == "stem":
+                continue
+            if _edge_channel_hit(edges_df, e, ch):
+                core_hits.append(ch)
+        if _edge_rare_stem_hit(edges_df, e, min_idf=min_rare_stem_idf):
+            core_hits.append("stem_rare")
+
+        weak_hits: list[str] = []
+        for ch in weak_channels:
+            if _edge_channel_hit(edges_df, e, ch):
+                weak_hits.append(ch)
+
+        core_set = set(core_hits)
+        weak_set = set(weak_hits)
+        n_core = len(core_set)
+        n_weak = len(weak_set)
+        n_non_sem = len(core_set | weak_set)
+
+        sem_score = float(pd.to_numeric(e.get("semantic_score"), errors="coerce"))
+        sem_hit = bool(np.isfinite(sem_score) and sem_score >= min_sem) if sem_enabled else False
+
+        rule_core_plus_support = n_core >= 1 and (n_weak >= 1 or n_core >= 2)
+        rule_sem_plus = sem_hit and (n_non_sem >= min_non_sem if req_non_sem else True)
+        weak_for_triple = [ch for ch in weak_hits if ch not in support_only_channels]
+        rule_weak_triple = len(weak_for_triple) >= req_min_weak
+
+        if not (rule_core_plus_support or rule_sem_plus or rule_weak_triple):
+            continue
+
+        if rule_core_plus_support:
+            rule_triggered = "core_plus_support"
+        elif rule_sem_plus:
+            rule_triggered = "semantic_plus_non_semantic"
+        else:
+            rule_triggered = "weak_triple"
+
+        rarity_parts: list[float] = []
+        for ch in sorted(core_set | weak_set):
+            base = _channel_col(ch).replace("_set", "")
+            idf_col = f"shared_{base}_idf_sum"
+            if idf_col in edges_df.columns:
+                v = pd.to_numeric(e.get(idf_col), errors="coerce")
+                if pd.notna(v):
+                    rarity_parts.append(float(v))
+        if sem_hit:
+            rarity_parts.append(float(max(0.0, sem_score)))
+        evidence_rarity = float(np.mean(rarity_parts)) if rarity_parts else float("nan")
+
+        evidence_fields = {
+            "core_channels": sorted(core_set),
+            "weak_channels": sorted(weak_set),
+            "support_only_channels": sorted(support_only_channels),
+            "weak_channels_for_triple_rule": sorted(weak_for_triple),
+            "n_core_channels": int(n_core),
+            "n_weak_channels": int(n_weak),
+            "n_non_semantic_channels": int(n_non_sem),
+            "semantic_score": float(sem_score) if np.isfinite(sem_score) else None,
+            "semantic_support": bool(sem_hit),
+            "rule_triggered": rule_triggered,
+            "implementation": "corroborated_v2",
+        }
+        rows.append(
+            {
+                "email_i": min(a, b),
+                "email_j": max(a, b),
+                "evidence_type": "corroborated_multi_signal",
+                "evidence_value": json.dumps(evidence_fields, ensure_ascii=False, sort_keys=True),
+                "evidence_rarity": evidence_rarity,
+                "artifact_df": np.nan,
+                "seed_tier": "corroborated",
+                "seed_generator": "corroborated_v2",
+                "rule_id": str(rule_triggered),
+                "n_support_channels": int(n_non_sem),
+                "semantic_support": bool(sem_hit),
+                "evidence_fields_json": json.dumps(evidence_fields, ensure_ascii=False),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(
+        subset=["email_i", "email_j", "seed_generator", "rule_id"]
+    ).reset_index(drop=True)
+
+
+def _semantic_strong_v1_default_cfg() -> dict[str, Any]:
+    return {
+        "min_semantic_score": 0.93,
+        "rule_id": "semantic_ge_0_93",
+    }
+
+
+def generate_semantic_strong_seed_edges_v1(
+    *,
+    nodes_df: pd.DataFrame,
+    edges_df: pd.DataFrame,
+    generator_cfg: dict[str, Any],
+) -> pd.DataFrame:
+    """High-confidence semantic seeds: anchor-edge cosine >= threshold, no weak-channel requirement."""
+    cfg = {**_semantic_strong_v1_default_cfg(), **(generator_cfg or {})}
+    min_sem = float(cfg.get("min_semantic_score", 0.93))
+    rule_id = str(cfg.get("rule_id") or "semantic_ge_0_93")
+
+    if edges_df.empty or "semantic_score" not in edges_df.columns:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for _, e in edges_df.iterrows():
+        a = str(e["email_a"])
+        b = str(e["email_b"])
+        if a == b:
+            continue
+        sem_score = float(pd.to_numeric(e.get("semantic_score"), errors="coerce"))
+        if not np.isfinite(sem_score) or sem_score < min_sem:
+            continue
+        evidence_fields = {
+            "semantic_score": float(sem_score),
+            "min_semantic_score": float(min_sem),
+            "rule_triggered": rule_id,
+        }
+        rows.append(
+            {
+                "email_i": min(a, b),
+                "email_j": max(a, b),
+                "evidence_type": "semantic_strong",
+                "evidence_value": json.dumps(evidence_fields, ensure_ascii=False, sort_keys=True),
+                "evidence_rarity": float(sem_score),
+                "artifact_df": np.nan,
+                "seed_tier": "semantic_strong",
+                "seed_generator": "semantic_strong_v1",
+                "rule_id": rule_id,
+                "n_support_channels": 0,
+                "semantic_support": True,
+                "evidence_fields_json": json.dumps(evidence_fields, ensure_ascii=False),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(
+        subset=["email_i", "email_j", "seed_generator", "rule_id"]
+    ).reset_index(drop=True)
+
+
+def _semantic_sender_seed_v1_default_cfg() -> dict[str, Any]:
+    return {
+        "min_semantic_score": 0.90,
+        "sender_overlap_col": "has_sender_overlap",
+        "rule_id": "semantic_ge_0_90_and_shared_sender",
+    }
+
+
+def generate_semantic_sender_seed_edges_v1(
+    *,
+    nodes_df: pd.DataFrame,
+    edges_df: pd.DataFrame,
+    generator_cfg: dict[str, Any],
+) -> pd.DataFrame:
+    """Semantic + shared sender on anchor edge: cosine >= threshold and sender overlap."""
+    cfg = {**_semantic_sender_seed_v1_default_cfg(), **(generator_cfg or {})}
+    min_sem = float(cfg.get("min_semantic_score", 0.90))
+    sender_col = str(cfg.get("sender_overlap_col") or "has_sender_overlap")
+    rule_id = str(cfg.get("rule_id") or "semantic_ge_0_90_and_shared_sender")
+
+    if edges_df.empty or "semantic_score" not in edges_df.columns:
+        return pd.DataFrame()
+    if sender_col not in edges_df.columns:
+        return pd.DataFrame()
+
+    rows: list[dict[str, Any]] = []
+    for _, e in edges_df.iterrows():
+        a = str(e["email_a"])
+        b = str(e["email_b"])
+        if a == b:
+            continue
+        if not bool(e.get(sender_col, False)):
+            continue
+        sem_score = float(pd.to_numeric(e.get("semantic_score"), errors="coerce"))
+        if not np.isfinite(sem_score) or sem_score < min_sem:
+            continue
+        evidence_fields = {
+            "semantic_score": float(sem_score),
+            "min_semantic_score": float(min_sem),
+            "shared_sender": True,
+            "rule_triggered": rule_id,
+        }
+        rows.append(
+            {
+                "email_i": min(a, b),
+                "email_j": max(a, b),
+                "evidence_type": "semantic_sender",
+                "evidence_value": json.dumps(evidence_fields, ensure_ascii=False, sort_keys=True),
+                "evidence_rarity": float(sem_score),
+                "artifact_df": np.nan,
+                "seed_tier": "semantic_sender",
+                "seed_generator": "semantic_sender_seed_v1",
+                "rule_id": rule_id,
+                "n_support_channels": 1,
+                "semantic_support": True,
+                "evidence_fields_json": json.dumps(evidence_fields, ensure_ascii=False),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates(
+        subset=["email_i", "email_j", "seed_generator", "rule_id"]
+    ).reset_index(drop=True)
+
+
 def _component_homogeneity_on_gt(
     *,
     seed_edges_df: pd.DataFrame,
@@ -349,7 +651,6 @@ def _component_homogeneity_on_gt(
             "component_homogeneity_mean": float("nan"),
             "component_homogeneity_weighted": float("nan"),
         }
-    # Weighted by number of GT-covered emails in each component.
     weighted_num = 0.0
     weighted_den = 0.0
     for comp in comps:
@@ -544,7 +845,6 @@ def _b_cubed_precision(
     cross["prec"] = pd.to_numeric(cross["n"], errors="coerce") / pd.to_numeric(
         cross["comp_n"], errors="coerce"
     )
-    # B-cubed precision averaged over emails (weight by n in contingency cell).
     weighted = (cross["prec"] * cross["n"]).sum()
     n_eval = float(len(d))
     y_true = d["gt_label"].tolist()
@@ -719,14 +1019,12 @@ def _campaign_touch_distribution(
     if n_campaigns == 0:
         return {}
 
-    # touch>=1 and touch>=2
     touched_counts = []
     has_non_singleton = 0
     for camp, ids in campaign_to_ids.items():
         t = len(ids & touched_union)
         touched_counts.append(t)
         if t > 0:
-            # non-singleton component among touched
             sub = union_members_df[
                 union_members_df["external_id"].astype(str).isin(list(ids & touched_union))
             ]
@@ -736,7 +1034,6 @@ def _campaign_touch_distribution(
     n_touch1 = int(sum(1 for x in touched_counts if x >= 1))
     n_touch2 = int(sum(1 for x in touched_counts if x >= 2))
 
-    # internal seed edge per campaign
     internal_campaigns: set[str] = set()
     if not union_edges_df.empty:
         for _, r in union_edges_df.iterrows():
@@ -775,7 +1072,6 @@ def _corroborated_redundancy_diagnostics(
             "n_merge_two_hard_components": 0,
             "pct_merge_two_hard_components": float("nan"),
         }
-    # Build hard components (using same node universe used for union component build).
     hard_members_df, _hard_components_df, _hard_summary = _build_union_components(
         all_node_ids=[str(x) for x in all_node_ids],
         seed_edges_all=hard_edges.rename(columns={"email_i": "email_i", "email_j": "email_j"}) if not hard_edges.empty else hard_edges,
@@ -858,7 +1154,6 @@ def _manual_review_sample(
         corroborated_edges.get("semantic_support", False).astype(bool)
     ].copy() if not corroborated_edges.empty else corroborated_edges
 
-    # edges from largest union components: pick 25 edges with largest component size
     edges_with_comp = seed_edges_all.copy()
     edges_with_comp["component_id_after_union"] = edges_with_comp["email_i"].astype(str).map(lambda x: comp_map.get(str(x), (None, None))[0])
     edges_with_comp["component_size_after_union"] = edges_with_comp["email_i"].astype(str).map(lambda x: comp_map.get(str(x), (None, None))[1])
@@ -896,7 +1191,6 @@ def _manual_review_sample(
             else None,
             axis=1,
         )
-        # Keep required cols
         keep = [
             "email_i",
             "email_j",
@@ -909,7 +1203,6 @@ def _manual_review_sample(
             "gt_campaign_i_if_available",
             "gt_campaign_j_if_available",
         ]
-        # evidence_types: include evidence_fields_json if present for corroborated
         if "evidence_fields_json" in d.columns:
             d["evidence_types"] = d["evidence_fields_json"]
             if "evidence_types" not in keep:
@@ -999,6 +1292,21 @@ def _generator_registry() -> dict[str, GeneratorFn]:
             generator_cfg=cfg,
         ),
         "corroborated_v1": lambda nodes_df, edges_df, cfg: generate_corroborated_seed_edges_v1(
+            nodes_df=nodes_df,
+            edges_df=edges_df,
+            generator_cfg=cfg,
+        ),
+        "corroborated_v2": lambda nodes_df, edges_df, cfg: generate_corroborated_seed_edges_v2(
+            nodes_df=nodes_df,
+            edges_df=edges_df,
+            generator_cfg=cfg,
+        ),
+        "semantic_strong_v1": lambda nodes_df, edges_df, cfg: generate_semantic_strong_seed_edges_v1(
+            nodes_df=nodes_df,
+            edges_df=edges_df,
+            generator_cfg=cfg,
+        ),
+        "semantic_sender_seed_v1": lambda nodes_df, edges_df, cfg: generate_semantic_sender_seed_edges_v1(
             nodes_df=nodes_df,
             edges_df=edges_df,
             generator_cfg=cfg,

@@ -1,10 +1,26 @@
 """Utilities for GNN training and evaluation."""
 
+import os
+import warnings
+
+_NEIGHBOR_SAMPLER_WARNING = (
+    "Using 'NeighborSampler' without a 'pyg-lib' installation is deprecated"
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*" + _NEIGHBOR_SAMPLER_WARNING + r".*",
+    category=UserWarning,
+)
+_pyw_directive = f"ignore:{_NEIGHBOR_SAMPLER_WARNING}:UserWarning"
+_existing_pyw = os.environ.get("PYTHONWARNINGS", "")
+if _pyw_directive not in _existing_pyw:
+    os.environ["PYTHONWARNINGS"] = (
+        (_existing_pyw + ",") if _existing_pyw else ""
+    ) + _pyw_directive
+
 from .load_graph_data import load_hetero_pt, load_imdb
 from .model import HeteroSAGE, DotPredictor, MLPredictor, DistMultPredictor
 
-# Lazy imports: train, model_io, embed, loaders require torch-sparse/pyg-lib.
-# Only load them when the user actually needs training or loaders.
 def __getattr__(name):
     if name == "run_training":
         from .train import run_training

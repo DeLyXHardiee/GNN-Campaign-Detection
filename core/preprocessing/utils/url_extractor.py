@@ -85,7 +85,6 @@ def refang_url_like_schemes(text: str) -> str:
     """Undo preprocessing defang so extractors see real schemes."""
     if not text:
         return ""
-    # Order matters: replace ``hxxps`` before ``hxxp`` so the latter does not corrupt the former.
     out = _replace_case_insensitive(text, "hxxps://", "https://")
     out = _replace_case_insensitive(out, "hxxp://", "http://")
     return out
@@ -106,6 +105,14 @@ def _element_local_tag(tag: Any) -> str:
     if tag.startswith("{"):
         return tag.rsplit("}", 1)[-1].lower()
     return tag.lower()
+
+
+def _safe_urlparse(url: str):
+    """``urlparse`` that returns ``None`` on malformed hosts (e.g. ``http://[.]/``)."""
+    try:
+        return urlparse(url)
+    except ValueError:
+        return None
 
 
 def _host_acceptable_for_http_url(host: str) -> bool:
@@ -154,13 +161,14 @@ def normalize_http_url(raw: str) -> Optional[str]:
     if s.startswith("//"):
         s = "https:" + s
     else:
-        probe = urlparse(s)
+        probe = _safe_urlparse(s)
+        if probe is None:
+            return None
         if not probe.scheme:
             s = "https://" + s
 
-    try:
-        parsed = urlparse(s)
-    except ValueError:
+    parsed = _safe_urlparse(s)
+    if parsed is None:
         return None
 
     scheme = (parsed.scheme or "").lower()
@@ -310,16 +318,62 @@ def parse_url_components(url: str) -> Dict[str, Any]:
             "scheme": "",
         }
 
+    raw_in = str(url).strip()
+
     try:
-        parsing_url = refang_url_like_schemes(url)
-        if not parsing_url.lower().startswith(("http://", "https://")):
-            parsing_url = "http://" + parsing_url
+        s = _strip_wrapping_punct(refang_url_like_schemes(raw_in))
+        if not s:
+            return {
+                "full_url": "",
+                "domain": "",
+                "stem": "",
+                "scheme": "",
+            }
 
-        parsed = urlparse(parsing_url)
+        canonical = normalize_http_url(s)
 
-        domain = parsed.netloc.lower() if parsed.netloc else ""
+        if canonical:
+            parsed = urlparse(canonical)
+            full_url_out = canonical
+        else:
+            parsing_url = s
+            low = s.lower()
+            if not low.startswith(("http://", "https://")):
+                if s.startswith("//"):
+                    parsing_url = "https:" + s
+                else:
+                    parsing_url = "http://" + s
+            parsed = _safe_urlparse(parsing_url)
+            if parsed is None:
+                return {
+                    "full_url": raw_in,
+                    "domain": "",
+                    "stem": "",
+                    "scheme": "",
+                }
+            scheme_l = (parsed.scheme or "").lower()
+            nl = parsed.netloc.lower() if parsed.netloc else ""
+            normalized = urlunparse(
+                (
+                    scheme_l,
+                    nl,
+                    parsed.path,
+                    parsed.params,
+                    parsed.query,
+                    parsed.fragment,
+                )
+            )
+            full_url_out = normalized
 
-        stem_parts = []
+        try:
+            host = (parsed.hostname or "").strip().lower()
+        except ValueError:
+            host = ""
+        domain = host
+        if not domain and parsed.netloc:
+            domain = parsed.netloc.lower()
+
+        stem_parts: List[str] = []
         if parsed.path:
             stem_parts.append(parsed.path)
         if parsed.params:
@@ -331,26 +385,15 @@ def parse_url_components(url: str) -> Dict[str, Any]:
 
         stem = "".join(stem_parts) if stem_parts else "/"
 
-        normalized = urlunparse(
-            (
-                parsed.scheme.lower(),
-                domain,
-                parsed.path,
-                parsed.params,
-                parsed.query,
-                parsed.fragment,
-            )
-        )
-
         return {
-            "full_url": normalized,
+            "full_url": full_url_out,
             "domain": domain,
             "stem": stem,
-            "scheme": parsed.scheme.lower() if parsed.scheme else "",
+            "scheme": (parsed.scheme or "").lower() if parsed.scheme else "",
         }
     except Exception:
         return {
-            "full_url": url,
+            "full_url": raw_in,
             "domain": "",
             "stem": "",
             "scheme": "",
@@ -396,7 +439,6 @@ def collect_urls_for_misp_event_attributes(attributes: List[Dict[str, Any]]) -> 
         elif t == "html" and isinstance(v, str) and v.strip():
             html_raw = v
         elif t == "header_List-Unsubscribe" and isinstance(v, str):
-            # RFC 2369 often wraps URIs in <...>; linkify-it does not see URLs inside brackets.
             list_unsub = v.replace("<", " ").replace(">", " ")
 
     from_content = extract_urls_from_plain_and_html(body, html_raw)

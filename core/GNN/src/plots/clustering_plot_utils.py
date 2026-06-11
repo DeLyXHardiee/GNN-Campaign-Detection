@@ -31,10 +31,8 @@ def load_dbscan_sweep_csvs(db_scan_dir: str | Path, *, model_file: str | None = 
     are also supported.
     """
     db_scan_dir = Path(db_scan_dir)
-    # Current naming: `<model_stem>_dbscan_sweep.csv`
     csv_files = sorted(db_scan_dir.rglob("*_dbscan_sweep.csv"))
 
-    # Back-compat: older per-epsilon CSVs.
     if not csv_files:
         csv_files = sorted(db_scan_dir.rglob("clustering_results_eps_*.csv"))
 
@@ -45,7 +43,6 @@ def load_dbscan_sweep_csvs(db_scan_dir: str | Path, *, model_file: str | None = 
     for f in csv_files:
         df = pd.read_csv(f)
 
-        # Some older CSVs don't have an explicit epsilon column; derive from filename.
         if "epsilon" not in df.columns and "clustering_results_eps_" in f.stem:
             eps_str = f.stem.split("clustering_results_eps_")[-1].replace("_", ".")
             try:
@@ -57,8 +54,6 @@ def load_dbscan_sweep_csvs(db_scan_dir: str | Path, *, model_file: str | None = 
             if "model_file" in df.columns:
                 df = df[df["model_file"] == model_file]
             elif "model" in df.columns:
-                # In current pipeline outputs, `model` is typically the checkpoint stem
-                # (e.g. `best_model` from `best_model.pt`).
                 model_key = (
                     Path(model_file).stem if "/" in model_file or "." in model_file else model_file
                 )
@@ -85,10 +80,8 @@ def load_meanshift_sweep_csvs(
     Returns an empty DataFrame if no files are found.
     """
     meanshift_dir = Path(meanshift_dir)
-    # Current naming: `<model_stem>_meanshift_sweep.csv`
     csv_files = sorted(meanshift_dir.rglob("*_meanshift_sweep.csv"))
 
-    # Optional back-compat if you ever generate "clustering_results_quantile_*.csv".
     if not csv_files:
         csv_files = sorted(meanshift_dir.rglob("clustering_results_quantile_*.csv"))
 
@@ -99,7 +92,6 @@ def load_meanshift_sweep_csvs(
     for f in csv_files:
         df = pd.read_csv(f)
 
-        # Some older CSVs might not have `quantile`; derive from filename.
         if "quantile" not in df.columns and "clustering_results_quantile_" in f.stem:
             q_str = f.stem.split("clustering_results_quantile_")[-1].replace("_", ".")
             try:
@@ -154,7 +146,6 @@ def load_dbscan_results_for_epsilon(db_scan_dir: str | Path, epsilon: float) -> 
     eps_col = metrics_df["epsilon"]
     try:
         eps_numeric = pd.to_numeric(eps_col, errors="coerce")
-        # Use tolerance for float comparisons.
         mask = eps_numeric.notna() & np.isclose(eps_numeric.to_numpy(), float(epsilon), rtol=1e-6, atol=1e-12)
         df = metrics_df[mask].copy()
     except Exception:

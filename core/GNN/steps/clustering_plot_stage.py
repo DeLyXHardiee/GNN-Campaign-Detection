@@ -58,7 +58,6 @@ def run_clustering_plot_stage(
     training_cfg = cfg.get("training", {})
     model_save_name = training_cfg.get("model_save_name", "best_model.pt")
 
-    # cluster_stage writes the chosen best locked parameters here.
     stage_result_path = clustering_out / layout.stage_result_json
     best_locked_params: dict[str, dict[str, Any]] = {}
     if stage_result_path.exists():
@@ -77,7 +76,6 @@ def run_clustering_plot_stage(
 
     saved: list[str] = []
 
-    # ---- DBSCAN plots (vs epsilon) ----
     dbscan_dir = clustering_out / "dbscan"
     if dbscan_dir.exists():
         dbscan_df = load_dbscan_sweep_csvs(dbscan_dir, model_file=model_save_name)
@@ -85,7 +83,6 @@ def run_clustering_plot_stage(
         if dbscan_df.empty:
             pass
         else:
-            # coverage vs epsilon
             fig, _ax = plot_coverage_and_noise_fraction(
                 dbscan_df,
                 x="epsilon",
@@ -96,7 +93,6 @@ def run_clustering_plot_stage(
                 _save_fig(fig, plots_out / "dbscan_coverage_vs_epsilon.png", dpi=dpi)
             )
 
-            # score (homogeneity / completeness / v-measure) vs epsilon
             res_scores = plot_dbscan_scores_vs_epsilon(
                 dbscan_df,
                 title_prefix="DBSCAN: ",
@@ -105,7 +101,6 @@ def run_clustering_plot_stage(
                 fig, _ax = res_scores
                 saved.append(_save_fig(fig, plots_out / "dbscan_scores_vs_epsilon.png", dpi=dpi))
 
-            # silhouette vs epsilon
             res_sil = plot_dbscan_silhouette_vs_epsilon(
                 dbscan_df,
                 title_prefix="DBSCAN: ",
@@ -116,7 +111,6 @@ def run_clustering_plot_stage(
                     _save_fig(fig, plots_out / "dbscan_silhouette_vs_epsilon.png", dpi=dpi)
                 )
 
-            # n_clusters vs epsilon
             fig, _ax = plot_n_clusters(
                 dbscan_df,
                 x="epsilon",
@@ -124,14 +118,12 @@ def run_clustering_plot_stage(
             )
             saved.append(_save_fig(fig, plots_out / "dbscan_n_clusters_vs_epsilon.png", dpi=dpi))
 
-            # score vs epoch at the selected best locked epsilon
             best_eps = None
             if "dbscan" in best_locked_params and "epsilon" in best_locked_params["dbscan"]:
                 best_eps = float(best_locked_params["dbscan"]["epsilon"])
             if best_eps is not None:
                 df_eps = load_dbscan_results_for_epsilon(dbscan_dir, epsilon=best_eps)
                 if not df_eps.empty and "model" in df_eps.columns:
-                    # Keep only epoch checkpoints (exclude `best_model` row).
                     df_eps = df_eps[df_eps["model"].astype(str).str.contains("model_epoch_")].copy()
                 plots = plot_dbscan_metrics_vs_epoch_at_epsilon(
                     df_eps,
@@ -144,7 +136,6 @@ def run_clustering_plot_stage(
                     fname = f"dbscan_{suffix}_vs_epoch_at_epsilon_{str(best_eps).replace('.','_')}.png"
                     saved.append(_save_fig(fig_i, plots_out / fname, dpi=dpi))
 
-    # ---- MeanShift plots (vs quantile) ----
     meanshift_dir = clustering_out / "meanshift"
     if meanshift_dir.exists():
         ms_df = load_meanshift_sweep_csvs(meanshift_dir, model_file=model_save_name)
@@ -158,7 +149,6 @@ def run_clustering_plot_stage(
             }
             saved.append(_save_fig(fig, plots_out / fname_map.get(i, f"meanshift_plot_{i}.png"), dpi=dpi))
 
-        # score vs epoch at the selected best locked quantile
         best_q = None
         if "meanshift" in best_locked_params and "quantile" in best_locked_params["meanshift"]:
             best_q = float(best_locked_params["meanshift"]["quantile"])

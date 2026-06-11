@@ -19,7 +19,6 @@ def make_link_loaders(train_graph, full_graph, train_pos, val_pos, test_pos,
     to avoid segmentation faults in PyG's NeighborSampler (see pyg-team/pytorch_geometric#7663).
     """
     loaders = {}
-    # Ensure graph is on CPU; loaders expect CPU data.
     train_graph = train_graph.cpu() if hasattr(train_graph, "cpu") else train_graph
 
     num_neighbors = {et: fanout for et in full_graph.edge_types}

@@ -6,7 +6,13 @@ from typing import Any
 
 import torch
 
-from config.pipeline_config import GnnPathLayout, gnn_path_layout_from_pipeline, load_pipeline_config
+from config.pipeline_config import (
+    GnnPathLayout,
+    gnn_path_layout_for_pair_backend,
+    gnn_path_layout_from_pipeline,
+    load_pipeline_config,
+    pair_training_enabled_backend_slugs,
+)
 from src.load_graph_data import load_hetero_pt
 from src.pair_train import run_pair_training
 from src.train import run_training
@@ -24,6 +30,7 @@ def run_train_stage(
     device_pref: str | None,
     to_undirected: bool,
     path_layout: GnnPathLayout | None = None,
+    pair_training_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Train into ``<runs_parent>/<run_id>/`` (``run_id`` from config). Subpaths for
@@ -52,28 +59,74 @@ def run_train_stage(
 
     if objective == "pair_supervision":
         pair_block = dict(cfg_full.get("pair_training") or {})
-        merged = {**pair_block, **training_cfg}
-        pair_out = run_pair_training(
-            DEVICE=device,
-            TORCH_SEED=int(merged["torch_seed"]),
-            data=data,
-            training_cfg=merged,
-            run_dir=str(run_dir),
-            runs_parent=runs_parent,
-            models_subdir=layout.models_subdir,
-            metrics_csv=layout.metrics_csv,
-            training_config_json=layout.training_config_json,
-            project_root=project_root,
-        )
-        best_ckpt = Path(pair_out["best_checkpoint_path"])
+        if pair_training_overrides:
+            pair_block.update(pair_training_overrides)
+        merged_base = {
+            **pair_block,
+            **training_cfg,
+            "graph_path": str(Path(graph_path).expanduser().resolve()),
+        }
+        gnn_ablation = cfg_full.get("gnn_encoder_ablation")
+        if gnn_ablation is not None:
+            merged_base["gnn_encoder_ablation"] = gnn_ablation
+        ovr = (pair_training_overrides or {}).get("pair_training_backends_override")
+        if ovr is not None:
+            backends = [str(x).strip().lower() for x in ovr if str(x).strip()]
+        else:
+            backends = pair_training_enabled_backend_slugs(cfg_full)
+        if not backends:
+            raise ValueError(
+                "pair_training.backends must enable at least one of 'gnn', 'mlp', or 'edge_gnn' when "
+                "training_objective is pair_supervision (unless pair_training_backends_override is passed)."
+            )
+        per_backend: dict[str, Any] = {}
+        last_pair_out: dict[str, Any] | None = None
+        for slug in backends:
+            enc_override = str(merged_base.get("pair_encoder_backend") or "").strip()
+            if enc_override:
+                from src.pair_train import resolve_pair_encoder_backend
+
+                enc = resolve_pair_encoder_backend(merged_base)
+            else:
+                enc = "mlp_raw_email_x" if slug == "mlp" else "gnn"
+            merged = {**merged_base, "pair_encoder_backend": enc, "pair_training_backend_slug": slug}
+            be_layout = gnn_path_layout_for_pair_backend(layout, slug)
+            pair_out = run_pair_training(
+                DEVICE=device,
+                TORCH_SEED=int(merged["torch_seed"]),
+                data=data,
+                training_cfg=merged,
+                run_dir=str(run_dir),
+                runs_parent=runs_parent,
+                models_subdir=be_layout.models_subdir,
+                metrics_csv=be_layout.metrics_csv,
+                training_config_json=be_layout.training_config_json,
+                project_root=project_root,
+            )
+            per_backend[slug] = {
+                "pair_encoder_backend": enc,
+                "models_dir": str(run_dir / be_layout.models_subdir),
+                "best_checkpoint_path": pair_out["best_checkpoint_path"],
+                "metrics_csv_path": str(run_dir / be_layout.metrics_csv),
+                "training_config_path": str(run_dir / be_layout.training_config_json),
+                "pair_training_setup_summary_path": pair_out.get("setup_summary_path"),
+            }
+            last_pair_out = pair_out
+        assert last_pair_out is not None
+        primary = backends[0]
+        primary_layout = gnn_path_layout_for_pair_backend(layout, primary)
+        primary_info = per_backend[primary]
+        best_ckpt = Path(primary_info["best_checkpoint_path"])
         result = {
             "run_dir": str(run_dir),
-            "models_dir": str(run_dir / layout.models_subdir),
+            "models_dir": str(run_dir / primary_layout.models_subdir),
             "best_checkpoint_path": str(best_ckpt),
-            "metrics_csv_path": str(run_dir / layout.metrics_csv),
-            "training_config_path": str(run_dir / layout.training_config_json),
-            "pair_training_setup_summary_path": pair_out.get("setup_summary_path"),
+            "metrics_csv_path": str(run_dir / primary_layout.metrics_csv),
+            "training_config_path": str(run_dir / primary_layout.training_config_json),
+            "pair_training_setup_summary_path": last_pair_out.get("setup_summary_path"),
             "training_objective": "pair_supervision",
+            "pair_training_backends": backends,
+            "pair_training_per_backend": per_backend,
         }
     else:
         run_training(

@@ -199,7 +199,6 @@ def run_recall_at_k_analysis(
         use_dot=use_dot,
     )
 
-    # Machine-readable: curves and MRR (string keys for JSON serialization)
     recall_curves_serializable = {_et_to_label(et): v for et, v in recall_curves.items()}
     mrr_at_max_k_serializable = {_et_to_label(et): v for et, v in mrr_at_max_k.items()}    
     metrics_serializable = {

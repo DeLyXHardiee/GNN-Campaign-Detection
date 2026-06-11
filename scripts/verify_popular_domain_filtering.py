@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Verify surgical popular-domain filtering in the heterogeneous graph.
 
@@ -67,7 +66,6 @@ def run_assertions(metadata: dict, pop: frozenset) -> bool:
 
     failures = []
 
-    # --- Assertion 1: url nodes — exact-host filter ---
     exact_blocked_urls = []
     subdomain_pop_urls = []
     for u in url_nodes:
@@ -100,7 +98,6 @@ def run_assertions(metadata: dict, pop: frozenset) -> bool:
             "either the dataset has none (check your input) or the new filter is over-blocking."
         )
 
-    # --- Assertion 2: domain nodes — registrable-domain filter still applied ---
     leaked_domains = []
     for d in domain_nodes:
         host, reg, ok = parse_url_host_and_registrable_domain(d)
@@ -117,7 +114,6 @@ def run_assertions(metadata: dict, pop: frozenset) -> bool:
     else:
         print(f"PASS [domain] No domain node has a registrable domain in popular_domains ({len(domain_nodes)} nodes checked).")
 
-    # Stems carry no hostname, so coverage is via the url-node assertion above.
     print(f"INFO [stem] {len(stem_nodes)} stem nodes present (covered by url-node assertion).")
 
     if failures:

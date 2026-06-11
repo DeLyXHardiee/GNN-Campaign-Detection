@@ -27,7 +27,7 @@ class RunContext:
 
 
 def read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def resolve_path(project_root: Path, raw: str | Path) -> Path:
@@ -50,8 +50,10 @@ def resolve_gt_paths(*, gt_set_name: str, gt_sets_path: Path) -> list[str]:
 def validate_experiment_config(cfg: dict[str, Any]) -> None:
     exp = dict(cfg.get("experiment") or {})
     mode = str(exp.get("mode") or "").strip().lower()
-    if mode not in {"setup_only", "score_only", "setup_and_score"}:
-        raise ValueError("experiment.mode must be one of: setup_only, score_only, setup_and_score")
+    if mode not in {"setup_only", "score_only", "setup_and_score", "setup_gnn_score"}:
+        raise ValueError(
+            "experiment.mode must be one of: setup_only, score_only, setup_and_score, setup_gnn_score"
+        )
     selection = dict(cfg.get("selection") or {})
     targets = selection.get("score_targets") or ["seed_candidate"]
     if not isinstance(targets, list) or not targets:

@@ -18,6 +18,8 @@ import pandas as pd
 
 from seed_candidate_workflow.utils import graph_structure_helpers as gh
 
+from seed_candidate_workflow.utils.anchor_graph_helpers import load_anchor_graph_artifacts
+
 
 def _pair_key(a: str, b: str) -> tuple[str, str]:
     aa, bb = str(a).strip(), str(b).strip()
@@ -40,6 +42,223 @@ def _feature_availability(df: pd.DataFrame, cols: list[str]) -> dict[str, Any]:
         }
     return out
 
+
+
+def _infer_anchor_run_dir(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None,
+    project_root: Path | None,
+) -> Path | None:
+    root = project_root or gh.find_project_root()
+    gid = str(graph_id or "").strip()
+    if gid:
+        run_dir = (
+            root / "seed_candidate_workflow" / "output" / "graph_bundles" / gid / "anchor" / gid
+        ).resolve()
+        return run_dir if run_dir.is_dir() else None
+    parts = list(candidate_union_csv.resolve().parts)
+    try:
+        i = [p.lower() for p in parts].index("graph_bundles")
+        if i + 1 < len(parts):
+            inferred = str(parts[i + 1]).strip()
+            if inferred:
+                run_dir = (
+                    root
+                    / "seed_candidate_workflow"
+                    / "output"
+                    / "graph_bundles"
+                    / inferred
+                    / "anchor"
+                    / inferred
+                ).resolve()
+                return run_dir if run_dir.is_dir() else None
+    except ValueError:
+        return None
+    return None
+
+
+def infer_graph_id_from_graph_bundles_path(path: Path) -> str | None:
+    """Return ``graph_id`` when ``path`` is under ``.../graph_bundles/<graph_id>/...``."""
+    parts = list(Path(path).resolve().parts)
+    try:
+        i = [p.lower() for p in parts].index("graph_bundles")
+        if i + 1 < len(parts):
+            s = str(parts[i + 1]).strip()
+            return s or None
+    except ValueError:
+        return None
+    return None
+
+
+def load_sorted_anchor_external_ids_for_candidate_union(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None = None,
+    project_root: Path | None = None,
+) -> tuple[list[str] | None, dict[str, Any]]:
+    """
+    Sorted ``external_id`` values from anchor graph artifacts (full graph email universe).
+
+    Aligns pair-training body Jaccard columns with candidate-generation body caches.
+    """
+    root = project_root or gh.find_project_root()
+    run_dir = _infer_anchor_run_dir(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=root,
+    )
+    if run_dir is None:
+        return None, {"available": False, "reason": "anchor_run_dir_not_found"}
+    nodes_df, _edges_df, _candidates_df, _summary, _g = load_anchor_graph_artifacts(
+        run_dir,
+        load_graph_pickle=False,
+    )
+    if "external_id" not in nodes_df.columns:
+        return None, {"available": False, "reason": "missing_external_id"}
+    ids = sorted({str(x) for x in nodes_df["external_id"].astype(str).tolist()})
+    return ids, {
+        "available": True,
+        "anchor_run_dir": str(run_dir),
+        "n_emails": int(len(ids)),
+    }
+
+
+def _load_anchor_node_sets_by_email(
+    *,
+    candidate_union_csv: Path,
+    graph_id: str | None,
+    project_root: Path | None,
+) -> tuple[dict[str, dict[str, set[str]]], dict[str, Any]]:
+    run_dir = _infer_anchor_run_dir(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=project_root,
+    )
+    if run_dir is None:
+        return {}, {"available": False, "reason": "anchor_run_dir_not_found"}
+    nodes_df, _edges_df, _candidates_df, _summary, _g = load_anchor_graph_artifacts(
+        run_dir,
+        load_graph_pickle=False,
+    )
+    required_cols = [
+        "sender_set",
+        "stem_set",
+        "url_set",
+        "attachment_set",
+        "sender_email_domain_set",
+        "domain_set",
+        "html_structure_fingerprint_set",
+        "return_path_email_set",
+        "return_path_domain_set",
+    ]
+    keep = [c for c in required_cols if c in nodes_df.columns]
+    if "external_id" not in nodes_df.columns or not keep:
+        return {}, {"available": False, "reason": "anchor_nodes_missing_required_columns"}
+
+    def _to_set_cell(v: Any) -> set[str]:
+        if isinstance(v, set):
+            return {str(x) for x in v if str(x).strip()}
+        if isinstance(v, list):
+            return {str(x) for x in v if str(x).strip()}
+        if isinstance(v, str):
+            t = v.strip()
+            if not t:
+                return set()
+            if t.startswith("[") and t.endswith("]"):
+                try:
+                    xs = json.loads(t)
+                    if isinstance(xs, list):
+                        return {str(x) for x in xs if str(x).strip()}
+                except Exception:
+                    pass
+            if "|" in t:
+                return {p.strip() for p in t.split("|") if p.strip()}
+        return set()
+
+    out: dict[str, dict[str, set[str]]] = {}
+    for _, r in nodes_df[["external_id", *keep]].iterrows():
+        eid = str(r["external_id"])
+        out[eid] = {c: _to_set_cell(r.get(c)) for c in keep}
+    return out, {
+        "available": True,
+        "anchor_run_dir": str(run_dir),
+        "shared_columns": keep,
+    }
+
+
+def _add_shared_attribute_pair_features(
+    *,
+    df: pd.DataFrame,
+    nodes_by_email: dict[str, dict[str, set[str]]],
+) -> pd.DataFrame:
+    spec = [
+        ("sender_set", "sender"),
+        ("stem_set", "stem"),
+        ("url_set", "url"),
+        ("attachment_set", "attachment"),
+        ("sender_email_domain_set", "sender_domain"),
+        ("domain_set", "domain"),
+        ("html_structure_fingerprint_set", "html_structure_fingerprint"),
+        ("return_path_email_set", "return_path_email"),
+        ("return_path_domain_set", "return_path_domain"),
+    ]
+    out = df.copy()
+    for _col, base in spec:
+        out[f"shared_{base}_count"] = np.nan
+        out[f"has_shared_{base}"] = False
+    for idx, r in out.iterrows():
+        a = str(r["email_i"])
+        b = str(r["email_j"])
+        na = nodes_by_email.get(a)
+        nb = nodes_by_email.get(b)
+        if na is None or nb is None:
+            continue
+        for col, base in spec:
+            sa = na.get(col) or set()
+            sb = nb.get(col) or set()
+            cnt = int(len(sa & sb))
+            out.at[idx, f"shared_{base}_count"] = cnt
+            out.at[idx, f"has_shared_{base}"] = bool(cnt > 0)
+    core_bool_cols = [f"has_shared_{base}" for _col, base in spec]
+    out["n_shared_core_channels"] = (
+        out[core_bool_cols].fillna(False).astype(bool).sum(axis=1).astype(int)
+    )
+    return out
+
+
+def _shared_feature_stats(
+    df: pd.DataFrame,
+    *,
+    count_cols: list[str],
+    bool_cols: list[str],
+) -> dict[str, Any]:
+    n = int(len(df))
+    out: dict[str, Any] = {}
+    for c in count_cols:
+        if c not in df.columns:
+            out[c] = {"present": False, "nonzero_count": 0, "nonzero_fraction": None}
+            continue
+        s = pd.to_numeric(df[c], errors="coerce")
+        nnz = int(s.fillna(0).gt(0).sum())
+        out[c] = {
+            "present": True,
+            "nonzero_count": nnz,
+            "nonzero_fraction": float(nnz / n) if n else None,
+            "non_null_count": int(s.notna().sum()),
+        }
+    for c in bool_cols:
+        if c not in df.columns:
+            out[c] = {"present": False, "true_count": 0, "true_fraction": None}
+            continue
+        s = df[c].fillna(False).astype(bool)
+        t = int(s.sum())
+        out[c] = {
+            "present": True,
+            "true_count": t,
+            "true_fraction": float(t / n) if n else None,
+        }
+    return out
 
 def _reliable_negative_eligible_mask(
     df: pd.DataFrame,
@@ -82,7 +301,6 @@ def _reliable_negative_eligible_mask(
     fc = df["from_component"].astype(bool)
     fr = df["from_rare_artifact"].astype(bool)
 
-    # Route 1 — weak semantic-only
     route1 = (
         fs
         & cos.le(sem_max).fillna(False)
@@ -94,7 +312,6 @@ def _reliable_negative_eligible_mask(
     include_twohop_route = bool(cfg.get("include_twohop_only_route", False))
     include_component_route = bool(cfg.get("include_component_only_route", False))
 
-    # Route 2 — weak 2hop-only bridge (disabled by default for conservative rollback)
     if include_twohop_route:
         th_thr = float(cfg.get("twohop_rarity_max_le", 6.0))
         th = pd.to_numeric(df["twohop_rarity_max"], errors="coerce")
@@ -109,7 +326,6 @@ def _reliable_negative_eligible_mask(
     else:
         route2 = pd.Series(False, index=df.index, dtype=bool)
 
-    # Route 3 — weak component-only bridge (disabled by default for conservative rollback)
     if include_component_route:
         route3 = fc & ~fs & ~fr & ~f2
     else:
@@ -188,6 +404,7 @@ def build_pair_training_dataset(
     write_parquet: bool = True,
     write_rejects_csv: bool = True,
     project_root: Path | None = None,
+    misp_json_path: Path | None = None,
     reliable_negative_pool: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
@@ -222,7 +439,6 @@ def build_pair_training_dataset(
     if cand.empty or not {"email_i", "email_j"}.issubset(cand.columns):
         raise ValueError(f"candidate_union.csv missing required columns or empty: {candidate_union_csv}")
 
-    # Canonicalize candidate rows; detect duplicates (keep first, deterministic sort).
     cand = cand.copy()
     cand["_pk"] = [
         _pair_key(a, b) for a, b in zip(cand["email_i"].astype(str), cand["email_j"].astype(str), strict=False)
@@ -233,7 +449,6 @@ def build_pair_training_dataset(
     cand_pairs = set(cand["_pk"].tolist())
     seed_only = sorted(seed_pairs - cand_pairs)
 
-    # Base rows from candidate union
     rows: list[dict[str, Any]] = []
     for _, r in cand.iterrows():
         pk = r["_pk"]
@@ -261,7 +476,6 @@ def build_pair_training_dataset(
             }
         )
 
-    # Seed-only pairs (should normally be empty when candidate generation invariant holds)
     for pk in seed_only:
         rows.append(
             {
@@ -288,13 +502,105 @@ def build_pair_training_dataset(
 
     df = pd.DataFrame(rows)
     df = df.sort_values(["email_i", "email_j"]).reset_index(drop=True)
+    _rar_num = pd.to_numeric(df["rare_artifact_rarity_max"], errors="coerce")
+    df["from_rare_artifact"] = df["from_rare_artifact"].astype(bool) | _rar_num.notna()
+    nodes_by_email, shared_ctx = _load_anchor_node_sets_by_email(
+        candidate_union_csv=candidate_union_csv,
+        graph_id=graph_id,
+        project_root=project_root,
+    )
+    df = _add_shared_attribute_pair_features(df=df, nodes_by_email=nodes_by_email)
 
-    # Every row is part of the candidate-universe handoff; seed-only extras are still
-    # "candidate stage" outputs for training contract purposes.
+    text_similarity_meta: dict[str, Any] = {"status": "skipped"}
+    try:
+        from seed_candidate_workflow.utils.body_similarity_cache import build_or_load_email_body_feature_store
+        from seed_candidate_workflow.utils.pair_similarity_features import (
+            BODY_ONLY_PAIR_FEATURE_COLS,
+            RESCUE_ALIGNED_SCORER_FEATURE_COLS,
+            TEXT_SIMILARITY_PAIR_FEATURE_COLS,
+            add_body_only_pair_features_to_dataframe,
+            add_text_similarity_pair_features_to_dataframe,
+            attach_path_jaccard_features_to_dataframe,
+            load_misp_text_catalog_for_pairs,
+        )
+        from seed_candidate_workflow.utils.pair_score_separation import _resolve_default_misp_json_path
+
+        text_catalog, text_similarity_meta = load_misp_text_catalog_for_pairs(
+            project_root=project_root,
+            misp_json_path=misp_json_path,
+        )
+        root = project_root or gh.find_project_root()
+        body_store = None
+        body_cache_diag: dict[str, Any] = {"status": "skipped"}
+        if text_catalog:
+            try:
+                misp_path = (
+                    misp_json_path
+                    if misp_json_path is not None
+                    else _resolve_default_misp_json_path(root)
+                )
+            except Exception:
+                misp_path = None
+            if misp_path is not None and Path(misp_path).is_file():
+                anchor_ids, anchor_ids_meta = load_sorted_anchor_external_ids_for_candidate_union(
+                    candidate_union_csv=candidate_union_csv,
+                    graph_id=graph_id,
+                    project_root=project_root,
+                )
+                gid = graph_id or infer_graph_id_from_graph_bundles_path(candidate_union_csv) or "unknown_graph"
+                if anchor_ids:
+                    body_store, body_cache_diag = build_or_load_email_body_feature_store(
+                        email_ids=anchor_ids,
+                        text_catalog=text_catalog,
+                        graph_id=str(gid),
+                        misp_json_path=Path(misp_path),
+                        force_rebuild=False,
+                    )
+                    body_cache_diag["anchor_external_ids_meta"] = anchor_ids_meta
+                else:
+                    body_cache_diag = {
+                        "status": "skipped",
+                        "reason": "anchor_external_ids_unavailable",
+                        "anchor_external_ids_meta": anchor_ids_meta,
+                    }
+            else:
+                body_cache_diag = {"status": "skipped", "reason": "misp_json_not_resolved"}
+            df = add_text_similarity_pair_features_to_dataframe(
+                df,
+                text_catalog=text_catalog,
+                nodes_by_email=nodes_by_email,
+                body_feature_store=body_store,
+            )
+            df = add_body_only_pair_features_to_dataframe(df, text_catalog=text_catalog)
+            df = attach_path_jaccard_features_to_dataframe(
+                df,
+                nodes_by_email=nodes_by_email,
+                prefer_existing=False,
+            )
+            text_similarity_meta["status"] = "ok"
+            text_similarity_meta["columns"] = list(TEXT_SIMILARITY_PAIR_FEATURE_COLS) + list(
+                RESCUE_ALIGNED_SCORER_FEATURE_COLS
+            )
+            text_similarity_meta["body_email_feature_cache"] = body_cache_diag
+        else:
+            for c in TEXT_SIMILARITY_PAIR_FEATURE_COLS + BODY_ONLY_PAIR_FEATURE_COLS:
+                df[c] = 0.0
+            df["path_token_jaccard_combined"] = 0.0
+            text_similarity_meta["status"] = "defaults_zero_no_catalog"
+    except Exception as exc:
+        from seed_candidate_workflow.utils.pair_similarity_features import (
+            BODY_ONLY_PAIR_FEATURE_COLS,
+            TEXT_SIMILARITY_PAIR_FEATURE_COLS,
+        )
+
+        for c in TEXT_SIMILARITY_PAIR_FEATURE_COLS + BODY_ONLY_PAIR_FEATURE_COLS:
+            df[c] = 0.0
+        df["path_token_jaccard_combined"] = 0.0
+        text_similarity_meta = {"status": "error", "error": str(exc)}
+
     df["is_candidate_pair"] = True
     df["is_seed_pair"] = df["_is_seed_pair"].astype(bool)
 
-    # Component context from union columns (needed before reliable-negative rules)
     sci = pd.to_numeric(df["email_i_seed_component_id"], errors="coerce")
     scj = pd.to_numeric(df["email_j_seed_component_id"], errors="coerce")
     df["seed_component_i"] = sci
@@ -307,10 +613,9 @@ def build_pair_training_dataset(
     both_comp = sci.notna() & scj.notna() & (sci >= 0) & (scj >= 0)
     df["cross_seed_component_flag"] = both_comp & (sci != scj)
 
-    # Graph email indices
     ext_to_idx: dict[str, int] | None = None
     meta_path_resolved: str | None = None
-    graph_meta_missing_reason: str | None = None  # why explicit path was not used
+    graph_meta_missing_reason: str | None = None                                  
     if graph_meta_json is not None:
         gpath = graph_meta_json.expanduser().resolve()
         if gpath.is_file():
@@ -337,7 +642,6 @@ def build_pair_training_dataset(
         df["graph_email_idx_i"] = np.nan
         df["graph_email_idx_j"] = np.nan
 
-    # Nullable integer indices for CSV
     df["graph_email_idx_i"] = pd.to_numeric(df["graph_email_idx_i"], errors="coerce").astype("Int64")
     df["graph_email_idx_j"] = pd.to_numeric(df["graph_email_idx_j"], errors="coerce").astype("Int64")
 
@@ -345,14 +649,12 @@ def build_pair_training_dataset(
     miss_j = df["graph_email_idx_j"].isna()
     both_mapped = (~miss_i) & (~miss_j)
 
-    # Supervision labels (after structural flags exist)
     df["pair_status"] = np.where(df["is_seed_pair"], "positive", "unlabeled")
     df.loc[df["is_seed_pair"], "from_seed"] = True
 
     rn_pool = reliable_negative_pool or {}
     rn_summary = _apply_reliable_negative_pool_inplace(df, both_mapped=both_mapped, pool_cfg=rn_pool)
 
-    # Rejects CSV (optional): mapping failures (main dataset still retains all pairs).
     rejects: list[dict[str, Any]] = []
     if write_rejects_csv:
         bad = df.loc[miss_i | miss_j]
@@ -370,7 +672,6 @@ def build_pair_training_dataset(
                 }
             )
 
-    # Final output columns (exact contract)
     df["split"] = np.nan
     out_df = pd.DataFrame(
         {
@@ -392,6 +693,49 @@ def build_pair_training_dataset(
             "twohop_rarity_max": pd.to_numeric(df["twohop_rarity_max"], errors="coerce"),
             "component_cosine_max": pd.to_numeric(df["component_cosine_max"], errors="coerce"),
             "time_gap_seconds_min": pd.to_numeric(df["time_gap_seconds_min"], errors="coerce"),
+            "shared_sender_count": pd.to_numeric(df["shared_sender_count"], errors="coerce"),
+            "shared_stem_count": pd.to_numeric(df["shared_stem_count"], errors="coerce"),
+            "shared_url_count": pd.to_numeric(df["shared_url_count"], errors="coerce"),
+            "shared_attachment_count": pd.to_numeric(df["shared_attachment_count"], errors="coerce"),
+            "shared_sender_domain_count": pd.to_numeric(df["shared_sender_domain_count"], errors="coerce"),
+            "shared_domain_count": pd.to_numeric(df["shared_domain_count"], errors="coerce"),
+            "shared_html_structure_fingerprint_count": pd.to_numeric(
+                df["shared_html_structure_fingerprint_count"], errors="coerce"
+            ),
+            "shared_return_path_email_count": pd.to_numeric(
+                df["shared_return_path_email_count"], errors="coerce"
+            ),
+            "shared_return_path_domain_count": pd.to_numeric(
+                df["shared_return_path_domain_count"], errors="coerce"
+            ),
+            "has_shared_sender": df["has_shared_sender"].fillna(False).astype(bool),
+            "has_shared_stem": df["has_shared_stem"].fillna(False).astype(bool),
+            "has_shared_url": df["has_shared_url"].fillna(False).astype(bool),
+            "has_shared_attachment": df["has_shared_attachment"].fillna(False).astype(bool),
+            "has_shared_sender_domain": df["has_shared_sender_domain"].fillna(False).astype(bool),
+            "has_shared_domain": df["has_shared_domain"].fillna(False).astype(bool),
+            "has_shared_html_structure_fingerprint": df["has_shared_html_structure_fingerprint"]
+            .fillna(False)
+            .astype(bool),
+            "has_shared_return_path_email": df["has_shared_return_path_email"].fillna(False).astype(bool),
+            "has_shared_return_path_domain": df["has_shared_return_path_domain"].fillna(False).astype(bool),
+            "n_shared_core_channels": pd.to_numeric(
+                df["n_shared_core_channels"], errors="coerce"
+            ).fillna(0).astype(int),
+            "body_token_jaccard": pd.to_numeric(df["body_token_jaccard"], errors="coerce").fillna(0.0),
+            "body_char4gram_jaccard": pd.to_numeric(df["body_char4gram_jaccard"], errors="coerce").fillna(0.0),
+            "sender_localpart_norm_jaccard": pd.to_numeric(
+                df["sender_localpart_norm_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "body_only_token_jaccard": pd.to_numeric(
+                df["body_only_token_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "body_only_char4gram_jaccard": pd.to_numeric(
+                df["body_only_char4gram_jaccard"], errors="coerce"
+            ).fillna(0.0),
+            "path_token_jaccard_combined": pd.to_numeric(
+                df["path_token_jaccard_combined"], errors="coerce"
+            ).fillna(0.0),
             "seed_component_i": pd.to_numeric(df["seed_component_i"], errors="coerce"),
             "seed_component_j": pd.to_numeric(df["seed_component_j"], errors="coerce"),
             "same_seed_component_flag": df["same_seed_component_flag"].astype(bool),
@@ -441,6 +785,54 @@ def build_pair_training_dataset(
         "component_cosine_max",
         "time_gap_seconds_min",
         "source_count",
+        "shared_sender_count",
+        "shared_stem_count",
+        "shared_url_count",
+        "shared_attachment_count",
+        "shared_sender_domain_count",
+        "shared_domain_count",
+        "shared_html_structure_fingerprint_count",
+        "shared_return_path_email_count",
+        "shared_return_path_domain_count",
+        "n_shared_core_channels",
+        "has_shared_sender",
+        "has_shared_stem",
+        "has_shared_url",
+        "has_shared_attachment",
+        "has_shared_sender_domain",
+        "has_shared_domain",
+        "has_shared_html_structure_fingerprint",
+        "has_shared_return_path_email",
+        "has_shared_return_path_domain",
+        "body_token_jaccard",
+        "body_char4gram_jaccard",
+        "sender_localpart_norm_jaccard",
+        "body_only_token_jaccard",
+        "body_only_char4gram_jaccard",
+        "path_token_jaccard_combined",
+    ]
+    shared_count_cols = [
+        "shared_sender_count",
+        "shared_stem_count",
+        "shared_url_count",
+        "shared_attachment_count",
+        "shared_sender_domain_count",
+        "shared_domain_count",
+        "shared_html_structure_fingerprint_count",
+        "shared_return_path_email_count",
+        "shared_return_path_domain_count",
+        "n_shared_core_channels",
+    ]
+    shared_bool_cols = [
+        "has_shared_sender",
+        "has_shared_stem",
+        "has_shared_url",
+        "has_shared_attachment",
+        "has_shared_sender_domain",
+        "has_shared_domain",
+        "has_shared_html_structure_fingerprint",
+        "has_shared_return_path_email",
+        "has_shared_return_path_domain",
     ]
 
     both_ids = (
@@ -507,12 +899,25 @@ def build_pair_training_dataset(
             "final_usable_row_count_for_training_both_indices": int(both_mapped.sum()),
         },
         "feature_availability": _feature_availability(out_df, feat_cols),
+
+        "shared_attribute_context": shared_ctx,
+        "text_similarity_pair_features": text_similarity_meta,
+        "shared_attribute_feature_stats": _shared_feature_stats(
+            out_df,
+            count_cols=shared_count_cols,
+            bool_cols=shared_bool_cols,
+        ),
+
         "component_context": comp_ctx,
         "split_strategy": "not_constructed_in_substep_1",
         "notes": [
             "Pair supervision: seed pairs => positive; other candidate_union rows => unlabeled by default.",
             "Optional reliable_negative_pool relabels a capped subset of mapped non-seed rows to reliable_negative.",
             "No ground-truth labels for campaign class; train/val/test split happens in GNN training.",
+
+            "Shared-attribute pair features are derived from anchor node-set overlap "
+            "(sender/stem/url/attachment/sender_domain/domain), without GT-dependent rules.",
+
         ],
     }
     if n_dup:

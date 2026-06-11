@@ -110,7 +110,6 @@ def filter_graph_ir_by_degree(
         deg = degrees.get(nt, [])
         if not deg:
             continue
-        # Strength maps to quantile: 0.0 => near-max threshold, 1.0 => min threshold.
         q = 1.0 - s
         sorted_deg = sorted(deg)
         q_idx = int(q * (len(sorted_deg) - 1)) if sorted_deg else 0
@@ -175,8 +174,6 @@ def filter_graph_ir_by_degree(
             out_dst.append(nd)
         new_edges[edge_key] = (out_src, out_dst)
 
-    # email_attrs (external_id, ts, etc.) is aligned to email node row order; keep it in sync
-    # when emails are removed so metadata / clustering match data["email"].num_nodes.
     new_email_attrs = ir.email_attrs
     if "email" in remove_indices and remove_indices["email"]:
         email_node = ir.nodes.get("email")

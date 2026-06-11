@@ -157,7 +157,7 @@
   "evaluation": {
     "enabled": true,
     "ground_truth": {
-      "paths": ["\\data\\groundtruth\\ground_truth.json"]
+      "paths": ["data/groundtruth/ground_truth.dedup_strict.json"]
     },
     "manual_review": {
       "random_seed": 1337,

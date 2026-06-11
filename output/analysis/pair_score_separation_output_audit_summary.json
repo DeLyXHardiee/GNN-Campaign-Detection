@@ -1,0 +1,731 @@
+{
+  "schema": "pair_score_separation_output_audit_v1",
+  "created_at_utc": "2026-05-20T17:35:02+00:00",
+  "inspected_modules": [
+    "seed_candidate_workflow/utils/pair_score_separation.py",
+    "seed_candidate_workflow/utils/pair_same_unlabeled_rescued_collapsed.py",
+    "seed_candidate_workflow/utils/pair_low_band_feature_discovery.py",
+    "seed_candidate_workflow/utils/scorer_diagnostics_rules.py",
+    "seed_candidate_workflow/scripts/run_pair_score_separation_analysis.py"
+  ],
+  "example_run_scanned": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\runs\\main_gnn_pu_1_no_ts_dedup_task_identity_10",
+  "example_run_inventory": {
+    "exists": true,
+    "path": "C:\\Users\\aar\\Desktop\\GNN-Campaign-Detection\\output\\runs\\main_gnn_pu_1_no_ts_dedup_task_identity_10\\pair_score_separation",
+    "n_files": 55,
+    "total_size_mb": 197.11,
+    "n_html": 11,
+    "n_json": 9,
+    "n_csv": 18,
+    "n_png": 13,
+    "largest_html": {
+      "relative_path": "pair_same_unlabeled_rescued_vs_collapsed.html",
+      "size_bytes": 43364294
+    },
+    "files": [
+      {
+        "relative_path": "pair_cross_campaign_positive_pairs_for_review.csv",
+        "size_bytes": 47111
+      },
+      {
+        "relative_path": "pair_cross_campaign_positive_pairs_for_review.html",
+        "size_bytes": 110269
+      },
+      {
+        "relative_path": "pair_cross_campaign_positive_pairs_for_review.jsonl",
+        "size_bytes": 84572
+      },
+      {
+        "relative_path": "pair_cross_campaign_positive_semantic_only_pairs_for_review.html",
+        "size_bytes": 38584
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_artifact_summary.csv",
+        "size_bytes": 656
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_pairs.csv",
+        "size_bytes": 16012
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_pairs_for_review.csv",
+        "size_bytes": 31239
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_pairs_for_review.html",
+        "size_bytes": 92354
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_pairs_for_review.jsonl",
+        "size_bytes": 65494
+      },
+      {
+        "relative_path": "pair_high_band_false_positive_summary.json",
+        "size_bytes": 8053
+      },
+      {
+        "relative_path": "pair_high_band_joint_separator_summary.json",
+        "size_bytes": 37511
+      },
+      {
+        "relative_path": "pair_high_band_joint_separator_table.csv",
+        "size_bytes": 11744
+      },
+      {
+        "relative_path": "pair_high_band_semantic_only_false_positive_pairs_for_review.csv",
+        "size_bytes": 23561
+      },
+      {
+        "relative_path": "pair_high_band_semantic_only_false_positive_pairs_for_review.html",
+        "size_bytes": 72119
+      },
+      {
+        "relative_path": "pair_high_band_semantic_only_false_positive_pairs_for_review.jsonl",
+        "size_bytes": 50352
+      },
+      {
+        "relative_path": "pair_high_band_separator_summary.json",
+        "size_bytes": 21975
+      },
+      {
+        "relative_path": "pair_high_band_separator_table.csv",
+        "size_bytes": 4082
+      },
+      {
+        "relative_path": "pair_high_band_true_positive_pairs.csv",
+        "size_bytes": 948380
+      },
+      {
+        "relative_path": "pair_low_band_cross_campaign_unlabeled_pairs_for_review.csv",
+        "size_bytes": 577579
+      },
+      {
+        "relative_path": "pair_low_band_cross_campaign_unlabeled_pairs_for_review.html",
+        "size_bytes": 1686006
+      },
+      {
+        "relative_path": "pair_low_band_joint_separator_summary.json",
+        "size_bytes": 96998
+      },
+      {
+        "relative_path": "pair_low_band_joint_separator_table.csv",
+        "size_bytes": 28290
+      },
+      {
+        "relative_path": "pair_low_band_same_campaign_unlabeled_pairs_for_review.csv",
+        "size_bytes": 9058333
+      },
+      {
+        "relative_path": "pair_low_band_same_campaign_unlabeled_pairs_for_review.html",
+        "size_bytes": 27418866
+      },
+      {
+        "relative_path": "pair_low_band_separator_summary.json",
+        "size_bytes": 18442
+      },
+      {
+        "relative_path": "pair_low_band_separator_table.csv",
+        "size_bytes": 4148
+      },
+      {
+        "relative_path": "pair_low_band_twohop_channel_summary.csv",
+        "size_bytes": 1463
+      },
+      {
+        "relative_path": "pair_low_band_twohop_channel_summary.json",
+        "size_bytes": 11302
+      },
+      {
+        "relative_path": "pair_low_band_unlabeled_pairs.csv",
+        "size_bytes": 4165626
+      },
+      {
+        "relative_path": "pair_low_band_unlabeled_pairs_for_review.csv",
+        "size_bytes": 9634212
+      },
+      {
+        "relative_path": "pair_low_band_unlabeled_pairs_for_review.html",
+        "size_bytes": 29098341
+      },
+      {
+        "relative_path": "pair_low_band_unlabeled_pairs_for_review.jsonl",
+        "size_bytes": 21510756
+      },
+      {
+        "relative_path": "pair_same_unlabeled_collapsed_for_review.html",
+        "size_bytes": 13056427
+      },
+      {
+        "relative_path": "pair_same_unlabeled_mid_for_review.html",
+        "size_bytes": 23498378
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_for_review.html",
+        "size_bytes": 6810201
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_vs_collapsed.html",
+        "size_bytes": 43364294
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_vs_collapsed_joint_summary.json",
+        "size_bytes": 57530
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_vs_collapsed_pairs_for_review.csv",
+        "size_bytes": 14333013
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_vs_collapsed_summary.json",
+        "size_bytes": 133304
+      },
+      {
+        "relative_path": "pair_same_unlabeled_rescued_vs_collapsed_table.csv",
+        "size_bytes": 8261
+      },
+      {
+        "relative_path": "pair_score_band_diagnostics.csv",
+        "size_bytes": 4476
+      },
+      {
+        "relative_path": "pair_score_separation_summary.json",
+        "size_bytes": 32080
+      },
+      {
+        "relative_path": "plots/score_distribution_all_scored_pairs.png",
+        "size_bytes": 26009
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_campaign_ground_truth.dedup_task_identity.png",
+        "size_bytes": 27355
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_campaign_positive_ground_truth.dedup_task_identity.png",
+        "size_bytes": 27635
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_campaign_unlabeled_ground_truth.dedup_task_identity.png",
+        "size_bytes": 29267
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_cross_campaign_ground_truth.dedup_task_identity.png",
+        "size_bytes": 31681
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_cross_campaign_positive_ground_truth.dedup_task_identity.png",
+        "size_bytes": 35060
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_cross_campaign_unlabeled_ground_truth.dedup_task_identity.png",
+        "size_bytes": 33351
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_same_campaign_ground_truth.dedup_task_identity.png",
+        "size_bytes": 35075
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_same_campaign_positive_ground_truth.dedup_task_identity.png",
+        "size_bytes": 34631
+      },
+      {
+        "relative_path": "plots/score_distribution_cross_component_same_campaign_unlabeled_ground_truth.dedup_task_identity.png",
+        "size_bytes": 36364
+      },
+      {
+        "relative_path": "plots/score_distribution_same_campaign_ground_truth.dedup_task_identity.png",
+        "size_bytes": 31999
+      },
+      {
+        "relative_path": "plots/score_distribution_same_campaign_positive_ground_truth.dedup_task_identity.png",
+        "size_bytes": 33040
+      },
+      {
+        "relative_path": "plots/score_distribution_same_campaign_unlabeled_ground_truth.dedup_task_identity.png",
+        "size_bytes": 29876
+      }
+    ]
+  },
+  "primary_outputs_recommended": [
+    "pair_score_separation_summary.json",
+    "plots/score_distribution_all_scored_pairs.png",
+    "plots/score_distribution_same_campaign_<gt>.png",
+    "plots/score_distribution_cross_campaign_<gt>.png",
+    "pair_low_band_unlabeled_pairs_for_review.html",
+    "pair_same_unlabeled_rescued_vs_collapsed_summary.json",
+    "pair_same_unlabeled_rescued_for_review.html",
+    "pair_same_unlabeled_collapsed_for_review.html"
+  ],
+  "biggest_problems": [
+    "Flat output directory (~45+ files per run) with no subfolders.",
+    "Six+ overlapping JSON summaries (low/high marginal + joint + FP + twohop + rescued).",
+    "Separator FEATURE_KEYS_DEFAULT omits body_only and path Jaccard — JSON summaries under-report new features.",
+    "Low/high band HTML uses sparse meta-grid; rescued HTML shows Jaccards but is unreadable at scale.",
+    "pair_same_unlabeled_rescued_vs_collapsed.html can exceed 40MB (all pairs, no TOC).",
+    "Duplicate CSV+JSONL+HTML triple exports for each review cohort.",
+    "13 plots per GT when multiple --gt-path passed — filenames help but clutter top level plots/."
+  ],
+  "cleanup_first_priorities": [
+    "1. Reorganize output into review_html/, core_json/, plots/, debug_csv/ (no behavior change).",
+    "2. Unify HTML pair card: add body_only + path Jaccard block to _pair_card_html (reuse rescued template fields).",
+    "3. Split rescued_vs_collapsed combined HTML or add sidebar TOC; cap pairs per page.",
+    "4. Collapse JSON summaries into pair_score_separation_summary.json + optional debug bundle.",
+    "5. Extend FEATURE_KEYS_DEFAULT / band separator stats for body_only_* and path_token_jaccard_combined."
+  ],
+  "proposed_folder_layout": {
+    "pair_score_separation/": {
+      "README.txt": "index of artifacts",
+      "core_json/": [
+        "pair_score_separation_summary.json",
+        "pair_same_unlabeled_rescued_vs_collapsed_summary.json"
+      ],
+      "review_html/": [
+        "*_for_review.html"
+      ],
+      "plots/": [
+        "score_distribution_*.png"
+      ],
+      "debug_csv/": [
+        "*_table.csv",
+        "*_pairs.csv",
+        "*.jsonl"
+      ],
+      "debug_json/": [
+        "pair_*_separator_summary.json",
+        "pair_high_band_false_positive_summary.json"
+      ]
+    }
+  },
+  "summary_json_overlap": {
+    "pair_score_separation_summary.json": {
+      "role": "canonical run index",
+      "overlaps_with": [
+        "per_gt plots paths",
+        "band_diagnostics"
+      ]
+    },
+    "pair_low_band_separator_summary.json": {
+      "role": "low marginal separators",
+      "overlaps_with": [
+        "pair_score_separation_summary per_gt",
+        "pair_low_band_joint_separator_summary.json"
+      ],
+      "stale_risk": "FEATURE_KEYS_DEFAULT lacks body/path jaccard"
+    },
+    "pair_high_band_separator_summary.json": {
+      "role": "high marginal separators",
+      "overlaps_with": [
+        "pair_high_band_joint",
+        "pair_high_band_false_positive_summary.json"
+      ]
+    },
+    "pair_same_unlabeled_rescued_vs_collapsed_summary.json": {
+      "role": "rescued vs collapsed — keep separate",
+      "overlaps_with": [
+        "joint summary only for rule tables"
+      ]
+    }
+  },
+  "html_feature_audit": {
+    "features_checked": [
+      "body_token_jaccard",
+      "body_char4gram_jaccard",
+      "body_only_token_jaccard",
+      "body_only_char4gram_jaccard",
+      "path_token_jaccard_combined",
+      "url_path_token_jaccard",
+      "stem_path_token_jaccard",
+      "sender_localpart_norm_jaccard",
+      "shared_sender_count",
+      "shared_stem_count",
+      "shared_url_count",
+      "n_shared_core_channels",
+      "twohop_via_*",
+      "from_2hop",
+      "source_count"
+    ],
+    "pages": [
+      {
+        "html_artifact": "pair_low_band_*_for_review.html",
+        "template": "_write_pairs_for_review_html / _pair_card_html",
+        "readable": "good",
+        "width_issue": "low",
+        "features_shown": [
+          "score",
+          "semantic_cosine",
+          "time_gap",
+          "provenance",
+          "n_shared_core_channels",
+          "admitting_evidence_lists"
+        ],
+        "features_missing_in_template": [
+          "body_*",
+          "body_only_*",
+          "path_token_jaccard_combined",
+          "url_path_token_jaccard",
+          "stem_path_token_jaccard",
+          "sender_localpart_norm_jaccard",
+          "source_count",
+          "explicit shared_* counts"
+        ],
+        "data_available_in_csv": "yes — if pair_training_dataset has columns or MISP backfill in rescued path only",
+        "root_cause": "_INSPECTION_FEATURE_COLS omits Jaccard columns; _pair_card_html meta-grid is short."
+      },
+      {
+        "html_artifact": "pair_high_band_false_positive_pairs_for_review.html",
+        "template": "_write_pairs_for_review_html / _pair_card_html",
+        "readable": "good",
+        "width_issue": "low",
+        "features_missing_in_template": [
+          "body_only_*",
+          "path_*",
+          "body_token_jaccard"
+        ],
+        "data_available_in_csv": "partial — inspection frame lacks path/body jaccard unless merged from df_eval"
+      },
+      {
+        "html_artifact": "pair_same_unlabeled_rescued_vs_collapsed.html",
+        "template": "_write_rescued_collapsed_review_html (custom meta-grid)",
+        "readable": "poor",
+        "width_issue": "high",
+        "features_shown": [
+          "score",
+          "semantic",
+          "body_token_jaccard",
+          "body_char4gram_jaccard",
+          "body_only_token_jaccard",
+          "body_only_char4gram_jaccard",
+          "sender_localpart_norm_jaccard",
+          "path_token_jaccard_combined",
+          "url_path_token_jaccard",
+          "stem_path_token_jaccard",
+          "provenance",
+          "source_count"
+        ],
+        "features_missing_in_template": [
+          "twohop channel badges in compact form only"
+        ],
+        "data_available_in_csv": "yes — pair_same_unlabeled_rescued_vs_collapsed_pairs_for_review.csv",
+        "root_cause": "Custom meta-grid packs 10+ metrics on one flex row per card; no sidebar TOC; single HTML contains all buckets → very large DOM (10k+ pairs on full runs)."
+      }
+    ],
+    "templates": [
+      "_write_pairs_for_review_html / _pair_card_html",
+      "_write_rescued_collapsed_review_html (custom meta-grid)"
+    ]
+  },
+  "artifact_catalog": [
+    {
+      "path_pattern": "pair_score_separation_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Front-page run manifest: per-GT score stats, plot paths, band diagnostics, export pointers.",
+      "recommendation": "keep_as_primary",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_score_separation_summary.json → per_gt[].band_diagnostics",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Per-GT band counts (low/high same/cross unlabeled).",
+      "recommendation": "keep_as_primary",
+      "notes": "Embedded in main summary; avoid duplicating in separate files long-term."
+    },
+    {
+      "path_pattern": "pair_low_band_separator_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Marginal separator stats for low band (same vs cross unlabeled).",
+      "recommendation": "merge_into_main_summary",
+      "notes": "Heavy overlap with pair_score_separation_summary per_gt band_diagnostics + separator tables."
+    },
+    {
+      "path_pattern": "pair_low_band_joint_separator_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Joint boolean rules in low band (same vs cross unlabeled).",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Essential for tuning but verbose; not front-page."
+    },
+    {
+      "path_pattern": "pair_high_band_separator_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Marginal separator stats for high-score unlabeled band.",
+      "recommendation": "merge_into_main_summary",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_high_band_joint_separator_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Joint rules for high-score false-positive unlabeled pairs.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_high_band_false_positive_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "High-band FP cohort stats + manual_review_export metadata.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_low_band_twohop_channel_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "2-hop channel attribution in low band.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Specialized frontier; referenced from low_joint summary."
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_vs_collapsed_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued vs collapsed marginal + recommendations.",
+      "recommendation": "keep_as_primary",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_vs_collapsed_joint_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued vs collapsed joint rule rankings.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_low_band_feature_discovery_summary.json",
+      "category": "core_json",
+      "creator": "seed_candidate_workflow.utils.pair_low_band_feature_discovery:run_low_band_feature_discovery",
+      "purpose": "Extended low-band feature discovery + positive alignment (body/path/sender).",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Separate entrypoint; same output folder — easy to confuse with main run."
+    },
+    {
+      "path_pattern": "pair_low_band_separator_table.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_low_band_joint_separator_table.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_high_band_separator_table.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_high_band_joint_separator_table.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_score_band_diagnostics.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_low_band_twohop_channel_summary.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_vs_collapsed_table.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_vs_collapsed_pairs_for_review.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Machine-readable separator / diagnostic table.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": ""
+    },
+    {
+      "path_pattern": "pair_low_band_unlabeled_pairs.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Full pair listing for band (large).",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Rarely opened manually; feeds review exports."
+    },
+    {
+      "path_pattern": "pair_high_band_false_positive_pairs.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Full pair listing for band (large).",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Rarely opened manually; feeds review exports."
+    },
+    {
+      "path_pattern": "pair_high_band_true_positive_pairs.csv",
+      "category": "debug_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Full pair listing for band (large).",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Rarely opened manually; feeds review exports."
+    },
+    {
+      "path_pattern": "pair_low_band_unlabeled_pairs_for_review.csv",
+      "category": "review_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Human review export with email text previews + inspection columns.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "JSONL mirrors CSV; pick one format in cleanup."
+    },
+    {
+      "path_pattern": "pair_low_band_same_campaign_unlabeled_pairs_for_review.csv",
+      "category": "review_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Human review export with email text previews + inspection columns.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "JSONL mirrors CSV; pick one format in cleanup."
+    },
+    {
+      "path_pattern": "pair_low_band_cross_campaign_unlabeled_pairs_for_review.csv",
+      "category": "review_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Human review export with email text previews + inspection columns.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "JSONL mirrors CSV; pick one format in cleanup."
+    },
+    {
+      "path_pattern": "pair_high_band_false_positive_pairs_for_review.csv",
+      "category": "review_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Human review export with email text previews + inspection columns.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "JSONL mirrors CSV; pick one format in cleanup."
+    },
+    {
+      "path_pattern": "pair_cross_campaign_positive_pairs_for_review.csv",
+      "category": "review_csv",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Human review export with email text previews + inspection columns.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "JSONL mirrors CSV; pick one format in cleanup."
+    },
+    {
+      "path_pattern": "pair_low_band_unlabeled_pairs_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Sidebar TOC + pair cards; uses _write_pairs_for_review_html template.",
+      "recommendation": "keep_as_primary",
+      "notes": "Readable layout; missing body_only/path Jaccard in card header."
+    },
+    {
+      "path_pattern": "pair_low_band_same_campaign_unlabeled_pairs_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Sidebar TOC + pair cards; uses _write_pairs_for_review_html template.",
+      "recommendation": "keep_as_primary",
+      "notes": "Readable layout; missing body_only/path Jaccard in card header."
+    },
+    {
+      "path_pattern": "pair_low_band_cross_campaign_unlabeled_pairs_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Sidebar TOC + pair cards; uses _write_pairs_for_review_html template.",
+      "recommendation": "keep_as_primary",
+      "notes": "Readable layout; missing body_only/path Jaccard in card header."
+    },
+    {
+      "path_pattern": "pair_high_band_false_positive_pairs_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Sidebar TOC + pair cards; uses _write_pairs_for_review_html template.",
+      "recommendation": "keep_as_primary",
+      "notes": "Readable layout; missing body_only/path Jaccard in card header."
+    },
+    {
+      "path_pattern": "pair_cross_campaign_positive_pairs_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Sidebar TOC + pair cards; uses _write_pairs_for_review_html template.",
+      "recommendation": "keep_as_primary",
+      "notes": "Readable layout; missing body_only/path Jaccard in card header."
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued/collapsed bucket review.",
+      "recommendation": "keep_as_primary",
+      "notes": "Per-bucket HTML readable; combined rescued_vs_collapsed.html is huge (10k+ pairs) and loads all cards at once — primary width/readability pain."
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_collapsed_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued/collapsed bucket review.",
+      "recommendation": "keep_as_primary",
+      "notes": "Per-bucket HTML readable; combined rescued_vs_collapsed.html is huge (10k+ pairs) and loads all cards at once — primary width/readability pain."
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_mid_for_review.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued/collapsed bucket review.",
+      "recommendation": "keep_as_primary",
+      "notes": "Per-bucket HTML readable; combined rescued_vs_collapsed.html is huge (10k+ pairs) and loads all cards at once — primary width/readability pain."
+    },
+    {
+      "path_pattern": "pair_same_unlabeled_rescued_vs_collapsed.html",
+      "category": "review_html",
+      "creator": "seed_candidate_workflow.utils.pair_same_unlabeled_rescued_collapsed:run_same_unlabeled_rescued_vs_collapsed_analysis",
+      "purpose": "Rescued/collapsed bucket review.",
+      "recommendation": "keep_but_move_to_debug",
+      "notes": "Per-bucket HTML readable; combined rescued_vs_collapsed.html is huge (10k+ pairs) and loads all cards at once — primary width/readability pain."
+    },
+    {
+      "path_pattern": "plots/score_distribution_*.png",
+      "category": "plots",
+      "creator": "seed_candidate_workflow.utils.pair_score_separation:run_pair_score_separation_analysis",
+      "purpose": "Per-GT and global score histograms (same/cross/pos/unl/cross_component variants).",
+      "recommendation": "keep_as_primary",
+      "notes": "~13 PNGs per GT file when multiple --gt-path; consider plots/<gt_slug>/ subfolder."
+    }
+  ],
+  "plot_recommendations": {
+    "keep": [
+      "score_distribution_all_scored_pairs.png",
+      "score_distribution_same_campaign_<gt>.png",
+      "score_distribution_cross_campaign_<gt>.png"
+    ],
+    "optional_debug": [
+      "score_distribution_cross_component_*",
+      "positive_only / unlabeled_only variants"
+    ],
+    "defer": [
+      "html_fp bucket plots (not produced today)",
+      "source_count bucket plots",
+      "body_only jaccard bucket plots"
+    ],
+    "rationale": "Histograms already answer same vs cross separation; feature-specific plots only after HTML/summary show body/path lift."
+  }
+}

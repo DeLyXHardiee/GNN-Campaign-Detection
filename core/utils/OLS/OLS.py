@@ -18,7 +18,6 @@ try:
         resolve_project_path,
     )
 except ModuleNotFoundError:
-    # Allow running this file directly (python core/utils/OLS/OLS.py).
     project_root = Path(__file__).resolve().parents[3]
     root_str = str(project_root)
     if root_str not in sys.path:
@@ -30,9 +29,6 @@ except ModuleNotFoundError:
 
 
 
-# -------------------------
-# Helpers
-# -------------------------
 
 def _normalize_external_id(value):
     if value is None:
@@ -140,8 +136,6 @@ def load_emails(path):
     with open(misp_path, "r", encoding="utf-8-sig") as f:
         payload = json.load(f)
 
-    # Support direct record datasets:
-    # [ {"external_id": "...", ...}, ... ]
     if isinstance(payload, list):
         direct_records = [x for x in payload if isinstance(x, dict) and x.get("external_id")]
         if direct_records:
@@ -237,9 +231,6 @@ def load_ground_truth(path):
     return clusters
 
 
-# -------------------------
-# Feature extraction
-# -------------------------
 
 def safe_bool(x):
     if isinstance(x, bool):
@@ -377,9 +368,6 @@ def extract_text_fields(email):
         [v for k, v in fields.items() if isinstance(v, str) and k != "headers_by_type" and v]
     )
 
-    # Dynamically include all non-header attributes so nested string-like leaves
-    # (e.g., html.structure_fingerprint, css.primary_color, attachments_meta.object_uri)
-    # are represented in textual pair features.
     dynamic_text_by_key = {}
 
     def _accumulate_text(value, key_prefix):
@@ -522,7 +510,6 @@ def extract_numeric_features(email):
             if isinstance(v, (int, float)):
                 features[f"css_{k}"] = v
 
-    # Boolean flags
     bool_keys = [
         "rfc_defects",
         "cyrillic_domain",
@@ -573,9 +560,6 @@ def load_text_embeddings(path):
     return vectors
 
 
-# -------------------------
-# Build dataset
-# -------------------------
 
 def build_pairs(emails, clusters, max_pairs=float("inf")):
     pairs = []
@@ -588,7 +572,6 @@ def build_pairs(emails, clusters, max_pairs=float("inf")):
 
     email_ids = list(emails.keys())
 
-    # Generate pairs
     for i, j in itertools.combinations(email_ids, 2):
         same = int(cluster_lookup.get(i) == cluster_lookup.get(j))
         pairs.append((i, j))
@@ -653,9 +636,6 @@ def build_campaign_pairs(campaign_email_ids, all_email_ids, negative_multiplier=
     return pairs, labels
 
 
-# -------------------------
-# Pairwise feature builder
-# -------------------------
 
 def build_pair_features(pairs, emails):
     numeric_keys = set()
@@ -664,7 +644,6 @@ def build_pair_features(pairs, emails):
     email_text = {}
     email_text_fields = {}
 
-    # Precompute
     for eid, email in emails.items():
         num = extract_numeric_features(email)
         email_numeric[eid] = num
@@ -675,7 +654,6 @@ def build_pair_features(pairs, emails):
 
     numeric_keys = sorted(list(numeric_keys))
 
-    # Build matrices
     X_num = []
     texts = []
 
@@ -688,7 +666,6 @@ def build_pair_features(pairs, emails):
             v1 = f1.get(k, 0)
             v2 = f2.get(k, 0)
 
-            # Use absolute difference
             row.append(abs(v1 - v2))
 
         X_num.append(row)
@@ -699,9 +676,6 @@ def build_pair_features(pairs, emails):
     return np.array(X_num), X_textual, texts, numeric_keys, textual_feature_names
 
 
-# -------------------------
-# Main
-# -------------------------
 
 def main(email_path, gt_path):
     print("Loading data...")
@@ -751,7 +725,6 @@ def main(email_path, gt_path):
         reverse=True,
     )
 
-    # Keep output structure stable with a single global key.
     campaign_impacts = {
         "global": {
             name: float(abs(coef))
@@ -765,7 +738,6 @@ def main(email_path, gt_path):
 
     print(f"Wrote campaign signal impact JSON: {output_path}")
 
-    # Aggregate average impact per attribute across campaigns.
     attribute_totals = defaultdict(float)
     attribute_counts = defaultdict(int)
     for impact_map in campaign_impacts.values():
@@ -790,16 +762,12 @@ def main(email_path, gt_path):
     print(f"Wrote attribute average impact JSON: {avg_output_path}")
 
 
-# -------------------------
-# CLI
-# -------------------------
 
 if __name__ == "__main__":
     cfg = PIPELINE_CONFIG.get("datasets", {})
 
     email_path = cfg.get("misp_json_path")
     gt_path = cfg.get("ground_truth_json")
-    #gt_path = "C:/Users/lukas/Desktop/GNN-Campaign-Detection/data/groundtruths/campaigns.csv"
 
     if not email_path or not gt_path:
         raise ValueError(
@@ -807,7 +775,6 @@ if __name__ == "__main__":
             "(misp_json_path, ground_truth_json)"
         )
 
-    # Resolve paths
     email_path = resolve_project_path(email_path)
     gt_path = resolve_project_path(gt_path)
 

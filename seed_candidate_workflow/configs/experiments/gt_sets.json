@@ -2,10 +2,10 @@
   "default_multi_gt": [
     "data/groundtruth/ground_truth.json"
   ],
-  "merged_only": [
+  "expanded_gt_only": [
     "data/groundtruth/ground_truth.json"
   ],
-  "merged_and_dedup": [
-    "data/groundtruth/ground_truth.json"
+  "dedup_strict_multi_gt": [
+    "data/groundtruth/ground_truth.dedup_strict.json"
   ]
 }
